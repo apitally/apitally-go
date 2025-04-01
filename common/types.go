@@ -16,8 +16,8 @@ type Request struct {
 
 // Response represents an HTTP response being logged
 type Response struct {
-	StatusCode   int         `json:"statusCode"`
-	ResponseTime float64     `json:"responseTime"`
+	StatusCode   int         `json:"status_code"`
+	ResponseTime float64     `json:"response_time"`
 	Headers      [][2]string `json:"headers"`
 	Size         *int64      `json:"size,omitempty"`
 	Body         []byte      `json:"body,omitempty"`
