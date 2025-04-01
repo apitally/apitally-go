@@ -55,7 +55,7 @@ type RequestLoggingConfig struct {
 
 // ApitallyConfig defines the configuration for Apitally
 type ApitallyConfig struct {
-	ClientID             string
+	ClientId             string
 	Env                  string
 	RequestLoggingConfig *RequestLoggingConfig
 	AppVersion           *string

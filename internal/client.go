@@ -74,8 +74,8 @@ type ApitallyClient struct {
 }
 
 func NewApitallyClient(config common.ApitallyConfig) (*ApitallyClient, error) {
-	if !isValidClientID(config.ClientID) {
-		return nil, fmt.Errorf("invalid Apitally client ID '%s' (expecting hexadecimal UUID format)", config.ClientID)
+	if !isValidClientId(config.ClientId) {
+		return nil, fmt.Errorf("invalid Apitally client ID '%s' (expecting hexadecimal UUID format)", config.ClientId)
 	}
 	if !isValidEnv(config.Env) {
 		return nil, fmt.Errorf("invalid env '%s' (expecting 1-32 alphanumeric lowercase characters and hyphens only)", config.Env)
@@ -130,7 +130,7 @@ func (c *ApitallyClient) getHubUrl(endpoint string, query string) string {
 	if envURL := os.Getenv("APITALLY_HUB_BASE_URL"); envURL != "" {
 		baseURL = envURL
 	}
-	url := fmt.Sprintf("%s/v2/%s/%s/%s", baseURL, c.Config.ClientID, c.Config.Env, endpoint)
+	url := fmt.Sprintf("%s/v2/%s/%s/%s", baseURL, c.Config.ClientId, c.Config.Env, endpoint)
 	if query != "" {
 		url += "?" + query
 	}
@@ -344,10 +344,10 @@ func (c *ApitallyClient) sendHubRequest(req *http.Request) HubRequestStatus {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode >= 400 {
 		switch resp.StatusCode {
 		case http.StatusNotFound:
-			c.logger.Error("Invalid Apitally client ID", "client_id", c.Config.ClientID)
+			c.logger.Error("Invalid Apitally client ID", "client_id", c.Config.ClientId)
 			c.enabled = false
 			c.stopSync()
 			return HubRequestStatusInvalidClientId
@@ -396,7 +396,7 @@ func (c *ApitallyClient) randomDelay() {
 	time.Sleep(delay)
 }
 
-func isValidClientID(clientID string) bool {
+func isValidClientId(clientID string) bool {
 	_, err := uuid.Parse(clientID)
 	return err == nil
 }
