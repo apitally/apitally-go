@@ -36,15 +36,10 @@ type syncPayload struct {
 	Consumers        []*common.ApitallyConsumer `json:"consumers,omitempty"`
 }
 
-type PathInfo struct {
-	Method string `json:"method"`
-	Path   string `json:"path"`
-}
-
 type startupPayload struct {
 	InstanceUuid string            `json:"instance_uuid"`
 	MessageUuid  string            `json:"message_uuid"`
-	Paths        []PathInfo        `json:"paths"`
+	Paths        []common.PathInfo `json:"paths"`
 	Versions     map[string]string `json:"versions"`
 	Client       string            `json:"client"`
 }
@@ -119,7 +114,7 @@ func (c *ApitallyClient) IsEnabled() bool {
 	return c.enabled
 }
 
-func (c *ApitallyClient) SetStartupData(paths []PathInfo, versions map[string]string, client string) {
+func (c *ApitallyClient) SetStartupData(paths []common.PathInfo, versions map[string]string, client string) {
 	c.startupData = &startupPayload{
 		InstanceUuid: c.instanceUuid,
 		MessageUuid:  uuid.New().String(),

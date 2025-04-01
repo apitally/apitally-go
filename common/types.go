@@ -30,6 +30,12 @@ type ApitallyConsumer struct {
 	Group      *string `json:"group,omitempty"`
 }
 
+// PathInfo represents a path and method pair
+type PathInfo struct {
+	Method string `json:"method"`
+	Path   string `json:"path"`
+}
+
 // RequestLoggingConfig defines configuration for request logging
 type RequestLoggingConfig struct {
 	Enabled                  bool
