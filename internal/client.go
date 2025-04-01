@@ -60,18 +60,17 @@ const (
 )
 
 type ApitallyClient struct {
-	clientId        string
-	env             string
+	enabled         bool
 	instanceUuid    string
+	httpClient      *retryablehttp.Client
 	syncDataChan    chan syncPayload
 	syncTicker      *time.Ticker
 	startupData     *startupPayload
 	startupDataSent bool
-	enabled         bool
-	httpClient      *retryablehttp.Client
-	done            chan struct{}
 	logger          *slog.Logger
+	done            chan struct{}
 
+	Config                 common.ApitallyConfig
 	RequestCounter         *RequestCounter
 	RequestLogger          *RequestLogger
 	ValidationErrorCounter *ValidationErrorCounter
@@ -83,13 +82,8 @@ func NewApitallyClient(config common.ApitallyConfig) (*ApitallyClient, error) {
 	if !isValidClientID(config.ClientID) {
 		return nil, fmt.Errorf("invalid Apitally client ID '%s' (expecting hexadecimal UUID format)", config.ClientID)
 	}
-
-	env := "dev"
-	if config.Env != nil {
-		env = *config.Env
-	}
-	if !isValidEnv(env) {
-		return nil, fmt.Errorf("invalid env '%s' (expecting 1-32 alphanumeric lowercase characters and hyphens only)", env)
+	if !isValidEnv(config.Env) {
+		return nil, fmt.Errorf("invalid env '%s' (expecting 1-32 alphanumeric lowercase characters and hyphens only)", config.Env)
 	}
 
 	logLevel := slog.LevelInfo
@@ -102,16 +96,15 @@ func NewApitallyClient(config common.ApitallyConfig) (*ApitallyClient, error) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, loggerOpts))
 
 	client := &ApitallyClient{
-		clientId:     config.ClientID,
-		env:          env,
-		instanceUuid: uuid.New().String(),
-		syncDataChan: make(chan syncPayload, maxQueueSize),
 		enabled:      true,
+		instanceUuid: uuid.New().String(),
 		httpClient:   getHttpClient(),
-		done:         make(chan struct{}),
+		syncDataChan: make(chan syncPayload, maxQueueSize),
 		logger:       logger.With("component", "apitally"),
+		done:         make(chan struct{}),
 	}
 
+	client.Config = config
 	client.RequestCounter = NewRequestCounter()
 	client.ValidationErrorCounter = NewValidationErrorCounter()
 	client.ServerErrorCounter = NewServerErrorCounter()
@@ -142,7 +135,7 @@ func (c *ApitallyClient) getHubUrl(endpoint string, query string) string {
 	if envURL := os.Getenv("APITALLY_HUB_BASE_URL"); envURL != "" {
 		baseURL = envURL
 	}
-	url := fmt.Sprintf("%s/v2/%s/%s/%s", baseURL, c.clientId, c.env, endpoint)
+	url := fmt.Sprintf("%s/v2/%s/%s/%s", baseURL, c.Config.ClientID, c.Config.Env, endpoint)
 	if query != "" {
 		url += "?" + query
 	}
@@ -359,7 +352,7 @@ func (c *ApitallyClient) sendHubRequest(req *http.Request) HubRequestStatus {
 	if resp.StatusCode != http.StatusOK {
 		switch resp.StatusCode {
 		case http.StatusNotFound:
-			c.logger.Error("Invalid Apitally client ID", "client_id", c.clientId)
+			c.logger.Error("Invalid Apitally client ID", "client_id", c.Config.ClientID)
 			c.enabled = false
 			c.stopSync()
 			return HubRequestStatusInvalidClientId

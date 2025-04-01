@@ -42,7 +42,7 @@ func NewRequestCounter() *RequestCounter {
 }
 
 // AddRequest adds a request to the counter
-func (rc *RequestCounter) AddRequest(consumer, method, path string, statusCode int, responseTime float64, requestSize, responseSize float64) {
+func (rc *RequestCounter) AddRequest(consumer, method, path string, statusCode int, responseTime float64, requestSize, responseSize int64) {
 	// Generate key
 	key := fmt.Sprintf("%s|%s|%s|%d", consumer, method, path, statusCode)
 
@@ -62,7 +62,7 @@ func (rc *RequestCounter) AddRequest(consumer, method, path string, statusCode i
 		if rc.requestSizes[key] == nil {
 			rc.requestSizes[key] = make(map[int]int)
 		}
-		requestSizeKbBin := int(math.Floor(requestSize / 1000)) // Rounded down to nearest KB
+		requestSizeKbBin := int(math.Floor(float64(requestSize) / 1000)) // Rounded down to nearest KB
 		rc.requestSizes[key][requestSizeKbBin]++
 	}
 
@@ -72,7 +72,7 @@ func (rc *RequestCounter) AddRequest(consumer, method, path string, statusCode i
 		if rc.responseSizes[key] == nil {
 			rc.responseSizes[key] = make(map[int]int)
 		}
-		responseSizeKbBin := int(math.Floor(responseSize / 1000)) // Rounded down to nearest KB
+		responseSizeKbBin := int(math.Floor(float64(responseSize) / 1000)) // Rounded down to nearest KB
 		rc.responseSizes[key][responseSizeKbBin]++
 	}
 }

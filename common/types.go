@@ -41,16 +41,16 @@ type RequestLoggingConfig struct {
 	LogException             bool
 	MaskQueryParams          []*regexp.Regexp
 	MaskHeaders              []*regexp.Regexp
-	MaskRequestBodyCallback  func(request Request) []byte
-	MaskResponseBodyCallback func(request Request, response Response) []byte
+	MaskRequestBodyCallback  func(request *Request) []byte
+	MaskResponseBodyCallback func(request *Request, response *Response) []byte
 	ExcludePaths             []*regexp.Regexp
-	ExcludeCallback          func(request Request, response Response) bool
+	ExcludeCallback          func(request *Request, response *Response) bool
 }
 
 // ApitallyConfig defines the configuration for Apitally
 type ApitallyConfig struct {
 	ClientID             string
-	Env                  *string
+	Env                  string
 	RequestLoggingConfig *RequestLoggingConfig
 	AppVersion           *string
 }

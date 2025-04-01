@@ -3,6 +3,7 @@ package internal
 import (
 	"crypto/md5"
 	"fmt"
+	"reflect"
 	"strings"
 )
 
@@ -25,30 +26,31 @@ type ServerErrorsItem struct {
 
 // ServerErrorCounter tracks and aggregates server errors
 type ServerErrorCounter struct {
-	errorCounts    map[string]int
-	errorDetails   map[string]ServerErrorsItem
-	sentryEventIDs map[string]string
+	errorCounts  map[string]int
+	errorDetails map[string]ServerErrorsItem
 }
 
 // NewServerErrorCounter creates a new ServerErrorCounter instance
 func NewServerErrorCounter() *ServerErrorCounter {
 	return &ServerErrorCounter{
-		errorCounts:    make(map[string]int),
-		errorDetails:   make(map[string]ServerErrorsItem),
-		sentryEventIDs: make(map[string]string),
+		errorCounts:  make(map[string]int),
+		errorDetails: make(map[string]ServerErrorsItem),
 	}
 }
 
 // AddServerError adds a server error to the counter
-func (sc *ServerErrorCounter) AddServerError(consumer, method, path, errType, msg, traceback string, sentryEventID *string) {
+func (sc *ServerErrorCounter) AddServerError(consumer, method, path string, handlerError error) {
+	// Get error details
+	errorType, errorMessage, stackTrace := getErrorDetails(handlerError)
+
 	// Generate key using MD5 hash of error details
 	hashInput := fmt.Sprintf("%s|%s|%s|%s|%s|%s",
 		consumer,
 		strings.ToUpper(method),
 		path,
-		errType,
-		strings.TrimSpace(msg),
-		strings.TrimSpace(traceback))
+		errorType,
+		errorMessage,
+		stackTrace)
 
 	key := fmt.Sprintf("%x", md5.Sum([]byte(hashInput)))
 
@@ -58,19 +60,14 @@ func (sc *ServerErrorCounter) AddServerError(consumer, method, path, errType, ms
 			Consumer:  consumer,
 			Method:    method,
 			Path:      path,
-			Type:      errType,
-			Msg:       truncateExceptionMessage(msg),
-			Traceback: truncateExceptionStackTrace(traceback),
+			Type:      errorType,
+			Msg:       truncateExceptionMessage(errorMessage),
+			Traceback: truncateExceptionStackTrace(stackTrace),
 		}
 	}
 
 	// Increment error count
 	sc.errorCounts[key]++
-
-	// Store Sentry event ID if present
-	if sentryEventID != nil {
-		sc.sentryEventIDs[key] = *sentryEventID
-	}
 }
 
 // GetAndResetServerErrors returns the current server error data and resets all counters
@@ -79,14 +76,8 @@ func (sc *ServerErrorCounter) GetAndResetServerErrors() []ServerErrorsItem {
 
 	for key, count := range sc.errorCounts {
 		if details, exists := sc.errorDetails[key]; exists {
-			var sentryEventID *string
-			if id, hasID := sc.sentryEventIDs[key]; hasID {
-				sentryEventID = &id
-			}
-
 			item := details
 			item.ErrorCount = count
-			item.SentryEventID = sentryEventID
 			data = append(data, item)
 		}
 	}
@@ -94,12 +85,28 @@ func (sc *ServerErrorCounter) GetAndResetServerErrors() []ServerErrorsItem {
 	// Reset all maps
 	sc.errorCounts = make(map[string]int)
 	sc.errorDetails = make(map[string]ServerErrorsItem)
-	sc.sentryEventIDs = make(map[string]string)
 
 	return data
 }
 
 // Helper functions
+
+func getErrorDetails(err error) (string, string, string) {
+	errorType := reflect.TypeOf(err)
+	if errorType.Kind() == reflect.Ptr {
+		errorType = errorType.Elem()
+	}
+	errorMessage := err.Error()
+	stackTrace := ""
+
+	// Errors include the stack trace after the message
+	if idx := strings.Index(errorMessage, "\n"); idx != -1 {
+		stackTrace = errorMessage[idx+1:]
+		errorMessage = errorMessage[:idx]
+	}
+
+	return errorType.String(), strings.TrimSpace(errorMessage), strings.TrimSpace(stackTrace)
+}
 
 func truncateExceptionMessage(msg string) string {
 	if len(msg) <= maxMsgLength {

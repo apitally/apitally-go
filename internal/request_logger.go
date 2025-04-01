@@ -103,7 +103,7 @@ func NewRequestLogger(config *common.RequestLoggingConfig) *RequestLogger {
 	return logger
 }
 
-func (rl *RequestLogger) LogRequest(request common.Request, response common.Response, err error) {
+func (rl *RequestLogger) LogRequest(request *common.Request, response *common.Response, handlerError *error) {
 	if !rl.enabled || (rl.suspendUntil != nil && time.Now().Before(*rl.suspendUntil)) {
 		return
 	}
@@ -179,15 +179,16 @@ func (rl *RequestLogger) LogRequest(request common.Request, response common.Resp
 
 	item := logItem{
 		UUID:     uuid.New().String(),
-		Request:  &request,
-		Response: &response,
+		Request:  request,
+		Response: response,
 	}
 
-	if err != nil && rl.config.LogException {
+	if handlerError != nil && rl.config.LogException {
+		errorType, errorMessage, stackTrace := getErrorDetails(*handlerError)
 		item.Exception = &exceptionInfo{
-			Type:       err.Error(),
-			Message:    truncateExceptionMessage(err.Error()),
-			Stacktrace: truncateExceptionStackTrace(""),
+			Type:       errorType,
+			Message:    truncateExceptionMessage(errorMessage),
+			Stacktrace: truncateExceptionStackTrace(stackTrace),
 		}
 	}
 
