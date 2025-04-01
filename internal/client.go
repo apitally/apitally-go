@@ -5,11 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"net/http"
 	"os"
 	"regexp"
-	"sync"
+	"strings"
 	"time"
 
 	"github.com/apitally/apitally-go/common"
@@ -22,6 +23,7 @@ const (
 	initialSyncInterval         = 10 * time.Second
 	initialSyncIntervalDuration = time.Hour
 	maxQueueTime                = time.Hour
+	maxQueueSize                = 400
 )
 
 type syncPayload struct {
@@ -61,14 +63,14 @@ type ApitallyClient struct {
 	clientId        string
 	env             string
 	instanceUuid    string
-	syncDataQueue   []syncPayload
+	syncDataChan    chan syncPayload
 	syncTicker      *time.Ticker
 	startupData     *startupPayload
 	startupDataSent bool
 	enabled         bool
-	mutex           sync.Mutex
 	httpClient      *retryablehttp.Client
 	done            chan struct{}
+	logger          *slog.Logger
 
 	RequestCounter         *RequestCounter
 	RequestLogger          *RequestLogger
@@ -90,14 +92,24 @@ func NewApitallyClient(config common.ApitallyConfig) (*ApitallyClient, error) {
 		return nil, fmt.Errorf("invalid env '%s' (expecting 1-32 alphanumeric lowercase characters and hyphens only)", env)
 	}
 
+	logLevel := slog.LevelInfo
+	if parseBoolEnv("APITALLY_DEBUG") {
+		logLevel = slog.LevelDebug
+	}
+	loggerOpts := &slog.HandlerOptions{
+		Level: logLevel,
+	}
+	logger := slog.New(slog.NewTextHandler(os.Stdout, loggerOpts))
+
 	client := &ApitallyClient{
-		clientId:      config.ClientID,
-		env:           env,
-		instanceUuid:  uuid.New().String(),
-		syncDataQueue: make([]syncPayload, 0),
-		enabled:       true,
-		httpClient:    getHttpClient(),
-		done:          make(chan struct{}),
+		clientId:     config.ClientID,
+		env:          env,
+		instanceUuid: uuid.New().String(),
+		syncDataChan: make(chan syncPayload, maxQueueSize),
+		enabled:      true,
+		httpClient:   getHttpClient(),
+		done:         make(chan struct{}),
+		logger:       logger.With("component", "apitally"),
 	}
 
 	client.RequestCounter = NewRequestCounter()
@@ -194,6 +206,7 @@ func (c *ApitallyClient) sendStartupData() error {
 		return nil
 	}
 
+	c.logger.Debug("Sending startup data to Apitally hub")
 	jsonData, err := json.Marshal(c.startupData)
 	if err != nil {
 		return fmt.Errorf("failed to marshal startup data: %w", err)
@@ -216,7 +229,6 @@ func (c *ApitallyClient) sendStartupData() error {
 }
 
 func (c *ApitallyClient) sendSyncData() error {
-	c.mutex.Lock()
 	newPayload := syncPayload{
 		Timestamp:        float64(time.Now().Unix()),
 		InstanceUuid:     c.instanceUuid,
@@ -226,14 +238,25 @@ func (c *ApitallyClient) sendSyncData() error {
 		ServerErrors:     c.ServerErrorCounter.GetAndResetServerErrors(),
 		Consumers:        c.ConsumerRegistry.GetAndResetUpdatedConsumers(),
 	}
-	c.syncDataQueue = append(c.syncDataQueue, newPayload)
-	c.mutex.Unlock()
 
-	for i := 0; len(c.syncDataQueue) > 0; i++ {
-		c.mutex.Lock()
-		payload := c.syncDataQueue[0]
-		c.syncDataQueue = c.syncDataQueue[1:]
-		c.mutex.Unlock()
+	select {
+	case c.syncDataChan <- newPayload:
+		// Successfully queued the payload
+	default:
+		c.logger.Warn("Sync data channel is full, dropping payload")
+		return fmt.Errorf("sync data channel is full")
+	}
+
+	// Process queued payloads
+	for i := 0; ; i++ {
+		var payload syncPayload
+		select {
+		case payload = <-c.syncDataChan:
+			// Got a payload to process
+		default:
+			// No more payloads in queue
+			return nil
+		}
 
 		if time.Since(time.Unix(int64(payload.Timestamp), 0)) > maxQueueTime {
 			continue
@@ -243,6 +266,7 @@ func (c *ApitallyClient) sendSyncData() error {
 			c.randomDelay()
 		}
 
+		c.logger.Debug("Synchronizing data with Apitally hub")
 		jsonData, err := json.Marshal(payload)
 		if err != nil {
 			return fmt.Errorf("failed to marshal sync data: %w", err)
@@ -257,14 +281,15 @@ func (c *ApitallyClient) sendSyncData() error {
 
 		status := c.sendHubRequest(req)
 		if status == HubRequestStatusRetryableError {
-			c.mutex.Lock()
-			c.syncDataQueue = append([]syncPayload{payload}, c.syncDataQueue...)
-			c.mutex.Unlock()
-			break
+			// Put the payload back in the channel for retry
+			select {
+			case c.syncDataChan <- payload:
+				// Successfully requeued
+			default:
+				c.logger.Warn("Failed to requeue payload for retrying, channel full")
+			}
 		}
 	}
-
-	return nil
 }
 
 func (c *ApitallyClient) sendLogData() error {
@@ -286,6 +311,7 @@ func (c *ApitallyClient) sendLogData() error {
 			c.randomDelay()
 		}
 
+		c.logger.Debug("Sending request log data to Apitally hub")
 		reader, err := logFile.GetReader()
 		if err != nil {
 			return fmt.Errorf("failed to get log file reader: %w", err)
@@ -319,11 +345,13 @@ func (c *ApitallyClient) sendLogData() error {
 func (c *ApitallyClient) sendHubRequest(req *http.Request) HubRequestStatus {
 	retryReq, err := retryablehttp.FromRequest(req)
 	if err != nil {
+		c.logger.Error("Error creating retryable request for Apitally hub", "error", err)
 		return HubRequestStatusRetryableError
 	}
 
 	resp, err := c.httpClient.Do(retryReq)
 	if err != nil {
+		c.logger.Warn("Error sending request to Apitally hub", "error", err)
 		return HubRequestStatusRetryableError
 	}
 	defer resp.Body.Close()
@@ -331,15 +359,17 @@ func (c *ApitallyClient) sendHubRequest(req *http.Request) HubRequestStatus {
 	if resp.StatusCode != http.StatusOK {
 		switch resp.StatusCode {
 		case http.StatusNotFound:
-			fmt.Printf("Invalid Apitally client ID: '%s'\n", c.clientId)
+			c.logger.Error("Invalid Apitally client ID", "client_id", c.clientId)
 			c.enabled = false
 			c.stopSync()
 			return HubRequestStatusInvalidClientId
 		case http.StatusUnprocessableEntity:
+			c.logger.Warn("Received validation error from Apitally hub")
 			return HubRequestStatusValidationError
 		case http.StatusPaymentRequired:
 			return HubRequestStatusPaymentRequired
 		default:
+			c.logger.Warn("Received unexpected status code from Apitally hub", "status_code", resp.StatusCode)
 			return HubRequestStatusRetryableError
 		}
 	}
@@ -386,4 +416,9 @@ func isValidClientID(clientID string) bool {
 func isValidEnv(env string) bool {
 	matched, _ := regexp.MatchString(`^[a-z0-9-]{1,32}$`, env)
 	return matched
+}
+
+func parseBoolEnv(key string) bool {
+	val := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
+	return val == "1" || val == "true" || val == "yes" || val == "y"
 }
