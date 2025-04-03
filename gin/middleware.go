@@ -58,21 +58,6 @@ func ApitallyMiddleware(client *internal.ApitallyClient) gin.HandlerFunc {
 			}
 		}
 
-		var recoveredErr error
-		var panicValue any
-		defer func() {
-			if r := recover(); r != nil {
-				panicValue = r
-				if err, ok := r.(error); ok {
-					recoveredErr = err
-				} else {
-					recoveredErr = fmt.Errorf("%v", r)
-				}
-			}
-		}()
-
-		c.Next()
-
 		duration := time.Since(start)
 		statusCode := c.Writer.Status()
 		requestSize := int64(len(requestBody))
@@ -101,16 +86,6 @@ func ApitallyMiddleware(client *internal.ApitallyClient) gin.HandlerFunc {
 				requestSize,
 				responseSize,
 			)
-
-			// Track server error if any
-			if recoveredErr != nil {
-				client.ServerErrorCounter.AddServerError(
-					consumerIdentifier,
-					c.Request.Method,
-					routePattern,
-					recoveredErr,
-				)
-			}
 		}
 
 		// Log request if enabled
@@ -154,17 +129,12 @@ func ApitallyMiddleware(client *internal.ApitallyClient) gin.HandlerFunc {
 				response.Body = responseBody.Bytes()
 			}
 
-			client.RequestLogger.LogRequest(&request, &response, &recoveredErr)
+			client.RequestLogger.LogRequest(&request, &response)
 		}
 
 		// Restore original writer if needed
 		if shouldCaptureResponse {
 			c.Writer = originalWriter
-		}
-
-		// Re-panic if we recovered from one earlier
-		if panicValue != nil {
-			panic(panicValue)
 		}
 	}
 }

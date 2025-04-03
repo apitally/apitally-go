@@ -85,7 +85,6 @@ func NewRequestLogger(config *common.RequestLoggingConfig) *RequestLogger {
 			LogRequestBody:     false,
 			LogResponseHeaders: true,
 			LogResponseBody:    false,
-			LogException:       true,
 		}
 	}
 
@@ -103,7 +102,7 @@ func NewRequestLogger(config *common.RequestLoggingConfig) *RequestLogger {
 	return logger
 }
 
-func (rl *RequestLogger) LogRequest(request *common.Request, response *common.Response, handlerError *error) {
+func (rl *RequestLogger) LogRequest(request *common.Request, response *common.Response) {
 	if !rl.enabled || (rl.suspendUntil != nil && time.Now().Before(*rl.suspendUntil)) {
 		return
 	}
@@ -181,15 +180,6 @@ func (rl *RequestLogger) LogRequest(request *common.Request, response *common.Re
 		UUID:     uuid.New().String(),
 		Request:  request,
 		Response: response,
-	}
-
-	if handlerError != nil && rl.config.LogException {
-		errorType, errorMessage, stackTrace := getErrorDetails(*handlerError)
-		item.Exception = &exceptionInfo{
-			Type:       errorType,
-			Message:    truncateExceptionMessage(errorMessage),
-			Stacktrace: truncateExceptionStackTrace(stackTrace),
-		}
 	}
 
 	jsonData, err := json.Marshal(item)

@@ -13,6 +13,13 @@ func main() {
 	config := &common.ApitallyConfig{
 		ClientId: "54badc91-c693-4db8-9be1-8a281a79dac4",
 		Env:      "dev",
+		RequestLoggingConfig: &common.RequestLoggingConfig{
+			Enabled:            true,
+			LogRequestHeaders:  true,
+			LogResponseHeaders: true,
+			LogRequestBody:     true,
+			LogResponseBody:    true,
+		},
 	}
 	apitally.UseApitally(r, config)
 
