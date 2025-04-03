@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net/http"
 	"time"
 
 	"github.com/apitally/apitally-go/common"
@@ -132,7 +133,7 @@ func ApitallyMiddleware(client *internal.ApitallyClient) gin.HandlerFunc {
 				Timestamp: float64(time.Now().UnixMilli()) / 1000.0,
 				Method:    c.Request.Method,
 				Path:      routePattern,
-				URL:       c.Request.URL.String(),
+				URL:       getFullURL(c.Request),
 				Headers:   headers,
 				Size:      &requestSize,
 				Consumer:  &consumerIdentifier,
@@ -166,4 +167,18 @@ func ApitallyMiddleware(client *internal.ApitallyClient) gin.HandlerFunc {
 			panic(panicValue)
 		}
 	}
+}
+
+func getFullURL(req *http.Request) string {
+	scheme := "http"
+	if req.TLS != nil || req.Header.Get("X-Forwarded-Proto") == "https" {
+		scheme = "https"
+	}
+
+	host := req.Host
+	if host == "" {
+		host = req.Header.Get("Host")
+	}
+
+	return fmt.Sprintf("%s://%s%s", scheme, host, req.URL.String())
 }

@@ -1,9 +1,16 @@
 package internal
 
 import (
-	"fmt"
 	"math"
 )
+
+// RequestKey is used as a map key for request metrics
+type RequestKey struct {
+	Consumer   string
+	Method     string
+	Path       string
+	StatusCode int
+}
 
 // RequestsItem represents aggregated request data
 type RequestsItem struct {
@@ -21,30 +28,35 @@ type RequestsItem struct {
 
 // RequestCounter tracks and aggregates request metrics
 type RequestCounter struct {
-	requestCounts    map[string]int
-	requestSizeSums  map[string]int64
-	responseSizeSums map[string]int64
-	responseTimes    map[string]map[int]int
-	requestSizes     map[string]map[int]int
-	responseSizes    map[string]map[int]int
+	requestCounts    map[RequestKey]int
+	requestSizeSums  map[RequestKey]int64
+	responseSizeSums map[RequestKey]int64
+	responseTimes    map[RequestKey]map[int]int
+	requestSizes     map[RequestKey]map[int]int
+	responseSizes    map[RequestKey]map[int]int
 }
 
 // NewRequestCounter creates a new RequestCounter instance
 func NewRequestCounter() *RequestCounter {
 	return &RequestCounter{
-		requestCounts:    make(map[string]int),
-		requestSizeSums:  make(map[string]int64),
-		responseSizeSums: make(map[string]int64),
-		responseTimes:    make(map[string]map[int]int),
-		requestSizes:     make(map[string]map[int]int),
-		responseSizes:    make(map[string]map[int]int),
+		requestCounts:    make(map[RequestKey]int),
+		requestSizeSums:  make(map[RequestKey]int64),
+		responseSizeSums: make(map[RequestKey]int64),
+		responseTimes:    make(map[RequestKey]map[int]int),
+		requestSizes:     make(map[RequestKey]map[int]int),
+		responseSizes:    make(map[RequestKey]map[int]int),
 	}
 }
 
 // AddRequest adds a request to the counter
 func (rc *RequestCounter) AddRequest(consumer, method, path string, statusCode int, responseTime float64, requestSize, responseSize int64) {
 	// Generate key
-	key := fmt.Sprintf("%s|%s|%s|%d", consumer, method, path, statusCode)
+	key := RequestKey{
+		Consumer:   consumer,
+		Method:     method,
+		Path:       path,
+		StatusCode: statusCode,
+	}
 
 	// Increment request count
 	rc.requestCounts[key]++
@@ -82,10 +94,6 @@ func (rc *RequestCounter) GetAndResetRequests() []RequestsItem {
 	data := make([]RequestsItem, 0, len(rc.requestCounts))
 
 	for key, count := range rc.requestCounts {
-		var consumer, method, path string
-		var statusCode int
-		fmt.Sscanf(key, "%s|%s|%s|%d", &consumer, &method, &path, &statusCode)
-
 		responseTimes := rc.responseTimes[key]
 		if responseTimes == nil {
 			responseTimes = make(map[int]int)
@@ -102,10 +110,10 @@ func (rc *RequestCounter) GetAndResetRequests() []RequestsItem {
 		}
 
 		item := RequestsItem{
-			Consumer:        consumer,
-			Method:          method,
-			Path:            path,
-			StatusCode:      statusCode,
+			Consumer:        key.Consumer,
+			Method:          key.Method,
+			Path:            key.Path,
+			StatusCode:      key.StatusCode,
 			RequestCount:    count,
 			RequestSizeSum:  rc.requestSizeSums[key],
 			ResponseSizeSum: rc.responseSizeSums[key],
@@ -117,12 +125,12 @@ func (rc *RequestCounter) GetAndResetRequests() []RequestsItem {
 	}
 
 	// Reset all maps
-	rc.requestCounts = make(map[string]int)
-	rc.requestSizeSums = make(map[string]int64)
-	rc.responseSizeSums = make(map[string]int64)
-	rc.responseTimes = make(map[string]map[int]int)
-	rc.requestSizes = make(map[string]map[int]int)
-	rc.responseSizes = make(map[string]map[int]int)
+	rc.requestCounts = make(map[RequestKey]int)
+	rc.requestSizeSums = make(map[RequestKey]int64)
+	rc.responseSizeSums = make(map[RequestKey]int64)
+	rc.responseTimes = make(map[RequestKey]map[int]int)
+	rc.requestSizes = make(map[RequestKey]map[int]int)
+	rc.responseSizes = make(map[RequestKey]map[int]int)
 
 	return data
 }
