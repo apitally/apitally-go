@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"runtime/debug"
+	"strconv"
 	"time"
 
 	"github.com/apitally/apitally-go/common"
@@ -29,39 +31,8 @@ func ApitallyMiddleware(client *internal.ApitallyClient) gin.HandlerFunc {
 			return
 		}
 
-		start := time.Now()
-		var requestBody []byte
-		var responseBody bytes.Buffer
-		var err error
-
-		// Cache request body if needed
-		if client.Config.RequestLoggingConfig != nil &&
-			client.Config.RequestLoggingConfig.Enabled &&
-			client.Config.RequestLoggingConfig.LogRequestBody &&
-			c.Request.Body != nil {
-			requestBody, err = io.ReadAll(c.Request.Body)
-			if err == nil {
-				c.Request.Body = io.NopCloser(bytes.NewBuffer(requestBody))
-			}
-		}
-
-		// Prepare response writer to capture body if needed
-		originalWriter := c.Writer
-		shouldCaptureResponse := client.Config.RequestLoggingConfig != nil &&
-			client.Config.RequestLoggingConfig.Enabled &&
-			client.Config.RequestLoggingConfig.LogResponseBody
-
-		if shouldCaptureResponse {
-			c.Writer = &responseBodyWriter{
-				ResponseWriter: c.Writer,
-				body:           &responseBody,
-			}
-		}
-
-		duration := time.Since(start)
-		statusCode := c.Writer.Status()
-		requestSize := int64(len(requestBody))
-		responseSize := int64(c.Writer.Size())
+		// Get route pattern
+		routePattern := c.FullPath()
 
 		// Get consumer info if available
 		var consumerIdentifier string
@@ -72,70 +43,122 @@ func ApitallyMiddleware(client *internal.ApitallyClient) gin.HandlerFunc {
 			}
 		}
 
-		// Get route pattern
-		routePattern := c.FullPath()
+		// Determine request size
+		requestSize := parseContentLength(c.Request.Header.Get("Content-Length"))
 
-		// Track request
-		if routePattern != "" {
-			client.RequestCounter.AddRequest(
-				consumerIdentifier,
-				c.Request.Method,
-				routePattern,
-				statusCode,
-				float64(duration.Milliseconds())/1000.0,
-				requestSize,
-				responseSize,
-			)
+		// Cache request body if needed
+		var requestBody []byte
+		if client.Config.RequestLoggingConfig != nil &&
+			client.Config.RequestLoggingConfig.Enabled &&
+			client.Config.RequestLoggingConfig.LogRequestBody &&
+			c.Request.Body != nil {
+			var err error
+			requestBody, err = io.ReadAll(c.Request.Body)
+			if err == nil {
+				c.Request.Body = io.NopCloser(bytes.NewBuffer(requestBody))
+				if requestSize == -1 {
+					requestSize = int64(len(requestBody))
+				}
+			}
 		}
 
-		// Log request if enabled
-		if client.Config.RequestLoggingConfig != nil && client.Config.RequestLoggingConfig.Enabled {
-			headers := make([][2]string, 0)
-			for k, v := range c.Request.Header {
-				if len(v) > 0 {
-					headers = append(headers, [2]string{k, v[0]})
+		// Prepare response writer to capture body if needed
+		var responseBody bytes.Buffer
+		var originalWriter gin.ResponseWriter
+		if client.Config.RequestLoggingConfig != nil &&
+			client.Config.RequestLoggingConfig.Enabled &&
+			client.Config.RequestLoggingConfig.LogResponseBody {
+			originalWriter = c.Writer
+			c.Writer = &responseBodyWriter{
+				ResponseWriter: c.Writer,
+				body:           &responseBody,
+			}
+		}
+
+		start := time.Now()
+
+		defer func() {
+			duration := time.Since(start)
+			statusCode := c.Writer.Status()
+
+			var panicValue any
+			var recoveredErr error
+			var stackTrace string
+			if r := recover(); r != nil {
+				panicValue = r
+				statusCode = http.StatusInternalServerError
+				stackTrace = string(debug.Stack())
+				if err, ok := r.(error); ok {
+					recoveredErr = err
+				} else {
+					recoveredErr = fmt.Errorf("%v", r)
 				}
 			}
 
-			responseHeaders := make([][2]string, 0)
-			for k, v := range c.Writer.Header() {
-				if len(v) > 0 {
-					responseHeaders = append(responseHeaders, [2]string{k, v[0]})
+			// Determine response size
+			responseSize := parseContentLength(c.Writer.Header().Get("Content-Length"))
+			if responseSize == -1 {
+				responseSize = int64(c.Writer.Size())
+			}
+
+			// Track request
+			if routePattern != "" {
+				client.RequestCounter.AddRequest(
+					consumerIdentifier,
+					c.Request.Method,
+					routePattern,
+					statusCode,
+					float64(duration.Milliseconds())/1000.0,
+					requestSize,
+					responseSize,
+				)
+
+				// Track server error if any
+				if recoveredErr != nil {
+					client.ServerErrorCounter.AddServerError(
+						consumerIdentifier,
+						c.Request.Method,
+						routePattern,
+						recoveredErr,
+						stackTrace,
+					)
 				}
 			}
 
-			request := common.Request{
-				Timestamp: float64(time.Now().UnixMilli()) / 1000.0,
-				Method:    c.Request.Method,
-				Path:      routePattern,
-				URL:       getFullURL(c.Request),
-				Headers:   headers,
-				Size:      &requestSize,
-				Consumer:  &consumerIdentifier,
+			// Log request if enabled
+			if client.Config.RequestLoggingConfig != nil && client.Config.RequestLoggingConfig.Enabled {
+				request := common.Request{
+					Timestamp: float64(time.Now().UnixMilli()) / 1000.0,
+					Method:    c.Request.Method,
+					Path:      routePattern,
+					URL:       getFullURL(c.Request),
+					Headers:   transformHeaders(c.Request.Header),
+					Size:      &requestSize,
+					Consumer:  &consumerIdentifier,
+					Body:      requestBody,
+				}
+				response := common.Response{
+					StatusCode:   statusCode,
+					ResponseTime: float64(duration.Milliseconds()) / 1000.0,
+					Headers:      transformHeaders(c.Writer.Header()),
+					Size:         &responseSize,
+					Body:         responseBody.Bytes(),
+				}
+				client.RequestLogger.LogRequest(&request, &response, &recoveredErr, &stackTrace)
 			}
 
-			if client.Config.RequestLoggingConfig.LogRequestBody {
-				request.Body = requestBody
+			// Restore original writer if needed
+			if originalWriter != nil {
+				c.Writer = originalWriter
 			}
 
-			response := common.Response{
-				StatusCode:   statusCode,
-				ResponseTime: float64(duration.Milliseconds()) / 1000.0,
-				Headers:      responseHeaders,
-				Size:         &responseSize,
+			// Re-panic if there was a panic
+			if panicValue != nil {
+				panic(panicValue)
 			}
+		}()
 
-			if client.Config.RequestLoggingConfig.LogResponseBody {
-				response.Body = responseBody.Bytes()
-			}
-
-			client.RequestLogger.LogRequest(&request, &response)
-		}
-
-		// Restore original writer if needed
-		if shouldCaptureResponse {
-			c.Writer = originalWriter
-		}
+		c.Next()
 	}
 }
 
@@ -151,4 +174,23 @@ func getFullURL(req *http.Request) string {
 	}
 
 	return fmt.Sprintf("%s://%s%s", scheme, host, req.URL.String())
+}
+
+func parseContentLength(contentLength string) int64 {
+	if contentLength != "" {
+		if size, err := strconv.ParseInt(contentLength, 10, 64); err == nil {
+			return size
+		}
+	}
+	return -1
+}
+
+func transformHeaders(header http.Header) [][2]string {
+	headers := make([][2]string, 0, len(header))
+	for k, v := range header {
+		if len(v) > 0 {
+			headers = append(headers, [2]string{k, v[0]})
+		}
+	}
+	return headers
 }

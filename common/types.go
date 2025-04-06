@@ -44,6 +44,7 @@ type RequestLoggingConfig struct {
 	LogRequestBody           bool
 	LogResponseHeaders       bool
 	LogResponseBody          bool
+	LogPanic                 bool
 	MaskQueryParams          []*regexp.Regexp
 	MaskHeaders              []*regexp.Regexp
 	MaskRequestBodyCallback  func(request *Request) []byte

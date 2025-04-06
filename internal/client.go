@@ -32,6 +32,7 @@ type syncPayload struct {
 	MessageUuid      string                     `json:"message_uuid"`
 	Requests         []RequestsItem             `json:"requests"`
 	ValidationErrors []ValidationErrorsItem     `json:"validation_errors,omitempty"`
+	ServerErrors     []ServerErrorsItem         `json:"server_errors,omitempty"`
 	Consumers        []*common.ApitallyConsumer `json:"consumers,omitempty"`
 }
 
@@ -68,6 +69,7 @@ type ApitallyClient struct {
 	RequestCounter         *RequestCounter
 	RequestLogger          *RequestLogger
 	ValidationErrorCounter *ValidationErrorCounter
+	ServerErrorCounter     *ServerErrorCounter
 	ConsumerRegistry       *ConsumerRegistry
 }
 
@@ -100,6 +102,7 @@ func NewApitallyClient(config common.ApitallyConfig) (*ApitallyClient, error) {
 	client.Config = config
 	client.RequestCounter = NewRequestCounter()
 	client.ValidationErrorCounter = NewValidationErrorCounter()
+	client.ServerErrorCounter = NewServerErrorCounter()
 	client.ConsumerRegistry = NewConsumerRegistry()
 	client.RequestLogger = NewRequestLogger(config.RequestLoggingConfig)
 
@@ -220,6 +223,7 @@ func (c *ApitallyClient) sendSyncData() error {
 		MessageUuid:      uuid.New().String(),
 		Requests:         c.RequestCounter.GetAndResetRequests(),
 		ValidationErrors: c.ValidationErrorCounter.GetAndResetValidationErrors(),
+		ServerErrors:     c.ServerErrorCounter.GetAndResetServerErrors(),
 		Consumers:        c.ConsumerRegistry.GetAndResetUpdatedConsumers(),
 	}
 
