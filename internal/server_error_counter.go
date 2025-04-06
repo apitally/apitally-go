@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 )
 
@@ -112,6 +113,8 @@ func truncateExceptionStackTrace(stack string) string {
 	suffix := "... (truncated) ..."
 	cutoff := maxStacktraceLength - len(suffix)
 	lines := strings.Split(strings.TrimSpace(stack), "\n")
+	// Remove lines related to ApitallyMiddleware recovering and re-panicking
+	lines = slices.Delete(lines, 1, 5)
 	var truncatedLines []string
 	length := 0
 

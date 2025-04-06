@@ -18,6 +18,7 @@ func main() {
 			LogResponseHeaders: true,
 			LogRequestBody:     true,
 			LogResponseBody:    true,
+			LogPanic:           true,
 		},
 	}
 	apitally.UseApitally(r, config)
@@ -26,6 +27,10 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{
 			"message": "Hello, World!",
 		})
+	})
+
+	r.GET("/error", func(c *gin.Context) {
+		panic("an expected error occurred")
 	})
 
 	r.Run(":8083")
