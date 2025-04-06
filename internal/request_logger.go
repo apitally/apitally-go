@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/url"
 	"regexp"
+	"slices"
 	"time"
 
 	"github.com/apitally/apitally-go/common"
@@ -85,6 +86,7 @@ func NewRequestLogger(config *common.RequestLoggingConfig) *RequestLogger {
 			LogRequestBody:     false,
 			LogResponseHeaders: true,
 			LogResponseBody:    false,
+			LogPanic:           true,
 		}
 	}
 
@@ -343,12 +345,11 @@ func (rl *RequestLogger) Close() error {
 }
 
 func (rl *RequestLogger) shouldExcludePath(urlPath string) bool {
-	for _, pattern := range excludePathPatterns {
-		if pattern.MatchString(urlPath) {
-			return true
-		}
+	patterns := slices.Clone(excludePathPatterns)
+	if rl.config.ExcludePaths != nil {
+		patterns = append(patterns, rl.config.ExcludePaths...)
 	}
-	for _, pattern := range rl.config.ExcludePaths {
+	for _, pattern := range patterns {
 		if pattern.MatchString(urlPath) {
 			return true
 		}
@@ -369,12 +370,11 @@ func (rl *RequestLogger) shouldExcludeUserAgent(userAgent string) bool {
 }
 
 func (rl *RequestLogger) shouldMaskQueryParam(name string) bool {
-	for _, pattern := range maskQueryParamPatterns {
-		if pattern.MatchString(name) {
-			return true
-		}
+	patterns := slices.Clone(maskQueryParamPatterns)
+	if rl.config.MaskQueryParams != nil {
+		patterns = append(patterns, rl.config.MaskQueryParams...)
 	}
-	for _, pattern := range rl.config.MaskQueryParams {
+	for _, pattern := range patterns {
 		if pattern.MatchString(name) {
 			return true
 		}
@@ -383,12 +383,11 @@ func (rl *RequestLogger) shouldMaskQueryParam(name string) bool {
 }
 
 func (rl *RequestLogger) shouldMaskHeader(name string) bool {
-	for _, pattern := range maskHeaderPatterns {
-		if pattern.MatchString(name) {
-			return true
-		}
+	patterns := slices.Clone(maskHeaderPatterns)
+	if rl.config.MaskHeaders != nil {
+		patterns = append(patterns, rl.config.MaskHeaders...)
 	}
-	for _, pattern := range rl.config.MaskHeaders {
+	for _, pattern := range patterns {
 		if pattern.MatchString(name) {
 			return true
 		}
