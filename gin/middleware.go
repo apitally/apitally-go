@@ -65,10 +65,10 @@ func ApitallyMiddleware(client *internal.ApitallyClient) gin.HandlerFunc {
 
 		// Get consumer info if available
 		var consumerIdentifier string
-		if consumer, exists := c.Get("ApitallyConsumer"); exists {
-			if c, ok := consumer.(*common.ApitallyConsumer); ok {
-				consumerIdentifier = c.Identifier
-				client.ConsumerRegistry.AddOrUpdateConsumer(c)
+		if c, exists := c.Get("ApitallyConsumer"); exists {
+			if consumer := internal.ConsumerFromStringOrObject(c); consumer != nil {
+				consumerIdentifier = consumer.Identifier
+				client.ConsumerRegistry.AddOrUpdateConsumer(consumer)
 			}
 		}
 

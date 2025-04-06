@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func UseApitally(r *gin.Engine, config *common.ApitallyConfig) {
+func UseApitally(r *gin.Engine, config *ApitallyConfig) {
 	client, err := internal.NewApitallyClient(*config)
 	if err != nil {
 		panic(err)
