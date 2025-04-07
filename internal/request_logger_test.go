@@ -205,7 +205,6 @@ func TestRequestLogger(t *testing.T) {
 			Headers:      [][2]string{},
 			Body:         []byte(`{"items": []}`),
 		}
-
 		requestLogger.LogRequest(request, response, nil, "")
 		requestLogger.writeToFile()
 		requestLogger.rotateFile()

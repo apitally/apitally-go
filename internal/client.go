@@ -28,8 +28,8 @@ const (
 
 type syncPayload struct {
 	Timestamp        float64                    `json:"timestamp"`
-	InstanceUuid     string                     `json:"instance_uuid"`
-	MessageUuid      string                     `json:"message_uuid"`
+	InstanceUUID     string                     `json:"instance_uuid"`
+	MessageUUID      string                     `json:"message_uuid"`
 	Requests         []RequestsItem             `json:"requests"`
 	ValidationErrors []ValidationErrorsItem     `json:"validation_errors,omitempty"`
 	ServerErrors     []ServerErrorsItem         `json:"server_errors,omitempty"`
@@ -37,8 +37,8 @@ type syncPayload struct {
 }
 
 type startupPayload struct {
-	InstanceUuid string            `json:"instance_uuid"`
-	MessageUuid  string            `json:"message_uuid"`
+	InstanceUUID string            `json:"instance_uuid"`
+	MessageUUID  string            `json:"message_uuid"`
 	Paths        []common.PathInfo `json:"paths"`
 	Versions     map[string]string `json:"versions"`
 	Client       string            `json:"client"`
@@ -56,7 +56,7 @@ const (
 
 type ApitallyClient struct {
 	enabled         bool
-	instanceUuid    string
+	instanceUUID    string
 	httpClient      *retryablehttp.Client
 	syncDataChan    chan syncPayload
 	syncTicker      *time.Ticker
@@ -74,6 +74,10 @@ type ApitallyClient struct {
 }
 
 func NewApitallyClient(config common.ApitallyConfig) (*ApitallyClient, error) {
+	return NewApitallyClientWithHTTPClient(config, nil)
+}
+
+func NewApitallyClientWithHTTPClient(config common.ApitallyConfig, httpClient *retryablehttp.Client) (*ApitallyClient, error) {
 	if !isValidClientId(config.ClientId) {
 		return nil, fmt.Errorf("invalid Apitally client ID '%s' (expecting hexadecimal UUID format)", config.ClientId)
 	}
@@ -90,10 +94,14 @@ func NewApitallyClient(config common.ApitallyConfig) (*ApitallyClient, error) {
 	}
 	logger := slog.New(slog.NewTextHandler(os.Stdout, loggerOpts))
 
+	if httpClient == nil {
+		httpClient = getHttpClient()
+	}
+
 	client := &ApitallyClient{
 		enabled:      true,
-		instanceUuid: uuid.New().String(),
-		httpClient:   getHttpClient(),
+		instanceUUID: uuid.New().String(),
+		httpClient:   httpClient,
 		syncDataChan: make(chan syncPayload, maxQueueSize),
 		logger:       logger.With("component", "apitally"),
 		done:         make(chan struct{}),
@@ -116,8 +124,8 @@ func (c *ApitallyClient) IsEnabled() bool {
 
 func (c *ApitallyClient) SetStartupData(paths []common.PathInfo, versions map[string]string, client string) {
 	c.startupData = &startupPayload{
-		InstanceUuid: c.instanceUuid,
-		MessageUuid:  uuid.New().String(),
+		InstanceUUID: c.instanceUUID,
+		MessageUUID:  uuid.New().String(),
 		Paths:        paths,
 		Versions:     versions,
 		Client:       client,
@@ -138,11 +146,11 @@ func (c *ApitallyClient) getHubUrl(endpoint string, query string) string {
 }
 
 func (c *ApitallyClient) sync() {
-	c.sendSyncData()
-	c.sendLogData()
 	if !c.startupDataSent && c.startupData != nil {
 		c.sendStartupData()
 	}
+	c.sendSyncData()
+	c.sendLogData()
 }
 
 func (c *ApitallyClient) startSync() {
@@ -175,8 +183,9 @@ func (c *ApitallyClient) startSync() {
 func (c *ApitallyClient) stopSync() {
 	if c.syncTicker != nil {
 		c.syncTicker.Stop()
+		c.syncTicker = nil
+		close(c.done)
 	}
-	close(c.done)
 }
 
 func (c *ApitallyClient) Shutdown() {
@@ -219,8 +228,8 @@ func (c *ApitallyClient) sendStartupData() error {
 func (c *ApitallyClient) sendSyncData() error {
 	newPayload := syncPayload{
 		Timestamp:        float64(time.Now().Unix()),
-		InstanceUuid:     c.instanceUuid,
-		MessageUuid:      uuid.New().String(),
+		InstanceUUID:     c.instanceUUID,
+		MessageUUID:      uuid.New().String(),
 		Requests:         c.RequestCounter.GetAndResetRequests(),
 		ValidationErrors: c.ValidationErrorCounter.GetAndResetValidationErrors(),
 		ServerErrors:     c.ServerErrorCounter.GetAndResetServerErrors(),
