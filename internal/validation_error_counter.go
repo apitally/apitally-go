@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	"fmt"
 	"strings"
+	"sync"
 )
 
 // ValidationErrorsItem represents aggregated validation error data
@@ -21,6 +22,7 @@ type ValidationErrorsItem struct {
 type ValidationErrorCounter struct {
 	errorCounts  map[string]int
 	errorDetails map[string]ValidationErrorsItem
+	mutex        sync.Mutex
 }
 
 // NewValidationErrorCounter creates a new ValidationErrorCounter instance
@@ -44,6 +46,9 @@ func (vc *ValidationErrorCounter) AddValidationError(consumer, method, path stri
 
 	key := fmt.Sprintf("%x", md5.Sum([]byte(hashInput)))
 
+	vc.mutex.Lock()
+	defer vc.mutex.Unlock()
+
 	// Store error details if not already present
 	if _, exists := vc.errorDetails[key]; !exists {
 		vc.errorDetails[key] = ValidationErrorsItem{
@@ -62,6 +67,9 @@ func (vc *ValidationErrorCounter) AddValidationError(consumer, method, path stri
 
 // GetAndResetValidationErrors returns the current validation error data and resets all counters
 func (vc *ValidationErrorCounter) GetAndResetValidationErrors() []ValidationErrorsItem {
+	vc.mutex.Lock()
+	defer vc.mutex.Unlock()
+
 	data := make([]ValidationErrorsItem, 0, len(vc.errorCounts))
 
 	for key, count := range vc.errorCounts {

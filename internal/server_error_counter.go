@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 )
 
 const (
@@ -29,6 +30,7 @@ type ServerErrorsItem struct {
 type ServerErrorCounter struct {
 	errorCounts  map[string]int
 	errorDetails map[string]ServerErrorsItem
+	mutex        sync.Mutex
 }
 
 // NewServerErrorCounter creates a new ServerErrorCounter instance
@@ -55,6 +57,9 @@ func (sc *ServerErrorCounter) AddServerError(consumer, method, path string, hand
 
 	key := fmt.Sprintf("%x", md5.Sum([]byte(hashInput)))
 
+	sc.mutex.Lock()
+	defer sc.mutex.Unlock()
+
 	// Store error details if not already present
 	if _, exists := sc.errorDetails[key]; !exists {
 		sc.errorDetails[key] = ServerErrorsItem{
@@ -73,6 +78,9 @@ func (sc *ServerErrorCounter) AddServerError(consumer, method, path string, hand
 
 // GetAndResetServerErrors returns the current server error data and resets all counters
 func (sc *ServerErrorCounter) GetAndResetServerErrors() []ServerErrorsItem {
+	sc.mutex.Lock()
+	defer sc.mutex.Unlock()
+
 	data := make([]ServerErrorsItem, 0, len(sc.errorCounts))
 
 	for key, count := range sc.errorCounts {

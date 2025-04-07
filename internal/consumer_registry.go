@@ -2,6 +2,7 @@ package internal
 
 import (
 	"strings"
+	"sync"
 
 	"github.com/apitally/apitally-go/common"
 )
@@ -51,6 +52,7 @@ func ConsumerFromStringOrObject(consumer any) *common.ApitallyConsumer {
 type ConsumerRegistry struct {
 	consumers map[string]*common.ApitallyConsumer
 	updated   map[string]bool
+	mutex     sync.Mutex
 }
 
 func NewConsumerRegistry() *ConsumerRegistry {
@@ -64,6 +66,9 @@ func (r *ConsumerRegistry) AddOrUpdateConsumer(consumer *common.ApitallyConsumer
 	if consumer == nil || (consumer.Name == nil && consumer.Group == nil) {
 		return
 	}
+
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
 
 	existing, exists := r.consumers[consumer.Identifier]
 	if !exists {
@@ -83,6 +88,9 @@ func (r *ConsumerRegistry) AddOrUpdateConsumer(consumer *common.ApitallyConsumer
 }
 
 func (r *ConsumerRegistry) GetAndResetUpdatedConsumers() []*common.ApitallyConsumer {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
 	data := make([]*common.ApitallyConsumer, 0, len(r.updated))
 	for identifier := range r.updated {
 		if consumer, exists := r.consumers[identifier]; exists {

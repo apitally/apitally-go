@@ -2,6 +2,7 @@ package internal
 
 import (
 	"math"
+	"sync"
 )
 
 // RequestKey is used as a map key for request metrics
@@ -34,6 +35,7 @@ type RequestCounter struct {
 	responseTimes    map[RequestKey]map[int]int
 	requestSizes     map[RequestKey]map[int]int
 	responseSizes    map[RequestKey]map[int]int
+	mutex            sync.Mutex
 }
 
 // NewRequestCounter creates a new RequestCounter instance
@@ -57,6 +59,9 @@ func (rc *RequestCounter) AddRequest(consumer, method, path string, statusCode i
 		Path:       path,
 		StatusCode: statusCode,
 	}
+
+	rc.mutex.Lock()
+	defer rc.mutex.Unlock()
 
 	// Increment request count
 	rc.requestCounts[key]++
@@ -91,6 +96,9 @@ func (rc *RequestCounter) AddRequest(consumer, method, path string, statusCode i
 
 // GetAndResetRequests returns the current request data and resets all counters
 func (rc *RequestCounter) GetAndResetRequests() []RequestsItem {
+	rc.mutex.Lock()
+	defer rc.mutex.Unlock()
+
 	data := make([]RequestsItem, 0, len(rc.requestCounts))
 
 	for key, count := range rc.requestCounts {

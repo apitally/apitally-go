@@ -11,6 +11,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/apitally/apitally-go/common"
@@ -59,11 +60,12 @@ type ApitallyClient struct {
 	instanceUUID    string
 	httpClient      *retryablehttp.Client
 	syncDataChan    chan syncPayload
-	syncTicker      *time.Ticker
+	syncStopped     bool
 	startupData     *startupPayload
 	startupDataSent bool
 	logger          *slog.Logger
 	done            chan struct{}
+	mutex           sync.Mutex
 
 	Config                 common.ApitallyConfig
 	RequestCounter         *RequestCounter
@@ -123,6 +125,9 @@ func (c *ApitallyClient) IsEnabled() bool {
 }
 
 func (c *ApitallyClient) SetStartupData(paths []common.PathInfo, versions map[string]string, client string) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
 	c.startupData = &startupPayload{
 		InstanceUUID: c.instanceUUID,
 		MessageUUID:  uuid.New().String(),
@@ -146,11 +151,25 @@ func (c *ApitallyClient) getHubUrl(endpoint string, query string) string {
 }
 
 func (c *ApitallyClient) sync() {
-	if !c.startupDataSent && c.startupData != nil {
+	var wg sync.WaitGroup
+	wg.Add(3)
+
+	go func() {
+		defer wg.Done()
 		c.sendStartupData()
-	}
-	c.sendSyncData()
-	c.sendLogData()
+	}()
+
+	go func() {
+		defer wg.Done()
+		c.sendSyncData()
+	}()
+
+	go func() {
+		defer wg.Done()
+		c.sendLogData()
+	}()
+
+	wg.Wait()
 }
 
 func (c *ApitallyClient) startSync() {
@@ -159,20 +178,21 @@ func (c *ApitallyClient) startSync() {
 		c.sync()
 
 		// Use initial sync interval for the first hour
-		c.syncTicker = time.NewTicker(initialSyncInterval)
-		defer c.syncTicker.Stop()
+		ticker := time.NewTicker(initialSyncInterval)
+		defer ticker.Stop()
 
-		timer := time.NewTimer(initialSyncIntervalDuration)
-		defer timer.Stop()
+		// Start the initialTimer for the initial sync interval
+		initialTimer := time.NewTimer(initialSyncIntervalDuration)
+		defer initialTimer.Stop()
 
 		for {
 			select {
-			case <-c.syncTicker.C:
+			case <-ticker.C:
 				c.sync()
-			case <-timer.C:
+			case <-initialTimer.C:
 				// Switch to regular sync interval
-				c.syncTicker.Stop()
-				c.syncTicker = time.NewTicker(syncInterval)
+				ticker.Stop()
+				ticker = time.NewTicker(syncInterval)
 			case <-c.done:
 				return
 			}
@@ -181,10 +201,9 @@ func (c *ApitallyClient) startSync() {
 }
 
 func (c *ApitallyClient) stopSync() {
-	if c.syncTicker != nil {
-		c.syncTicker.Stop()
-		c.syncTicker = nil
+	if !c.syncStopped {
 		close(c.done)
+		c.syncStopped = true
 	}
 }
 
@@ -199,7 +218,10 @@ func (c *ApitallyClient) Shutdown() {
 }
 
 func (c *ApitallyClient) sendStartupData() error {
-	if c.startupData == nil {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	if c.startupDataSent || c.startupData == nil {
 		return nil
 	}
 

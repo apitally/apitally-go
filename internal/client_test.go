@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -79,11 +80,14 @@ func createMockHTTPClient() (*retryablehttp.Client, *mockTransport) {
 
 type mockTransport struct {
 	recordedURLs []string
+	mutex        sync.Mutex
 }
 
 func (m *mockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	// Record the request URL
+	m.mutex.Lock()
 	m.recordedURLs = append(m.recordedURLs, req.URL.String())
+	m.mutex.Unlock()
 
 	// Always return 202 Accepted
 	resp := &http.Response{
@@ -95,5 +99,8 @@ func (m *mockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func (m *mockTransport) GetRecordedURLs() []string {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
 	return m.recordedURLs
 }

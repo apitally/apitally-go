@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/apitally/apitally-go/common"
@@ -62,6 +63,7 @@ type RequestLogger struct {
 	pendingWrites chan string
 	currentFile   *TempGzipFile
 	files         chan *TempGzipFile
+	mutex         sync.Mutex
 }
 
 type logItem struct {
@@ -217,6 +219,9 @@ func (rl *RequestLogger) writeToFile() error {
 		return nil
 	}
 
+	rl.mutex.Lock()
+	defer rl.mutex.Unlock()
+
 	// Non-blocking check if there are pending writes
 	select {
 	case item := <-rl.pendingWrites:
@@ -266,6 +271,9 @@ func (rl *RequestLogger) RetryFileLater(file *TempGzipFile) {
 }
 
 func (rl *RequestLogger) rotateFile() error {
+	rl.mutex.Lock()
+	defer rl.mutex.Unlock()
+
 	if rl.currentFile != nil {
 		if err := rl.currentFile.Close(); err != nil {
 			return err
@@ -301,7 +309,11 @@ func (rl *RequestLogger) maintain() {
 			continue
 		}
 
-		if rl.currentFile != nil && rl.currentFile.Size() > maxFileSize {
+		rl.mutex.Lock()
+		shouldRotate := rl.currentFile != nil && rl.currentFile.Size() > maxFileSize
+		rl.mutex.Unlock()
+
+		if shouldRotate {
 			if err := rl.rotateFile(); err != nil {
 				continue
 			}
