@@ -34,13 +34,13 @@ func NewValidationErrorCounter() *ValidationErrorCounter {
 }
 
 // AddValidationError adds a validation error to the counter
-func (vc *ValidationErrorCounter) AddValidationError(consumer, method, path string, loc []string, msg, errType string) {
+func (vc *ValidationErrorCounter) AddValidationError(consumer, method, path string, loc, msg, errType string) {
 	// Generate key using MD5 hash of error details
 	hashInput := fmt.Sprintf("%s|%s|%s|%s|%s|%s",
 		consumer,
 		strings.ToUpper(method),
 		path,
-		strings.Join(loc, "."),
+		loc,
 		strings.TrimSpace(msg),
 		errType)
 
@@ -55,7 +55,7 @@ func (vc *ValidationErrorCounter) AddValidationError(consumer, method, path stri
 			Consumer: consumer,
 			Method:   method,
 			Path:     path,
-			Loc:      loc,
+			Loc:      strings.Split(loc, "."),
 			Msg:      msg,
 			Type:     errType,
 		}
