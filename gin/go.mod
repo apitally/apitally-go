@@ -5,7 +5,6 @@ go 1.21
 require (
 	github.com/apitally/apitally-go v0.0.0
 	github.com/gin-gonic/gin v1.8.0
-	github.com/hashicorp/go-retryablehttp v0.7.7
 	github.com/stretchr/testify v1.10.0
 )
 
@@ -18,6 +17,7 @@ require (
 	github.com/goccy/go-json v0.9.7 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
+	github.com/hashicorp/go-retryablehttp v0.7.7 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/leodido/go-urn v1.2.1 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
