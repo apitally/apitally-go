@@ -20,8 +20,8 @@ type ServerErrorsItem struct {
 	Method        string  `json:"method"`
 	Path          string  `json:"path"`
 	Type          string  `json:"type"`
-	Msg           string  `json:"msg"`
-	Traceback     string  `json:"traceback"`
+	Message       string  `json:"msg"`
+	StackTrace    string  `json:"traceback"`
 	SentryEventID *string `json:"sentry_event_id"`
 	ErrorCount    int     `json:"error_count"`
 }
@@ -63,12 +63,12 @@ func (sc *ServerErrorCounter) AddServerError(consumer, method, path string, hand
 	// Store error details if not already present
 	if _, exists := sc.errorDetails[key]; !exists {
 		sc.errorDetails[key] = ServerErrorsItem{
-			Consumer:  consumer,
-			Method:    method,
-			Path:      path,
-			Type:      errorType,
-			Msg:       truncateExceptionMessage(errorMessage),
-			Traceback: truncateExceptionStackTrace(stackTrace),
+			Consumer:   consumer,
+			Method:     method,
+			Path:       path,
+			Type:       errorType,
+			Message:    truncateExceptionMessage(errorMessage),
+			StackTrace: truncateExceptionStackTrace(stackTrace),
 		}
 	}
 

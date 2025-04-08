@@ -116,7 +116,6 @@ func NewApitallyClientWithHTTPClient(config common.ApitallyConfig, httpClient *r
 	client.ConsumerRegistry = NewConsumerRegistry()
 	client.RequestLogger = NewRequestLogger(config.RequestLoggingConfig)
 
-	client.startSync()
 	return client, nil
 }
 
@@ -172,7 +171,7 @@ func (c *ApitallyClient) sync() {
 	wg.Wait()
 }
 
-func (c *ApitallyClient) startSync() {
+func (c *ApitallyClient) StartSync() {
 	go func() {
 		// Initial sync
 		c.sync()
@@ -349,9 +348,7 @@ func (c *ApitallyClient) sendLogData() error {
 			break
 		} else if status == HubRequestStatusPaymentRequired {
 			logFile.Delete()
-			suspendTime := time.Now().Add(time.Hour)
-			c.RequestLogger.suspendUntil = &suspendTime
-			c.RequestLogger.Clear()
+			c.RequestLogger.SuspendFor(time.Hour)
 			break
 		} else {
 			logFile.Delete()

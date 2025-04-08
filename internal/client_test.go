@@ -24,6 +24,7 @@ func TestApitallyClient(t *testing.T) {
 		}
 		httpClient, mockTransport := createMockHTTPClient()
 		client, _ := NewApitallyClientWithHTTPClient(*config, httpClient)
+		client.StartSync()
 		defer client.Shutdown()
 
 		// Set startup data

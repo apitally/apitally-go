@@ -57,13 +57,15 @@ var (
 )
 
 type RequestLogger struct {
-	config        *common.RequestLoggingConfig
-	enabled       bool
-	suspendUntil  *time.Time
-	pendingWrites chan string
-	currentFile   *TempGzipFile
-	files         chan *TempGzipFile
-	mutex         sync.Mutex
+	config           *common.RequestLoggingConfig
+	enabled          bool
+	enabledMutex     sync.Mutex
+	suspendUntil     *time.Time
+	pendingWrites    chan string
+	currentFile      *TempGzipFile
+	currentFileMutex sync.Mutex
+	files            chan *TempGzipFile
+	done             chan struct{}
 }
 
 type logItem struct {
@@ -97,17 +99,41 @@ func NewRequestLogger(config *common.RequestLoggingConfig) *RequestLogger {
 		enabled:       config.Enabled,
 		pendingWrites: make(chan string, maxPendingWrites),
 		files:         make(chan *TempGzipFile, maxFiles),
+		done:          make(chan struct{}),
 	}
 
-	if logger.enabled {
+	if logger.IsEnabled() {
 		go logger.maintain()
 	}
 
 	return logger
 }
 
+func (rl *RequestLogger) IsEnabled() bool {
+	rl.enabledMutex.Lock()
+	defer rl.enabledMutex.Unlock()
+
+	return rl.enabled
+}
+
+func (rl *RequestLogger) IsSuspended() bool {
+	rl.enabledMutex.Lock()
+	defer rl.enabledMutex.Unlock()
+
+	return rl.suspendUntil != nil && time.Now().Before(*rl.suspendUntil)
+}
+
+func (rl *RequestLogger) SuspendFor(duration time.Duration) {
+	rl.enabledMutex.Lock()
+	defer rl.enabledMutex.Unlock()
+
+	suspendTime := time.Now().Add(duration)
+	rl.suspendUntil = &suspendTime
+	rl.Clear()
+}
+
 func (rl *RequestLogger) LogRequest(request *common.Request, response *common.Response, handlerError error, stackTrace string) {
-	if !rl.enabled || (rl.suspendUntil != nil && time.Now().Before(*rl.suspendUntil)) {
+	if !rl.IsEnabled() || rl.IsSuspended() {
 		return
 	}
 
@@ -215,12 +241,8 @@ func (rl *RequestLogger) LogRequest(request *common.Request, response *common.Re
 }
 
 func (rl *RequestLogger) writeToFile() error {
-	if !rl.enabled {
-		return nil
-	}
-
-	rl.mutex.Lock()
-	defer rl.mutex.Unlock()
+	rl.currentFileMutex.Lock()
+	defer rl.currentFileMutex.Unlock()
 
 	// Non-blocking check if there are pending writes
 	select {
@@ -271,8 +293,8 @@ func (rl *RequestLogger) RetryFileLater(file *TempGzipFile) {
 }
 
 func (rl *RequestLogger) rotateFile() error {
-	rl.mutex.Lock()
-	defer rl.mutex.Unlock()
+	rl.currentFileMutex.Lock()
+	defer rl.currentFileMutex.Unlock()
 
 	if rl.currentFile != nil {
 		if err := rl.currentFile.Close(); err != nil {
@@ -300,33 +322,40 @@ func (rl *RequestLogger) maintain() {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		if !rl.enabled {
-			return
-		}
-
-		if err := rl.writeToFile(); err != nil {
-			continue
-		}
-
-		rl.mutex.Lock()
-		shouldRotate := rl.currentFile != nil && rl.currentFile.Size() > maxFileSize
-		rl.mutex.Unlock()
-
-		if shouldRotate {
-			if err := rl.rotateFile(); err != nil {
+	for {
+		select {
+		case <-ticker.C:
+			// Write any pending items to the current file
+			if err := rl.writeToFile(); err != nil {
 				continue
 			}
-		}
 
-		// Clean up excess files
-		for len(rl.files) > maxFiles {
-			file := <-rl.files
-			_ = file.Delete()
-		}
+			// Check if the current file is too large and rotate if necessary
+			rl.currentFileMutex.Lock()
+			shouldRotate := rl.currentFile != nil && rl.currentFile.Size() > maxFileSize
+			rl.currentFileMutex.Unlock()
 
-		if rl.suspendUntil != nil && time.Now().After(*rl.suspendUntil) {
-			rl.suspendUntil = nil
+			if shouldRotate {
+				if err := rl.rotateFile(); err != nil {
+					continue
+				}
+			}
+
+			// Clean up excess files
+			for len(rl.files) > maxFiles {
+				file := <-rl.files
+				_ = file.Delete()
+			}
+
+			// Check if the logger is suspended and resume if necessary
+			rl.enabledMutex.Lock()
+			if rl.suspendUntil != nil && time.Now().After(*rl.suspendUntil) {
+				rl.suspendUntil = nil
+			}
+			rl.enabledMutex.Unlock()
+
+		case <-rl.done:
+			return
 		}
 	}
 }
@@ -337,6 +366,7 @@ func (rl *RequestLogger) Clear() error {
 		<-rl.pendingWrites
 	}
 
+	// Rotate the file to ensure it's closed
 	if err := rl.rotateFile(); err != nil {
 		return err
 	}
@@ -352,7 +382,13 @@ func (rl *RequestLogger) Clear() error {
 }
 
 func (rl *RequestLogger) Close() error {
-	rl.enabled = false
+	if rl.IsEnabled() {
+		rl.enabledMutex.Lock()
+		defer rl.enabledMutex.Unlock()
+
+		rl.enabled = false
+		close(rl.done)
+	}
 	return rl.Clear()
 }
 

@@ -27,10 +27,10 @@ func TestServerErrorCounter(t *testing.T) {
 
 		// Assert message and stacktrace are truncated
 		assert.Len(t, serverErrors, 1)
-		assert.Equal(t, 2048, len(serverErrors[0].Msg))
-		assert.Contains(t, serverErrors[0].Msg, "(truncated)")
-		assert.Less(t, len(serverErrors[0].Traceback), 65536)
-		assert.Contains(t, serverErrors[0].Traceback, "(truncated)")
+		assert.Equal(t, 2048, len(serverErrors[0].Message))
+		assert.Contains(t, serverErrors[0].Message, "(truncated)")
+		assert.Less(t, len(serverErrors[0].StackTrace), 65536)
+		assert.Contains(t, serverErrors[0].StackTrace, "(truncated)")
 	})
 
 	t.Run("Aggregation", func(t *testing.T) {
@@ -58,7 +58,7 @@ func TestServerErrorCounter(t *testing.T) {
 		// Create a map of error messages to their counts
 		errorCounts := make(map[string]int)
 		for _, e := range serverErrors {
-			errorCounts[e.Msg] = e.ErrorCount
+			errorCounts[e.Message] = e.ErrorCount
 		}
 
 		// Assert counts are correct

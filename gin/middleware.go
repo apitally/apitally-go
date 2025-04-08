@@ -34,15 +34,6 @@ func ApitallyMiddleware(client *internal.ApitallyClient) gin.HandlerFunc {
 		// Get route pattern
 		routePattern := c.FullPath()
 
-		// Get consumer info if available
-		var consumerIdentifier string
-		if c, exists := c.Get("ApitallyConsumer"); exists {
-			if consumer := internal.ConsumerFromStringOrObject(c); consumer != nil {
-				consumerIdentifier = consumer.Identifier
-				client.ConsumerRegistry.AddOrUpdateConsumer(consumer)
-			}
-		}
-
 		// Determine request size
 		requestSize := parseContentLength(c.Request.Header.Get("Content-Length"))
 
@@ -81,6 +72,7 @@ func ApitallyMiddleware(client *internal.ApitallyClient) gin.HandlerFunc {
 			duration := time.Since(start)
 			statusCode := c.Writer.Status()
 
+			// Capture error from panic if any
 			var panicValue any
 			var recoveredErr error
 			var stackTrace string
@@ -92,6 +84,15 @@ func ApitallyMiddleware(client *internal.ApitallyClient) gin.HandlerFunc {
 					recoveredErr = err
 				} else {
 					recoveredErr = fmt.Errorf("%v", r)
+				}
+			}
+
+			// Get consumer info if available
+			var consumerIdentifier string
+			if c, exists := c.Get("ApitallyConsumer"); exists {
+				if consumer := internal.ConsumerFromStringOrObject(c); consumer != nil {
+					consumerIdentifier = consumer.Identifier
+					client.ConsumerRegistry.AddOrUpdateConsumer(consumer)
 				}
 			}
 

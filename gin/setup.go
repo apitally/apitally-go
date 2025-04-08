@@ -14,6 +14,7 @@ func UseApitally(r *gin.Engine, config *ApitallyConfig) {
 	if err != nil {
 		panic(err)
 	}
+	client.StartSync()
 
 	r.Use(ApitallyMiddleware(client))
 
