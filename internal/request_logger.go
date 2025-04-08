@@ -68,18 +68,17 @@ type RequestLogger struct {
 	done             chan struct{}
 }
 
-type logItem struct {
+type RequestLogItem struct {
 	UUID      string           `json:"uuid"`
 	Request   *common.Request  `json:"request"`
 	Response  *common.Response `json:"response"`
-	Exception *exceptionInfo   `json:"exception,omitempty"`
+	Exception *ExceptionInfo   `json:"exception,omitempty"`
 }
 
-type exceptionInfo struct {
-	Type          string  `json:"type"`
-	Message       string  `json:"message"`
-	Stacktrace    string  `json:"stacktrace"`
-	SentryEventID *string `json:"sentryEventId,omitempty"`
+type ExceptionInfo struct {
+	Type       string `json:"type"`
+	Message    string `json:"message"`
+	StackTrace string `json:"stacktrace"`
 }
 
 func NewRequestLogger(config *common.RequestLoggingConfig) *RequestLogger {
@@ -99,13 +98,7 @@ func NewRequestLogger(config *common.RequestLoggingConfig) *RequestLogger {
 		enabled:       config.Enabled,
 		pendingWrites: make(chan string, maxPendingWrites),
 		files:         make(chan *TempGzipFile, maxFiles),
-		done:          make(chan struct{}),
 	}
-
-	if logger.IsEnabled() {
-		go logger.maintain()
-	}
-
 	return logger
 }
 
@@ -130,6 +123,13 @@ func (rl *RequestLogger) SuspendFor(duration time.Duration) {
 	suspendTime := time.Now().Add(duration)
 	rl.suspendUntil = &suspendTime
 	rl.Clear()
+}
+
+func (rl *RequestLogger) StartMaintenance() {
+	if rl.IsEnabled() {
+		rl.done = make(chan struct{})
+		go rl.maintain()
+	}
 }
 
 func (rl *RequestLogger) LogRequest(request *common.Request, response *common.Response, handlerError error, stackTrace string) {
@@ -206,7 +206,7 @@ func (rl *RequestLogger) LogRequest(request *common.Request, response *common.Re
 		response.Headers = rl.maskHeaders(response.Headers)
 	}
 
-	item := logItem{
+	item := RequestLogItem{
 		UUID:     uuid.New().String(),
 		Request:  request,
 		Response: response,
@@ -215,10 +215,10 @@ func (rl *RequestLogger) LogRequest(request *common.Request, response *common.Re
 	if handlerError != nil && rl.config.LogPanic {
 		errorType := getErrorType(handlerError)
 		errorMessage := handlerError.Error()
-		item.Exception = &exceptionInfo{
+		item.Exception = &ExceptionInfo{
 			Type:       errorType,
 			Message:    truncateExceptionMessage(errorMessage),
-			Stacktrace: truncateExceptionStackTrace(stackTrace),
+			StackTrace: truncateExceptionStackTrace(stackTrace),
 		}
 	}
 
@@ -236,6 +236,19 @@ func (rl *RequestLogger) LogRequest(request *common.Request, response *common.Re
 		case <-rl.pendingWrites:
 			rl.pendingWrites <- string(jsonData)
 		default:
+		}
+	}
+}
+
+// For testing purposes
+func (rl *RequestLogger) GetPendingWrites() []string {
+	result := make([]string, 0, len(rl.pendingWrites))
+	for {
+		select {
+		case item := <-rl.pendingWrites:
+			result = append(result, item)
+		default:
+			return result
 		}
 	}
 }
@@ -387,7 +400,9 @@ func (rl *RequestLogger) Close() error {
 		defer rl.enabledMutex.Unlock()
 
 		rl.enabled = false
-		close(rl.done)
+		if rl.done != nil {
+			close(rl.done)
+		}
 	}
 	return rl.Clear()
 }

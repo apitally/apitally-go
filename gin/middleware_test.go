@@ -2,10 +2,12 @@ package gin
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/apitally/apitally-go/common"
 	"github.com/apitally/apitally-go/internal"
@@ -49,6 +51,7 @@ func setupTestApp(t *testing.T) (*gin.Engine, *internal.ApitallyClient) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
+		time.Sleep(100 * time.Millisecond)
 		c.JSON(http.StatusOK, gin.H{
 			"message": "Hello, " + req.Name + "!",
 		})
@@ -125,5 +128,55 @@ func TestMiddleware(t *testing.T) {
 		assert.Equal(t, "errors.errorString", errors[0].Type)
 		assert.Equal(t, "test panic", errors[0].Message)
 		assert.Contains(t, errors[0].StackTrace, "panic")
+	})
+
+	t.Run("RequestLogger", func(t *testing.T) {
+		r, c := setupTestApp(t)
+		defer c.Shutdown()
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("POST", "/hello", bytes.NewBuffer([]byte(`{"name": "John"}`)))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Length", "16")
+		r.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		w = httptest.NewRecorder()
+		req, _ = http.NewRequest("GET", "/error", nil)
+		r.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+
+		pendingWrites := c.RequestLogger.GetPendingWrites()
+		assert.Len(t, pendingWrites, 2)
+
+		// Deserialize log items
+		logItems := make([]internal.RequestLogItem, len(pendingWrites))
+		for i, write := range pendingWrites {
+			err := json.Unmarshal([]byte(write), &logItems[i])
+			assert.NoError(t, err)
+		}
+
+		// Validate log item for POST /hello request
+		helloLogItem := logItems[0]
+		assert.Equal(t, "tester", *helloLogItem.Request.Consumer)
+		assert.Equal(t, "POST", helloLogItem.Request.Method)
+		assert.Equal(t, "/hello", helloLogItem.Request.Path)
+		assert.Equal(t, 200, helloLogItem.Response.StatusCode)
+		assert.GreaterOrEqual(t, helloLogItem.Response.ResponseTime, 0.1)
+		assert.Contains(t, string(helloLogItem.Request.Body), "John")
+		assert.Contains(t, string(helloLogItem.Response.Body), "Hello, John!")
+		assert.Equal(t, int64(16), *helloLogItem.Request.Size)
+		assert.Equal(t, int64(26), *helloLogItem.Response.Size)
+		assert.Nil(t, helloLogItem.Exception)
+
+		// Validate log item for GET /error request
+		errorLogItem := logItems[1]
+		assert.Equal(t, "GET", errorLogItem.Request.Method)
+		assert.Equal(t, "/error", errorLogItem.Request.Path)
+		assert.Equal(t, 500, errorLogItem.Response.StatusCode)
+		assert.NotNil(t, errorLogItem.Exception)
+		assert.Equal(t, "errors.errorString", errorLogItem.Exception.Type)
+		assert.Equal(t, "test panic", errorLogItem.Exception.Message)
+		assert.Contains(t, errorLogItem.Exception.StackTrace, "panic")
 	})
 }

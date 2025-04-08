@@ -172,6 +172,8 @@ func (c *ApitallyClient) sync() {
 }
 
 func (c *ApitallyClient) StartSync() {
+	c.RequestLogger.StartMaintenance()
+
 	go func() {
 		// Initial sync
 		c.sync()
