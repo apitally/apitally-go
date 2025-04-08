@@ -27,7 +27,7 @@ const (
 	maxQueueSize                = 400
 )
 
-type syncPayload struct {
+type SyncPayload struct {
 	Timestamp        float64                    `json:"timestamp"`
 	InstanceUUID     string                     `json:"instance_uuid"`
 	MessageUUID      string                     `json:"message_uuid"`
@@ -37,7 +37,7 @@ type syncPayload struct {
 	Consumers        []*common.ApitallyConsumer `json:"consumers,omitempty"`
 }
 
-type startupPayload struct {
+type StartupPayload struct {
 	InstanceUUID string            `json:"instance_uuid"`
 	MessageUUID  string            `json:"message_uuid"`
 	Paths        []common.PathInfo `json:"paths"`
@@ -59,9 +59,9 @@ type ApitallyClient struct {
 	enabled         bool
 	instanceUUID    string
 	httpClient      *retryablehttp.Client
-	syncDataChan    chan syncPayload
+	syncDataChan    chan SyncPayload
 	syncStopped     bool
-	startupData     *startupPayload
+	startupData     *StartupPayload
 	startupDataSent bool
 	logger          *slog.Logger
 	done            chan struct{}
@@ -104,7 +104,7 @@ func NewApitallyClientWithHTTPClient(config common.ApitallyConfig, httpClient *r
 		enabled:      true,
 		instanceUUID: uuid.New().String(),
 		httpClient:   httpClient,
-		syncDataChan: make(chan syncPayload, maxQueueSize),
+		syncDataChan: make(chan SyncPayload, maxQueueSize),
 		logger:       logger.With("component", "apitally"),
 		done:         make(chan struct{}),
 	}
@@ -127,7 +127,7 @@ func (c *ApitallyClient) SetStartupData(paths []common.PathInfo, versions map[st
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	c.startupData = &startupPayload{
+	c.startupData = &StartupPayload{
 		InstanceUUID: c.instanceUUID,
 		MessageUUID:  uuid.New().String(),
 		Paths:        paths,
@@ -249,7 +249,7 @@ func (c *ApitallyClient) sendStartupData() error {
 }
 
 func (c *ApitallyClient) sendSyncData() error {
-	newPayload := syncPayload{
+	newPayload := SyncPayload{
 		Timestamp:        float64(time.Now().Unix()),
 		InstanceUUID:     c.instanceUUID,
 		MessageUUID:      uuid.New().String(),
@@ -269,7 +269,7 @@ func (c *ApitallyClient) sendSyncData() error {
 
 	// Process queued payloads
 	for i := 0; ; i++ {
-		var payload syncPayload
+		var payload SyncPayload
 		select {
 		case payload = <-c.syncDataChan:
 			// Got a payload to process
