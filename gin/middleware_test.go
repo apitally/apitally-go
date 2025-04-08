@@ -10,20 +10,8 @@ import (
 	"github.com/apitally/apitally-go/common"
 	"github.com/apitally/apitally-go/internal"
 	"github.com/gin-gonic/gin"
-	"github.com/hashicorp/go-retryablehttp"
 	"github.com/stretchr/testify/assert"
 )
-
-type NoOpTransport struct{}
-
-func (t *NoOpTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	// Return a successful response without making any actual HTTP request
-	return &http.Response{
-		StatusCode: http.StatusAccepted,
-		Body:       http.NoBody,
-		Header:     make(http.Header),
-	}, nil
-}
 
 func setupTestApp(t *testing.T) (*gin.Engine, *internal.ApitallyClient) {
 	config := &common.ApitallyConfig{
@@ -39,11 +27,7 @@ func setupTestApp(t *testing.T) (*gin.Engine, *internal.ApitallyClient) {
 			LogPanic:           true,
 		},
 	}
-
-	// Create a retryablehttp.Client with a no-op transport
-	httpClient := retryablehttp.NewClient()
-	httpClient.HTTPClient.Transport = &NoOpTransport{}
-	client, err := internal.NewApitallyClientWithHTTPClient(*config, httpClient)
+	client, err := internal.NewApitallyClient(*config)
 	assert.NoError(t, err)
 
 	r := gin.Default()
