@@ -461,13 +461,13 @@ func (rl *RequestLogger) shouldMaskHeader(name string) bool {
 func (rl *RequestLogger) hasSupportedContentType(headers [][2]string) bool {
 	for _, header := range headers {
 		if header[0] == "Content-Type" {
-			return rl.isSupportedContentType(header[1])
+			return rl.IsSupportedContentType(header[1])
 		}
 	}
 	return false
 }
 
-func (rl *RequestLogger) isSupportedContentType(contentType string) bool {
+func (rl *RequestLogger) IsSupportedContentType(contentType string) bool {
 	if contentType == "" {
 		return false
 	}

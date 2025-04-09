@@ -15,12 +15,12 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func setupTestApp(t *testing.T) (*gin.Engine, *internal.ApitallyClient) {
+func setupTestApp(t *testing.T, requestLoggingEnabled bool) (*gin.Engine, *internal.ApitallyClient) {
 	config := &common.ApitallyConfig{
 		ClientId: "e117eb33-f6d2-4260-a71d-31eb49425893",
 		Env:      "test",
 		RequestLoggingConfig: &common.RequestLoggingConfig{
-			Enabled:            true,
+			Enabled:            requestLoggingEnabled,
 			LogQueryParams:     true,
 			LogRequestHeaders:  true,
 			LogRequestBody:     true,
@@ -67,7 +67,7 @@ func setupTestApp(t *testing.T) (*gin.Engine, *internal.ApitallyClient) {
 
 func TestMiddleware(t *testing.T) {
 	t.Run("RequestCounter", func(t *testing.T) {
-		r, c := setupTestApp(t)
+		r, c := setupTestApp(t, false)
 		defer c.Shutdown()
 
 		w := httptest.NewRecorder()
@@ -113,7 +113,7 @@ func TestMiddleware(t *testing.T) {
 	})
 
 	t.Run("ValidationErrorCounter", func(t *testing.T) {
-		r, c := setupTestApp(t)
+		r, c := setupTestApp(t, false)
 		defer c.Shutdown()
 
 		w := httptest.NewRecorder()
@@ -150,7 +150,7 @@ func TestMiddleware(t *testing.T) {
 	})
 
 	t.Run("ServerErrorCounter", func(t *testing.T) {
-		r, c := setupTestApp(t)
+		r, c := setupTestApp(t, false)
 		defer c.Shutdown()
 
 		w := httptest.NewRecorder()
@@ -169,7 +169,7 @@ func TestMiddleware(t *testing.T) {
 	})
 
 	t.Run("RequestLogger", func(t *testing.T) {
-		r, c := setupTestApp(t)
+		r, c := setupTestApp(t, true)
 		defer c.Shutdown()
 
 		w := httptest.NewRecorder()

@@ -19,11 +19,19 @@ import (
 
 type responseBodyWriter struct {
 	gin.ResponseWriter
-	body *bytes.Buffer
+	body                   *bytes.Buffer
+	shouldCaptureBody      *bool
+	isSupportedContentType func(string) bool
 }
 
-func (w responseBodyWriter) Write(b []byte) (int, error) {
-	w.body.Write(b)
+func (w *responseBodyWriter) Write(b []byte) (int, error) {
+	if w.shouldCaptureBody == nil {
+		w.shouldCaptureBody = new(bool)
+		*w.shouldCaptureBody = w.isSupportedContentType(w.Header().Get("Content-Type"))
+	}
+	if *w.shouldCaptureBody {
+		w.body.Write(b)
+	}
 	return w.ResponseWriter.Write(b)
 }
 
@@ -42,10 +50,12 @@ func ApitallyMiddleware(client *internal.ApitallyClient) gin.HandlerFunc {
 
 		// Cache request body if needed
 		var requestBody []byte
-		if client.Config.RequestLoggingConfig != nil &&
-			client.Config.RequestLoggingConfig.Enabled &&
-			client.Config.RequestLoggingConfig.LogRequestBody &&
-			c.Request.Body != nil {
+		if c.Request.Body != nil &&
+			(requestSize == -1 ||
+				(client.Config.RequestLoggingConfig != nil &&
+					client.Config.RequestLoggingConfig.Enabled &&
+					client.Config.RequestLoggingConfig.LogRequestBody &&
+					client.RequestLogger.IsSupportedContentType(c.Request.Header.Get("Content-Type")))) {
 			var err error
 			requestBody, err = io.ReadAll(c.Request.Body)
 			if err == nil {
@@ -64,8 +74,9 @@ func ApitallyMiddleware(client *internal.ApitallyClient) gin.HandlerFunc {
 			client.Config.RequestLoggingConfig.LogResponseBody {
 			originalWriter = c.Writer
 			c.Writer = &responseBodyWriter{
-				ResponseWriter: c.Writer,
-				body:           &responseBody,
+				ResponseWriter:         c.Writer,
+				body:                   &responseBody,
+				isSupportedContentType: client.RequestLogger.IsSupportedContentType,
 			}
 		}
 
