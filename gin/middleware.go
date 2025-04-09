@@ -161,26 +161,20 @@ func ApitallyMiddleware(client *internal.ApitallyClient) gin.HandlerFunc {
 			if client.Config.RequestLoggingConfig != nil && client.Config.RequestLoggingConfig.Enabled {
 				request := common.Request{
 					Timestamp: float64(time.Now().UnixMilli()) / 1000.0,
-					Consumer:  &consumerIdentifier,
+					Consumer:  consumerIdentifier,
 					Method:    c.Request.Method,
+					Path:      routePattern,
 					URL:       getFullURL(c.Request),
 					Headers:   transformHeaders(c.Request.Header),
+					Size:      requestSize,
 					Body:      requestBody,
-				}
-				if routePattern != "" {
-					request.Path = routePattern
-				}
-				if requestSize >= 0 {
-					request.Size = &requestSize
 				}
 				response := common.Response{
 					StatusCode:   statusCode,
 					ResponseTime: float64(duration.Milliseconds()) / 1000.0,
 					Headers:      transformHeaders(c.Writer.Header()),
+					Size:         responseSize,
 					Body:         responseBody.Bytes(),
-				}
-				if responseSize >= 0 {
-					response.Size = &responseSize
 				}
 				client.RequestLogger.LogRequest(&request, &response, recoveredErr, stackTrace)
 			}

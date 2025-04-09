@@ -29,23 +29,21 @@ func TestRequestLogger(t *testing.T) {
 		requestLogger := NewRequestLogger(config)
 		defer requestLogger.Close()
 
-		consumer := "tester"
 		timestamp := float64(time.Now().Unix())
 		request := &common.Request{
 			Timestamp: timestamp,
-			Consumer:  &consumer,
+			Consumer:  "tester",
 			Method:    "GET",
 			Path:      "/items",
 			URL:       "http://test/items",
 			Headers:   [][2]string{{"User-Agent", "Test"}},
 			Body:      []byte{},
 		}
-		responseSize := int64(13)
 		response := &common.Response{
 			StatusCode:   200,
 			ResponseTime: 0.123,
 			Headers:      [][2]string{{"Content-Type", "application/json"}},
-			Size:         &responseSize,
+			Size:         13,
 			Body:         []byte(`{"items": []}`),
 		}
 		requestLogger.LogRequest(request, response, errors.New("test"), "")
@@ -179,20 +177,16 @@ func TestRequestLogger(t *testing.T) {
 		config := &common.RequestLoggingConfig{
 			Enabled: true,
 			ExcludeCallback: func(req *common.Request, resp *common.Response) bool {
-				if req.Consumer == nil {
-					return false
-				}
-				return strings.Contains(*req.Consumer, "tester")
+				return strings.Contains(req.Consumer, "tester")
 			},
 		}
 		requestLogger := NewRequestLogger(config)
 		defer requestLogger.Close()
 
-		consumer := "tester"
 		timestamp := float64(time.Now().Unix())
 		request := &common.Request{
 			Timestamp: timestamp,
-			Consumer:  &consumer,
+			Consumer:  "tester",
 			Method:    "GET",
 			Path:      "/items",
 			URL:       "http://test/items",

@@ -14,7 +14,7 @@ func TestConsumerRegistry(t *testing.T) {
 		assert.Nil(t, consumer)
 
 		// Empty identifier in struct should return nil
-		consumer = ConsumerFromStringOrObject(&common.ApitallyConsumer{Identifier: " "})
+		consumer = ConsumerFromStringOrObject(common.ApitallyConsumer{Identifier: " "})
 		assert.Nil(t, consumer)
 
 		// Valid string should return consumer with identifier
@@ -23,24 +23,22 @@ func TestConsumerRegistry(t *testing.T) {
 		assert.Equal(t, "test", consumer.Identifier)
 
 		// Valid struct should return consumer with identifier
-		consumer = ConsumerFromStringOrObject(&common.ApitallyConsumer{Identifier: "test"})
+		consumer = ConsumerFromStringOrObject(common.ApitallyConsumer{Identifier: "test"})
 		assert.NotNil(t, consumer)
 		assert.Equal(t, "test", consumer.Identifier)
 
 		// Consumer with name and group should trim spaces
-		name := "Test "
-		group := " Testers "
-		consumer = ConsumerFromStringOrObject(&common.ApitallyConsumer{
+		consumer = ConsumerFromStringOrObject(common.ApitallyConsumer{
 			Identifier: "test",
-			Name:       &name,
-			Group:      &group,
+			Name:       "Test ",
+			Group:      " Testers ",
 		})
 		assert.NotNil(t, consumer)
 		assert.Equal(t, "test", consumer.Identifier)
 		assert.NotNil(t, consumer.Name)
-		assert.Equal(t, "Test", *consumer.Name)
+		assert.Equal(t, "Test", consumer.Name)
 		assert.NotNil(t, consumer.Group)
-		assert.Equal(t, "Testers", *consumer.Group)
+		assert.Equal(t, "Testers", consumer.Group)
 	})
 
 	t.Run("AddOrUpdateConsumer", func(t *testing.T) {
@@ -58,12 +56,10 @@ func TestConsumerRegistry(t *testing.T) {
 		assert.Empty(t, data)
 
 		// Adding consumer with name should work
-		name := "Test"
-		group := "Testers"
 		testConsumer := &common.ApitallyConsumer{
 			Identifier: "test",
-			Name:       &name,
-			Group:      &group,
+			Name:       "Test",
+			Group:      "Testers",
 		}
 		registry.AddOrUpdateConsumer(testConsumer)
 		data = registry.GetAndResetUpdatedConsumers()
@@ -76,26 +72,24 @@ func TestConsumerRegistry(t *testing.T) {
 		assert.Empty(t, data)
 
 		// Changing name should mark as updated
-		newName := "Test 2"
 		registry.AddOrUpdateConsumer(&common.ApitallyConsumer{
 			Identifier: "test",
-			Name:       &newName,
-			Group:      &group,
+			Name:       "Test 2",
+			Group:      "Testers",
 		})
 		data = registry.GetAndResetUpdatedConsumers()
 		assert.Len(t, data, 1)
-		assert.Equal(t, "Test 2", *data[0].Name)
+		assert.Equal(t, "Test 2", data[0].Name)
 
 		// Changing group should mark as updated
-		newGroup := "Testers 2"
 		registry.AddOrUpdateConsumer(&common.ApitallyConsumer{
 			Identifier: "test",
-			Name:       &newName,
-			Group:      &newGroup,
+			Name:       "Test 2",
+			Group:      "Testers 2",
 		})
 		data = registry.GetAndResetUpdatedConsumers()
 		assert.Len(t, data, 1)
-		assert.Equal(t, "Testers 2", *data[0].Group)
+		assert.Equal(t, "Testers 2", data[0].Group)
 	})
 
 	t.Run("GetAndResetUpdatedConsumers", func(t *testing.T) {
@@ -106,19 +100,16 @@ func TestConsumerRegistry(t *testing.T) {
 		assert.Empty(t, data)
 
 		// Add multiple consumers
-		name1, group1 := "Test 1", "Group 1"
-		name2, group2 := "Test 2", "Group 2"
-
 		registry.AddOrUpdateConsumer(&common.ApitallyConsumer{
 			Identifier: "test1",
-			Name:       &name1,
-			Group:      &group1,
+			Name:       "Test 1",
+			Group:      "Group 1",
 		})
 
 		registry.AddOrUpdateConsumer(&common.ApitallyConsumer{
 			Identifier: "test2",
-			Name:       &name2,
-			Group:      &group2,
+			Name:       "Test 2",
+			Group:      "Group 2",
 		})
 
 		// Should get both consumers
@@ -133,8 +124,8 @@ func TestConsumerRegistry(t *testing.T) {
 
 		assert.Contains(t, consumerMap, "test1")
 		assert.Contains(t, consumerMap, "test2")
-		assert.Equal(t, "Test 1", *consumerMap["test1"].Name)
-		assert.Equal(t, "Test 2", *consumerMap["test2"].Name)
+		assert.Equal(t, "Test 1", consumerMap["test1"].Name)
+		assert.Equal(t, "Test 2", consumerMap["test2"].Name)
 
 		// After reset, should return empty slice
 		data = registry.GetAndResetUpdatedConsumers()

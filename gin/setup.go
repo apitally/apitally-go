@@ -2,6 +2,7 @@ package gin
 
 import (
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/apitally/apitally-go/common"
@@ -39,14 +40,14 @@ func getRoutes(r *gin.Engine) []common.PathInfo {
 	return paths
 }
 
-func getVersions(appVersion *string) map[string]string {
+func getVersions(appVersion string) map[string]string {
 	versions := map[string]string{
 		"go":  runtime.Version(),
 		"gin": gin.Version,
 	}
 
-	if appVersion != nil {
-		versions["app"] = *appVersion
+	if appVersion != "" {
+		versions["app"] = strings.TrimSpace(appVersion)
 	}
 
 	return versions

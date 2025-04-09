@@ -83,16 +83,8 @@ type ExceptionInfo struct {
 
 func NewRequestLogger(config *common.RequestLoggingConfig) *RequestLogger {
 	if config == nil {
-		config = &common.RequestLoggingConfig{
-			LogQueryParams:     true,
-			LogRequestHeaders:  false,
-			LogRequestBody:     false,
-			LogResponseHeaders: true,
-			LogResponseBody:    false,
-			LogPanic:           true,
-		}
+		config = &common.RequestLoggingConfig{}
 	}
-
 	logger := &RequestLogger{
 		config:        config,
 		enabled:       config.Enabled,
@@ -133,7 +125,7 @@ func (rl *RequestLogger) StartMaintenance() {
 }
 
 func (rl *RequestLogger) LogRequest(request *common.Request, response *common.Response, handlerError error, stackTrace string) {
-	if !rl.IsEnabled() || rl.IsSuspended() {
+	if !rl.IsEnabled() || rl.IsSuspended() || request == nil || response == nil {
 		return
 	}
 

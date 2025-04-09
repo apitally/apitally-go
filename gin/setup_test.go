@@ -26,7 +26,7 @@ func TestSetup(t *testing.T) {
 
 	t.Run("GetVersions", func(t *testing.T) {
 		appVersion := "1.0.0"
-		versions := getVersions(&appVersion)
+		versions := getVersions(appVersion)
 		assert.NotEmpty(t, versions["go"])
 		assert.NotEmpty(t, versions["gin"])
 		assert.Equal(t, appVersion, versions["app"])

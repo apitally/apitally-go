@@ -18,10 +18,7 @@ func ConsumerFromStringOrObject(consumer any) *common.ApitallyConsumer {
 			return nil
 		}
 		return &common.ApitallyConsumer{Identifier: identifier}
-	case *common.ApitallyConsumer:
-		if v == nil {
-			return nil
-		}
+	case common.ApitallyConsumer:
 		v.Identifier = strings.TrimSpace(v.Identifier)
 		if v.Identifier == "" {
 			return nil
@@ -29,21 +26,21 @@ func ConsumerFromStringOrObject(consumer any) *common.ApitallyConsumer {
 		if len(v.Identifier) > 128 {
 			v.Identifier = v.Identifier[:128]
 		}
-		if v.Name != nil {
-			name := strings.TrimSpace(*v.Name)
+		if v.Name != "" {
+			name := strings.TrimSpace(v.Name)
 			if len(name) > 64 {
 				name = name[:64]
 			}
-			v.Name = &name
+			v.Name = name
 		}
-		if v.Group != nil {
-			group := strings.TrimSpace(*v.Group)
+		if v.Group != "" {
+			group := strings.TrimSpace(v.Group)
 			if len(group) > 64 {
 				group = group[:64]
 			}
-			v.Group = &group
+			v.Group = group
 		}
-		return v
+		return &v
 	default:
 		return nil
 	}
@@ -63,7 +60,7 @@ func NewConsumerRegistry() *ConsumerRegistry {
 }
 
 func (r *ConsumerRegistry) AddOrUpdateConsumer(consumer *common.ApitallyConsumer) {
-	if consumer == nil || (consumer.Name == nil && consumer.Group == nil) {
+	if consumer == nil || (consumer.Name == "" && consumer.Group == "") {
 		return
 	}
 
@@ -77,11 +74,11 @@ func (r *ConsumerRegistry) AddOrUpdateConsumer(consumer *common.ApitallyConsumer
 		return
 	}
 
-	if consumer.Name != nil && (existing.Name == nil || *consumer.Name != *existing.Name) {
+	if consumer.Name != "" && (existing.Name == "" || consumer.Name != existing.Name) {
 		existing.Name = consumer.Name
 		r.updated[consumer.Identifier] = true
 	}
-	if consumer.Group != nil && (existing.Group == nil || *consumer.Group != *existing.Group) {
+	if consumer.Group != "" && (existing.Group == "" || consumer.Group != existing.Group) {
 		existing.Group = consumer.Group
 		r.updated[consumer.Identifier] = true
 	}

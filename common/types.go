@@ -9,8 +9,8 @@ type Request struct {
 	Path      string      `json:"path,omitempty"`
 	URL       string      `json:"url"`
 	Headers   [][2]string `json:"headers"`
-	Size      *int64      `json:"size,omitempty"`
-	Consumer  *string     `json:"consumer,omitempty"`
+	Size      int64       `json:"size,omitempty"`
+	Consumer  string      `json:"consumer,omitempty"`
 	Body      []byte      `json:"body,omitempty"`
 }
 
@@ -19,18 +19,18 @@ type Response struct {
 	StatusCode   int         `json:"status_code"`
 	ResponseTime float64     `json:"response_time"`
 	Headers      [][2]string `json:"headers"`
-	Size         *int64      `json:"size,omitempty"`
+	Size         int64       `json:"size,omitempty"`
 	Body         []byte      `json:"body,omitempty"`
 }
 
 // ApitallyConsumer represents a consumer of the API
 type ApitallyConsumer struct {
-	Identifier string  `json:"identifier"`
-	Name       *string `json:"name,omitempty"`
-	Group      *string `json:"group,omitempty"`
+	Identifier string `json:"identifier"`
+	Name       string `json:"name,omitempty"`
+	Group      string `json:"group,omitempty"`
 }
 
-// PathInfo represents a path and method pair
+// PathInfo represents a method and path pair
 type PathInfo struct {
 	Method string `json:"method"`
 	Path   string `json:"path"`
@@ -58,5 +58,5 @@ type ApitallyConfig struct {
 	ClientId             string
 	Env                  string
 	RequestLoggingConfig *RequestLoggingConfig
-	AppVersion           *string
+	AppVersion           string
 }

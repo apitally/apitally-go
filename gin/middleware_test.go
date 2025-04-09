@@ -43,7 +43,11 @@ func setupTestApp(t *testing.T, requestLoggingEnabled bool) (*gin.Engine, *inter
 	})
 
 	r.POST("/hello", func(c *gin.Context) {
-		c.Set("ApitallyConsumer", "tester")
+		c.Set("ApitallyConsumer", ApitallyConsumer{
+			Identifier: "tester",
+			Name:       "Tester",
+			Group:      "Test Group",
+		})
 		var req struct {
 			Name string `json:"name" binding:"required,min=3"`
 		}
@@ -196,15 +200,15 @@ func TestMiddleware(t *testing.T) {
 
 		// Validate log item for POST /hello request
 		helloLogItem := logItems[0]
-		assert.Equal(t, "tester", *helloLogItem.Request.Consumer)
+		assert.Equal(t, "tester", helloLogItem.Request.Consumer)
 		assert.Equal(t, "POST", helloLogItem.Request.Method)
 		assert.Equal(t, "/hello", helloLogItem.Request.Path)
 		assert.Equal(t, 200, helloLogItem.Response.StatusCode)
 		assert.GreaterOrEqual(t, helloLogItem.Response.ResponseTime, 0.1)
 		assert.Contains(t, string(helloLogItem.Request.Body), "John")
 		assert.Contains(t, string(helloLogItem.Response.Body), "Hello, John!")
-		assert.Equal(t, int64(16), *helloLogItem.Request.Size)
-		assert.Equal(t, int64(26), *helloLogItem.Response.Size)
+		assert.Equal(t, int64(16), helloLogItem.Request.Size)
+		assert.Equal(t, int64(26), helloLogItem.Response.Size)
 		assert.Nil(t, helloLogItem.Exception)
 
 		// Validate log item for GET /error request
