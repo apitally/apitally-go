@@ -21,7 +21,6 @@
 
 [![Tests](https://github.com/apitally/apitally-go/actions/workflows/tests.yaml/badge.svg?event=push)](https://github.com/apitally/apitally-go/actions)
 [![Codecov](https://codecov.io/gh/apitally/apitally-go/graph/badge.svg?token=KGMvKb59lc)](https://codecov.io/gh/apitally/apitally-go)
-[![Go Reference](https://pkg.go.dev/badge/apitally/apitally-go.svg)](https://pkg.go.dev/apitally/apitally-go)
 
 This SDK for Apitally currently supports the following Go web frameworks:
 
@@ -56,14 +55,6 @@ Get notified immediately if something isn't right using custom alerts, synthetic
 uptime checks and heartbeat monitoring. Notifications can be delivered via
 email, Slack or Microsoft Teams.
 
-## Installation
-
-You can install this library in your project using `go get`:
-
-```bash
-go get github.com/apitally/apitally-go
-```
-
 ## Usage
 
 Our comprehensive [setup guides](https://docs.apitally.io/quickstart) include
@@ -83,6 +74,7 @@ import (
 
 func main() {
   r := gin.Default()
+
   config := &apitally.ApitallyConfig{
     ClientId: "your-client-id",
     Env:      "dev", // or "prod" etc.
