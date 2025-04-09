@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	"fmt"
 	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -13,6 +14,9 @@ const (
 	maxMsgLength        = 2048
 	maxStacktraceLength = 65536
 )
+
+var hexAddressRegex = regexp.MustCompile(`0x[0-9a-fA-F]+`)
+var goRoutineRegex = regexp.MustCompile(`goroutine \d+`)
 
 // ServerErrorsItem represents aggregated server error data
 type ServerErrorsItem struct {
@@ -53,7 +57,7 @@ func (sc *ServerErrorCounter) AddServerError(consumer, method, path string, hand
 		path,
 		errorType,
 		errorMessage,
-		stackTrace)
+		stripStackTraceForHashing(stackTrace))
 
 	key := fmt.Sprintf("%x", md5.Sum([]byte(hashInput)))
 
@@ -117,10 +121,10 @@ func truncateExceptionMessage(msg string) string {
 	return msg[:cutoff] + suffix
 }
 
-func truncateExceptionStackTrace(stack string) string {
+func truncateExceptionStackTrace(stackTrace string) string {
 	suffix := "... (truncated) ..."
 	cutoff := maxStacktraceLength - len(suffix)
-	lines := strings.Split(strings.TrimSpace(stack), "\n")
+	lines := strings.Split(strings.TrimSpace(stackTrace), "\n")
 	if len(lines) > 5 {
 		// Remove lines related to ApitallyMiddleware recovering and re-panicking
 		lines = slices.Delete(lines, 1, 5)
@@ -138,4 +142,10 @@ func truncateExceptionStackTrace(stack string) string {
 	}
 
 	return strings.Join(truncatedLines, "\n")
+}
+
+func stripStackTraceForHashing(stackTrace string) string {
+	stackTrace = hexAddressRegex.ReplaceAllString(stackTrace, "0x0")
+	stackTrace = goRoutineRegex.ReplaceAllString(stackTrace, "goroutine 0")
+	return stackTrace
 }
