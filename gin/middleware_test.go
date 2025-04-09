@@ -45,9 +45,10 @@ func setupTestApp(t *testing.T) (*gin.Engine, *internal.ApitallyClient) {
 	r.POST("/hello", func(c *gin.Context) {
 		c.Set("ApitallyConsumer", "tester")
 		var req struct {
-			Name string `json:"name"`
+			Name string `json:"name" binding:"required,min=3"`
 		}
 		if err := c.BindJSON(&req); err != nil {
+			CaptureValidationError(c, err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
@@ -108,6 +109,43 @@ func TestMiddleware(t *testing.T) {
 			return r.Method == "GET" &&
 				r.Path == "/error" &&
 				r.StatusCode == http.StatusInternalServerError
+		}))
+	})
+
+	t.Run("ValidationErrorCounter", func(t *testing.T) {
+		r, c := setupTestApp(t)
+		defer c.Shutdown()
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("POST", "/hello", bytes.NewBuffer([]byte(`{}`)))
+		req.Header.Set("Content-Type", "application/json")
+		r.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+
+		w = httptest.NewRecorder()
+		req, _ = http.NewRequest("POST", "/hello", bytes.NewBuffer([]byte(`{"name": "x"}`)))
+		req.Header.Set("Content-Type", "application/json")
+		r.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+
+		validationErrors := c.ValidationErrorCounter.GetAndResetValidationErrors()
+		assert.Len(t, validationErrors, 2)
+
+		assert.True(t, slices.ContainsFunc(validationErrors, func(r internal.ValidationErrorsItem) bool {
+			return r.Consumer == "tester" &&
+				r.Method == "POST" &&
+				r.Path == "/hello" &&
+				slices.Equal(r.Loc, []string{"Name"}) &&
+				r.Msg == "Field validation for 'Name' failed on the 'required' tag" &&
+				r.Type == "required"
+		}))
+		assert.True(t, slices.ContainsFunc(validationErrors, func(r internal.ValidationErrorsItem) bool {
+			return r.Consumer == "tester" &&
+				r.Method == "POST" &&
+				r.Path == "/hello" &&
+				slices.Equal(r.Loc, []string{"Name"}) &&
+				r.Msg == "Field validation for 'Name' failed on the 'min' tag" &&
+				r.Type == "min"
 		}))
 	})
 

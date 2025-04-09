@@ -5,13 +5,16 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"runtime/debug"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/apitally/apitally-go/common"
 	"github.com/apitally/apitally-go/internal"
 	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator/v10"
 )
 
 type responseBodyWriter struct {
@@ -102,7 +105,7 @@ func ApitallyMiddleware(client *internal.ApitallyClient) gin.HandlerFunc {
 				responseSize = int64(c.Writer.Size())
 			}
 
-			// Track request
+			// Count request
 			if routePattern != "" {
 				client.RequestCounter.AddRequest(
 					consumerIdentifier,
@@ -114,7 +117,24 @@ func ApitallyMiddleware(client *internal.ApitallyClient) gin.HandlerFunc {
 					responseSize,
 				)
 
-				// Track server error if any
+				// Count validation errors if any
+				if valErrValue, exists := c.Get("ApitallyValidationErrors"); exists && valErrValue != nil {
+					validationErrors, ok := valErrValue.(validator.ValidationErrors)
+					if ok {
+						for _, fieldError := range validationErrors {
+							client.ValidationErrorCounter.AddValidationError(
+								consumerIdentifier,
+								c.Request.Method,
+								routePattern,
+								fieldError.Field(),
+								truncateValidationErrorMessage(fieldError.Error()),
+								fieldError.Tag(),
+							)
+						}
+					}
+				}
+
+				// Count server error if any
 				if recoveredErr != nil {
 					client.ServerErrorCounter.AddServerError(
 						consumerIdentifier,
@@ -167,6 +187,29 @@ func ApitallyMiddleware(client *internal.ApitallyClient) gin.HandlerFunc {
 
 		c.Next()
 	}
+}
+
+func CaptureValidationError(c *gin.Context, err error) {
+	if err == nil {
+		return
+	}
+
+	validationErrors, ok := err.(validator.ValidationErrors)
+	if !ok {
+		return
+	}
+
+	// Store validation errors in the context for middleware
+	c.Set("ApitallyValidationErrors", validationErrors)
+}
+
+func truncateValidationErrorMessage(msg string) string {
+	re := regexp.MustCompile(`^Key: '.+' Error:(.+)$`)
+	matches := re.FindStringSubmatch(msg)
+	if len(matches) == 2 {
+		return strings.TrimSpace(matches[1])
+	}
+	return msg
 }
 
 func getFullURL(req *http.Request) string {
