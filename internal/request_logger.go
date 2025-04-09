@@ -219,7 +219,6 @@ func (rl *RequestLogger) LogRequest(request *common.Request, response *common.Re
 		return
 	}
 
-	// Non-blocking send to channel
 	select {
 	case rl.pendingWrites <- string(jsonData):
 	default:
@@ -249,33 +248,27 @@ func (rl *RequestLogger) writeToFile() error {
 	rl.currentFileMutex.Lock()
 	defer rl.currentFileMutex.Unlock()
 
-	// Non-blocking check if there are pending writes
-	select {
-	case item := <-rl.pendingWrites:
-		if rl.currentFile == nil {
-			var err error
-			rl.currentFile, err = NewTempGzipFile()
-			if err != nil {
-				return err
+	for {
+		select {
+		case item, ok := <-rl.pendingWrites:
+			if !ok {
+				return nil
 			}
-		}
-
-		if err := rl.currentFile.WriteLine([]byte(item)); err != nil {
-			return err
-		}
-
-		// Process any remaining items
-		for len(rl.pendingWrites) > 0 {
-			item := <-rl.pendingWrites
+			if rl.currentFile == nil {
+				var err error
+				rl.currentFile, err = NewTempGzipFile()
+				if err != nil {
+					return err
+				}
+			}
 			if err := rl.currentFile.WriteLine([]byte(item)); err != nil {
 				return err
 			}
+		default:
+			// No more items to write
+			return nil
 		}
-	default:
-		return nil
 	}
-
-	return nil
 }
 
 func (rl *RequestLogger) GetFile() *TempGzipFile {
@@ -305,7 +298,7 @@ func (rl *RequestLogger) rotateFile() error {
 		if err := rl.currentFile.Close(); err != nil {
 			return err
 		}
-		// Non-blocking send to channel
+
 		select {
 		case rl.files <- rl.currentFile:
 		default:

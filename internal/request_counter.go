@@ -5,15 +5,13 @@ import (
 	"sync"
 )
 
-// RequestKey is used as a map key for request metrics
-type RequestKey struct {
+type requestKey struct {
 	Consumer   string
 	Method     string
 	Path       string
 	StatusCode int
 }
 
-// RequestsItem represents aggregated request data
 type RequestsItem struct {
 	Consumer        string      `json:"consumer,omitempty"`
 	Method          string      `json:"method"`
@@ -27,33 +25,30 @@ type RequestsItem struct {
 	ResponseSizes   map[int]int `json:"response_sizes"`
 }
 
-// RequestCounter tracks and aggregates request metrics
 type RequestCounter struct {
-	requestCounts    map[RequestKey]int
-	requestSizeSums  map[RequestKey]int64
-	responseSizeSums map[RequestKey]int64
-	responseTimes    map[RequestKey]map[int]int
-	requestSizes     map[RequestKey]map[int]int
-	responseSizes    map[RequestKey]map[int]int
+	requestCounts    map[requestKey]int
+	requestSizeSums  map[requestKey]int64
+	responseSizeSums map[requestKey]int64
+	responseTimes    map[requestKey]map[int]int
+	requestSizes     map[requestKey]map[int]int
+	responseSizes    map[requestKey]map[int]int
 	mutex            sync.Mutex
 }
 
-// NewRequestCounter creates a new RequestCounter instance
 func NewRequestCounter() *RequestCounter {
 	return &RequestCounter{
-		requestCounts:    make(map[RequestKey]int),
-		requestSizeSums:  make(map[RequestKey]int64),
-		responseSizeSums: make(map[RequestKey]int64),
-		responseTimes:    make(map[RequestKey]map[int]int),
-		requestSizes:     make(map[RequestKey]map[int]int),
-		responseSizes:    make(map[RequestKey]map[int]int),
+		requestCounts:    make(map[requestKey]int),
+		requestSizeSums:  make(map[requestKey]int64),
+		responseSizeSums: make(map[requestKey]int64),
+		responseTimes:    make(map[requestKey]map[int]int),
+		requestSizes:     make(map[requestKey]map[int]int),
+		responseSizes:    make(map[requestKey]map[int]int),
 	}
 }
 
-// AddRequest adds a request to the counter
 func (rc *RequestCounter) AddRequest(consumer, method, path string, statusCode int, responseTime float64, requestSize, responseSize int64) {
 	// Generate key
-	key := RequestKey{
+	key := requestKey{
 		Consumer:   consumer,
 		Method:     method,
 		Path:       path,
@@ -94,7 +89,6 @@ func (rc *RequestCounter) AddRequest(consumer, method, path string, statusCode i
 	}
 }
 
-// GetAndResetRequests returns the current request data and resets all counters
 func (rc *RequestCounter) GetAndResetRequests() []RequestsItem {
 	rc.mutex.Lock()
 	defer rc.mutex.Unlock()
@@ -133,12 +127,12 @@ func (rc *RequestCounter) GetAndResetRequests() []RequestsItem {
 	}
 
 	// Reset all maps
-	rc.requestCounts = make(map[RequestKey]int)
-	rc.requestSizeSums = make(map[RequestKey]int64)
-	rc.responseSizeSums = make(map[RequestKey]int64)
-	rc.responseTimes = make(map[RequestKey]map[int]int)
-	rc.requestSizes = make(map[RequestKey]map[int]int)
-	rc.responseSizes = make(map[RequestKey]map[int]int)
+	rc.requestCounts = make(map[requestKey]int)
+	rc.requestSizeSums = make(map[requestKey]int64)
+	rc.responseSizeSums = make(map[requestKey]int64)
+	rc.responseTimes = make(map[requestKey]map[int]int)
+	rc.requestSizes = make(map[requestKey]map[int]int)
+	rc.responseSizes = make(map[requestKey]map[int]int)
 
 	return data
 }

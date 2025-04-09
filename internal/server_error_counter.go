@@ -18,7 +18,6 @@ const (
 var hexAddressRegex = regexp.MustCompile(`0x[0-9a-fA-F]+`)
 var goRoutineRegex = regexp.MustCompile(`goroutine \d+`)
 
-// ServerErrorsItem represents aggregated server error data
 type ServerErrorsItem struct {
 	Consumer      string  `json:"consumer,omitempty"`
 	Method        string  `json:"method"`
@@ -30,14 +29,12 @@ type ServerErrorsItem struct {
 	ErrorCount    int     `json:"error_count"`
 }
 
-// ServerErrorCounter tracks and aggregates server errors
 type ServerErrorCounter struct {
 	errorCounts  map[string]int
 	errorDetails map[string]ServerErrorsItem
 	mutex        sync.Mutex
 }
 
-// NewServerErrorCounter creates a new ServerErrorCounter instance
 func NewServerErrorCounter() *ServerErrorCounter {
 	return &ServerErrorCounter{
 		errorCounts:  make(map[string]int),
@@ -45,7 +42,6 @@ func NewServerErrorCounter() *ServerErrorCounter {
 	}
 }
 
-// AddServerError adds a server error to the counter
 func (sc *ServerErrorCounter) AddServerError(consumer, method, path string, handlerError error, stackTrace string) {
 	errorType := getErrorType(handlerError)
 	errorMessage := handlerError.Error()
@@ -58,7 +54,6 @@ func (sc *ServerErrorCounter) AddServerError(consumer, method, path string, hand
 		errorType,
 		errorMessage,
 		stripStackTraceForHashing(stackTrace))
-
 	key := fmt.Sprintf("%x", md5.Sum([]byte(hashInput)))
 
 	sc.mutex.Lock()
@@ -80,7 +75,6 @@ func (sc *ServerErrorCounter) AddServerError(consumer, method, path string, hand
 	sc.errorCounts[key]++
 }
 
-// GetAndResetServerErrors returns the current server error data and resets all counters
 func (sc *ServerErrorCounter) GetAndResetServerErrors() []ServerErrorsItem {
 	sc.mutex.Lock()
 	defer sc.mutex.Unlock()
@@ -101,8 +95,6 @@ func (sc *ServerErrorCounter) GetAndResetServerErrors() []ServerErrorsItem {
 
 	return data
 }
-
-// Helper functions
 
 func getErrorType(err error) string {
 	errorType := reflect.TypeOf(err)
