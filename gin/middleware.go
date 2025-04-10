@@ -41,13 +41,13 @@ func ApitallyMiddleware(r *gin.Engine, config *ApitallyConfig) gin.HandlerFunc {
 	// Sync should only be disabled for testing purposes
 	if !config.DisableSync {
 		client.StartSync()
-	}
 
-	// Delay startup data collection to ensure all routes are registered
-	go func() {
-		time.Sleep(time.Second)
-		client.SetStartupData(getRoutes(r), getVersions(config.AppVersion), "go:gin")
-	}()
+		// Delay startup data collection to ensure all routes are registered
+		go func() {
+			time.Sleep(time.Second)
+			client.SetStartupData(getRoutes(r), getVersions(config.AppVersion), "go:gin")
+		}()
+	}
 
 	return func(c *gin.Context) {
 		if !client.IsEnabled() {
