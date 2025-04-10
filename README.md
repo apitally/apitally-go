@@ -79,7 +79,7 @@ func main() {
     ClientId: "your-client-id",
     Env:      "dev", // or "prod" etc.
   }
-  apitally.UseApitally(r, config)
+  r.Use(apitally.ApitallyMiddleware(r, config))
 
   // ... rest of your code ...
 }
