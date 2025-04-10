@@ -7,40 +7,58 @@ import (
 	"github.com/apitally/apitally-go/common"
 )
 
+func validateConsumer(consumer *common.ApitallyConsumer) bool {
+	if consumer == nil {
+		return false
+	}
+
+	consumer.Identifier = strings.TrimSpace(consumer.Identifier)
+	if consumer.Identifier == "" {
+		return false
+	}
+
+	if len(consumer.Identifier) > 128 {
+		consumer.Identifier = consumer.Identifier[:128]
+	}
+
+	if consumer.Name != "" {
+		name := strings.TrimSpace(consumer.Name)
+		if len(name) > 64 {
+			name = name[:64]
+		}
+		consumer.Name = name
+	}
+
+	if consumer.Group != "" {
+		group := strings.TrimSpace(consumer.Group)
+		if len(group) > 64 {
+			group = group[:64]
+		}
+		consumer.Group = group
+	}
+
+	return true
+}
+
 func ConsumerFromStringOrObject(consumer any) *common.ApitallyConsumer {
 	switch v := consumer.(type) {
 	case string:
-		identifier := strings.TrimSpace(v)
-		if len(identifier) > 128 {
-			identifier = identifier[:128]
+		c := &common.ApitallyConsumer{Identifier: v}
+		if validateConsumer(c) {
+			return c
 		}
-		if identifier == "" {
-			return nil
-		}
-		return &common.ApitallyConsumer{Identifier: identifier}
+		return nil
 	case common.ApitallyConsumer:
-		v.Identifier = strings.TrimSpace(v.Identifier)
-		if v.Identifier == "" {
-			return nil
+		c := v
+		if validateConsumer(&c) {
+			return &c
 		}
-		if len(v.Identifier) > 128 {
-			v.Identifier = v.Identifier[:128]
+		return nil
+	case *common.ApitallyConsumer:
+		if validateConsumer(v) {
+			return v
 		}
-		if v.Name != "" {
-			name := strings.TrimSpace(v.Name)
-			if len(name) > 64 {
-				name = name[:64]
-			}
-			v.Name = name
-		}
-		if v.Group != "" {
-			group := strings.TrimSpace(v.Group)
-			if len(group) > 64 {
-				group = group[:64]
-			}
-			v.Group = group
-		}
-		return &v
+		return nil
 	default:
 		return nil
 	}

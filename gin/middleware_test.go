@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func setupTestApp(t *testing.T, requestLoggingEnabled bool) (*gin.Engine, *internal.ApitallyClient) {
+func setupTestApp(requestLoggingEnabled bool) *gin.Engine {
 	config := &common.ApitallyConfig{
 		ClientId: "e117eb33-f6d2-4260-a71d-31eb49425893",
 		Env:      "test",
@@ -28,12 +28,11 @@ func setupTestApp(t *testing.T, requestLoggingEnabled bool) (*gin.Engine, *inter
 			LogResponseBody:    true,
 			LogPanic:           true,
 		},
+		DisableSync: true,
 	}
-	client, err := internal.NewApitallyClient(*config)
-	assert.NoError(t, err)
 
 	r := gin.Default()
-	r.Use(ApitallyMiddleware(client))
+	r.Use(ApitallyMiddleware(r, config))
 
 	r.GET("/hello", func(c *gin.Context) {
 		c.Set("ApitallyConsumer", "tester")
@@ -66,12 +65,14 @@ func setupTestApp(t *testing.T, requestLoggingEnabled bool) (*gin.Engine, *inter
 		panic("test panic")
 	})
 
-	return r, client
+	return r
 }
 
 func TestMiddleware(t *testing.T) {
 	t.Run("RequestCounter", func(t *testing.T) {
-		r, c := setupTestApp(t, false)
+		internal.ResetApitallyClient()
+		r := setupTestApp(false)
+		c := internal.GetApitallyClient()
 		defer c.Shutdown()
 
 		w := httptest.NewRecorder()
@@ -117,7 +118,9 @@ func TestMiddleware(t *testing.T) {
 	})
 
 	t.Run("ValidationErrorCounter", func(t *testing.T) {
-		r, c := setupTestApp(t, false)
+		internal.ResetApitallyClient()
+		r := setupTestApp(false)
+		c := internal.GetApitallyClient()
 		defer c.Shutdown()
 
 		w := httptest.NewRecorder()
@@ -154,7 +157,9 @@ func TestMiddleware(t *testing.T) {
 	})
 
 	t.Run("ServerErrorCounter", func(t *testing.T) {
-		r, c := setupTestApp(t, false)
+		internal.ResetApitallyClient()
+		r := setupTestApp(false)
+		c := internal.GetApitallyClient()
 		defer c.Shutdown()
 
 		w := httptest.NewRecorder()
@@ -173,7 +178,9 @@ func TestMiddleware(t *testing.T) {
 	})
 
 	t.Run("RequestLogger", func(t *testing.T) {
-		r, c := setupTestApp(t, true)
+		internal.ResetApitallyClient()
+		r := setupTestApp(true)
+		c := internal.GetApitallyClient()
 		defer c.Shutdown()
 
 		w := httptest.NewRecorder()
