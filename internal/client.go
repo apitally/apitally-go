@@ -75,11 +75,44 @@ type ApitallyClient struct {
 	ConsumerRegistry       *ConsumerRegistry
 }
 
-func NewApitallyClient(config common.ApitallyConfig) (*ApitallyClient, error) {
-	return NewApitallyClientWithHTTPClient(config, nil)
+var (
+	instance *ApitallyClient
+	mutex    sync.Mutex
+)
+
+func GetApitallyClient() *ApitallyClient {
+	return instance
 }
 
-func NewApitallyClientWithHTTPClient(config common.ApitallyConfig, httpClient *retryablehttp.Client) (*ApitallyClient, error) {
+func ResetApitallyClient() {
+	mutex.Lock()
+	defer mutex.Unlock()
+
+	instance = nil
+}
+
+func InitApitallyClient(config common.ApitallyConfig) (*ApitallyClient, error) {
+	return InitApitallyClientWithHTTPClient(config, nil)
+}
+
+func InitApitallyClientWithHTTPClient(config common.ApitallyConfig, httpClient *retryablehttp.Client) (*ApitallyClient, error) {
+	mutex.Lock()
+	defer mutex.Unlock()
+
+	if instance != nil {
+		return instance, nil
+	}
+
+	client, err := newApitallyClient(config, httpClient)
+	if err != nil {
+		return nil, err
+	}
+
+	instance = client
+	return instance, nil
+}
+
+func newApitallyClient(config common.ApitallyConfig, httpClient *retryablehttp.Client) (*ApitallyClient, error) {
 	if !isValidClientId(config.ClientId) {
 		return nil, fmt.Errorf("invalid Apitally client ID '%s' (expecting hexadecimal UUID format)", config.ClientId)
 	}
@@ -134,7 +167,6 @@ func (c *ApitallyClient) SetStartupData(paths []common.PathInfo, versions map[st
 		Versions:     versions,
 		Client:       client,
 	}
-	c.startupDataSent = false
 }
 
 func (c *ApitallyClient) getHubUrl(endpoint string, query string) string {

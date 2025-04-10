@@ -5,10 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"regexp"
 	"runtime/debug"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/apitally/apitally-go/common"
@@ -35,7 +32,23 @@ func (w *responseBodyWriter) Write(b []byte) (int, error) {
 	return w.ResponseWriter.Write(b)
 }
 
-func ApitallyMiddleware(client *internal.ApitallyClient) gin.HandlerFunc {
+func ApitallyMiddleware(r *gin.Engine, config *ApitallyConfig) gin.HandlerFunc {
+	client, err := internal.InitApitallyClient(*config)
+	if err != nil {
+		panic(err)
+	}
+
+	// Sync should only be disabled for testing purposes
+	if !config.DisableSync {
+		client.StartSync()
+
+		// Delay startup data collection to ensure all routes are registered
+		go func() {
+			time.Sleep(time.Second)
+			client.SetStartupData(getRoutes(r), getVersions(config.AppVersion), "go:gin")
+		}()
+	}
+
 	return func(c *gin.Context) {
 		if !client.IsEnabled() {
 			c.Next()
@@ -200,52 +213,8 @@ func CaptureValidationError(c *gin.Context, err error) {
 	}
 
 	validationErrors, ok := err.(validator.ValidationErrors)
-	if !ok {
-		return
+	if ok {
+		// Store validation errors in the context for middleware
+		c.Set("ApitallyValidationErrors", validationErrors)
 	}
-
-	// Store validation errors in the context for middleware
-	c.Set("ApitallyValidationErrors", validationErrors)
-}
-
-func truncateValidationErrorMessage(msg string) string {
-	re := regexp.MustCompile(`^Key: '.+' Error:(.+)$`)
-	matches := re.FindStringSubmatch(msg)
-	if len(matches) == 2 {
-		return strings.TrimSpace(matches[1])
-	}
-	return msg
-}
-
-func getFullURL(req *http.Request) string {
-	scheme := "http"
-	if req.TLS != nil || req.Header.Get("X-Forwarded-Proto") == "https" {
-		scheme = "https"
-	}
-
-	host := req.Host
-	if host == "" {
-		host = req.Header.Get("Host")
-	}
-
-	return fmt.Sprintf("%s://%s%s", scheme, host, req.URL.String())
-}
-
-func parseContentLength(contentLength string) int64 {
-	if contentLength != "" {
-		if size, err := strconv.ParseInt(contentLength, 10, 64); err == nil {
-			return size
-		}
-	}
-	return -1
-}
-
-func transformHeaders(header http.Header) [][2]string {
-	headers := make([][2]string, 0, len(header))
-	for k, v := range header {
-		if len(v) > 0 {
-			headers = append(headers, [2]string{k, v[0]})
-		}
-	}
-	return headers
 }

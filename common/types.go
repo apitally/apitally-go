@@ -59,4 +59,7 @@ type ApitallyConfig struct {
 	Env                  string
 	RequestLoggingConfig *RequestLoggingConfig
 	AppVersion           string
+
+	// For testing purposes
+	DisableSync bool
 }

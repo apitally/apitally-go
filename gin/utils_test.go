@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestSetup(t *testing.T) {
+func TestUtils(t *testing.T) {
 	t.Run("GetRoutes", func(t *testing.T) {
 		r := gin.New()
 
