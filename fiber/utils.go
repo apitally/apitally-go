@@ -16,7 +16,8 @@ func getRoutes(app *fiber.App) []common.PathInfo {
 	paths := make([]common.PathInfo, 0, len(fiberRoutes))
 
 	for _, route := range fiberRoutes {
-		if route.Method != "HEAD" {
+		// Filter out auto-generated routes
+		if route.Method != "HEAD" && route.Path != "/" {
 			paths = append(paths, common.PathInfo{
 				Method: route.Method,
 				Path:   route.Path,
