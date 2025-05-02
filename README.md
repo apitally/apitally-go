@@ -24,6 +24,7 @@
 
 This SDK for Apitally currently supports the following Go web frameworks:
 
+- [Fiber](https://docs.apitally.io/frameworks/fiber)
 - [Gin](https://docs.apitally.io/frameworks/gin)
 
 Learn more about Apitally on our 🌎 [website](https://apitally.io) or check out
@@ -80,6 +81,31 @@ func main() {
     Env:      "dev", // or "prod" etc.
   }
   r.Use(apitally.ApitallyMiddleware(r, config))
+
+  // ... rest of your code ...
+}
+```
+
+### Fiber
+
+This is an example of how to use the Apitally middleware with a Fiber
+application. For further instructions, see our
+[setup guide for Fiber](https://docs.apitally.io/frameworks/fiber).
+
+```go
+import (
+  apitally "github.com/apitally/apitally-go/fiber"
+  "github.com/gofiber/fiber/v2"
+)
+
+func main() {
+  app := fiber.New()
+
+  config := &apitally.ApitallyConfig{
+    ClientId: "your-client-id",
+    Env:      "dev", // or "prod" etc.
+  }
+  app.Use(apitally.ApitallyMiddleware(app, config))
 
   // ... rest of your code ...
 }
