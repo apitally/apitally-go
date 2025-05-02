@@ -60,6 +60,7 @@ type ApitallyClient struct {
 	instanceUUID    string
 	httpClient      *retryablehttp.Client
 	syncDataChan    chan SyncPayload
+	syncStarted     bool
 	syncStopped     bool
 	startupData     *StartupPayload
 	startupDataSent bool
@@ -204,6 +205,7 @@ func (c *ApitallyClient) sync() {
 }
 
 func (c *ApitallyClient) StartSync() {
+	c.syncStarted = true
 	c.RequestLogger.StartMaintenance()
 
 	go func() {
@@ -244,8 +246,11 @@ func (c *ApitallyClient) Shutdown() {
 	c.enabled = false
 	c.stopSync()
 
-	c.sendSyncData()
-	c.sendLogData()
+	if c.syncStarted {
+		c.sendSyncData()
+		c.sendLogData()
+	}
+
 	c.RequestLogger.Close()
 	c.httpClient.HTTPClient.CloseIdleConnections()
 }
