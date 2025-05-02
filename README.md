@@ -61,31 +61,6 @@ email, Slack or Microsoft Teams.
 Our comprehensive [setup guides](https://docs.apitally.io/quickstart) include
 all the details you need to get started.
 
-### Gin
-
-This is an example of how to use the Apitally middleware with a Gin application.
-For further instructions, see our
-[setup guide for Gin](https://docs.apitally.io/frameworks/gin).
-
-```go
-import (
-  apitally "github.com/apitally/apitally-go/gin"
-  "github.com/gin-gonic/gin"
-)
-
-func main() {
-  r := gin.Default()
-
-  config := &apitally.ApitallyConfig{
-    ClientId: "your-client-id",
-    Env:      "dev", // or "prod" etc.
-  }
-  r.Use(apitally.ApitallyMiddleware(r, config))
-
-  // ... rest of your code ...
-}
-```
-
 ### Fiber
 
 This is an example of how to use the Apitally middleware with a Fiber
@@ -106,6 +81,31 @@ func main() {
     Env:      "dev", // or "prod" etc.
   }
   app.Use(apitally.ApitallyMiddleware(app, config))
+
+  // ... rest of your code ...
+}
+```
+
+### Gin
+
+This is an example of how to use the Apitally middleware with a Gin application.
+For further instructions, see our
+[setup guide for Gin](https://docs.apitally.io/frameworks/gin).
+
+```go
+import (
+  apitally "github.com/apitally/apitally-go/gin"
+  "github.com/gin-gonic/gin"
+)
+
+func main() {
+  r := gin.Default()
+
+  config := &apitally.ApitallyConfig{
+    ClientId: "your-client-id",
+    Env:      "dev", // or "prod" etc.
+  }
+  r.Use(apitally.ApitallyMiddleware(r, config))
 
   // ... rest of your code ...
 }
