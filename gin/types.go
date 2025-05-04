@@ -1,4 +1,4 @@
-package gin
+package apitally
 
 import (
 	"github.com/apitally/apitally-go/common"
