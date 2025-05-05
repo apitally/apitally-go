@@ -1,0 +1,40 @@
+name: Publish
+on:
+  release:
+    types: [published]
+permissions:
+  id-token: write
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Create release tags for submodules
+        run: |
+          VERSION=${{ github.event.release.tag_name }}
+          BRANCH=release-$VERSION
+          git checkout -b "$BRANCH"
+          for mod in */go.mod; do
+            dir=$(dirname "$mod")
+            sed -E -i 's|github.com/apitally/apitally-go v0.0.0|github.com/apitally/apitally-go '$VERSION'|' "$mod"
+            (cd "$dir" && go mod tidy) || exit 1
+            git add "$mod" "$dir/go.sum"
+          done
+          git commit -m "chore: release version $VERSION"
+          for mod in */go.mod; do
+            dir=$(dirname "$mod")
+            tag="$dir/$VERSION"
+            git tag "$tag"
+            git push origin "$tag"
+          done
