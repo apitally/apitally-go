@@ -1,6 +1,7 @@
 package apitally
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"runtime/debug"
@@ -178,8 +179,8 @@ func CaptureValidationError(c *fiber.Ctx, err error) {
 		return
 	}
 
-	validationErrors, ok := err.(validator.ValidationErrors)
-	if ok {
+	var validationErrors validator.ValidationErrors
+	if errors.As(err, &validationErrors) {
 		c.Locals("ApitallyValidationErrors", validationErrors)
 	}
 }

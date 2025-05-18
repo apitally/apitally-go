@@ -3,6 +3,7 @@ package apitally
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -235,8 +236,8 @@ func CaptureValidationError(r *http.Request, err error) {
 		return
 	}
 
-	validationErrors, ok := err.(validator.ValidationErrors)
-	if ok {
+	var validationErrors validator.ValidationErrors
+	if errors.As(err, &validationErrors) {
 		ctx := r.Context()
 		*r = *r.WithContext(context.WithValue(ctx, validationErrorsKey, validationErrors))
 	}

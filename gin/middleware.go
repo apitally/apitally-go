@@ -2,6 +2,7 @@ package apitally
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -225,8 +226,8 @@ func CaptureValidationError(c *gin.Context, err error) {
 		return
 	}
 
-	validationErrors, ok := err.(validator.ValidationErrors)
-	if ok {
+	var validationErrors validator.ValidationErrors
+	if errors.As(err, &validationErrors) {
 		// Store validation errors in the context for middleware
 		c.Set("ApitallyValidationErrors", validationErrors)
 	}
