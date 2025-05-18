@@ -41,11 +41,12 @@ func ApitallyMiddleware(app *fiber.App, config *ApitallyConfig) fiber.Handler {
 
 		// Cache request body if needed
 		var requestBody []byte
-		if requestSize == -1 ||
-			(client.Config.RequestLoggingConfig != nil &&
-				client.Config.RequestLoggingConfig.Enabled &&
-				client.Config.RequestLoggingConfig.LogRequestBody &&
-				client.RequestLogger.IsSupportedContentType(c.Get("Content-Type"))) {
+		if requestSize <= internal.MaxBodySize &&
+			(requestSize == -1 ||
+				(client.Config.RequestLoggingConfig != nil &&
+					client.Config.RequestLoggingConfig.Enabled &&
+					client.Config.RequestLoggingConfig.LogRequestBody &&
+					client.RequestLogger.IsSupportedContentType(c.Get("Content-Type")))) {
 			requestBody = slices.Clone(c.Request().Body())
 			if requestSize == -1 {
 				requestSize = int64(len(requestBody))

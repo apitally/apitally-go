@@ -16,9 +16,11 @@ import (
 
 type responseBodyWriter struct {
 	gin.ResponseWriter
+	size                   int64
 	body                   *bytes.Buffer
 	shouldCaptureBody      *bool
 	isSupportedContentType func(string) bool
+	exceededMaxSize        bool
 }
 
 func (w *responseBodyWriter) Write(b []byte) (int, error) {
@@ -26,10 +28,21 @@ func (w *responseBodyWriter) Write(b []byte) (int, error) {
 		w.shouldCaptureBody = new(bool)
 		*w.shouldCaptureBody = w.isSupportedContentType(w.Header().Get("Content-Type"))
 	}
-	if *w.shouldCaptureBody {
-		w.body.Write(b)
+	if *w.shouldCaptureBody && !w.exceededMaxSize {
+		if w.body.Len()+len(b) <= internal.MaxBodySize {
+			w.body.Write(b)
+		} else {
+			w.body.Reset()
+			w.exceededMaxSize = true
+		}
 	}
-	return w.ResponseWriter.Write(b)
+	n, err := w.ResponseWriter.Write(b)
+	w.size += int64(n)
+	return n, err
+}
+
+func (w *responseBodyWriter) Size() int {
+	return int(w.size)
 }
 
 func ApitallyMiddleware(r *gin.Engine, config *ApitallyConfig) gin.HandlerFunc {
@@ -63,7 +76,7 @@ func ApitallyMiddleware(r *gin.Engine, config *ApitallyConfig) gin.HandlerFunc {
 
 		// Cache request body if needed
 		var requestBody []byte
-		if c.Request.Body != nil &&
+		if c.Request.Body != nil && requestSize <= internal.MaxBodySize &&
 			(requestSize == -1 ||
 				(client.Config.RequestLoggingConfig != nil &&
 					client.Config.RequestLoggingConfig.Enabled &&

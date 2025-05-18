@@ -20,7 +20,6 @@ type contextKey string
 const (
 	validationErrorsKey contextKey = "ApitallyValidationErrors"
 	consumerKey         contextKey = "ApitallyConsumer"
-	maxBodySize                    = 50_000 // 50 KB (uncompressed)
 )
 
 type responseWriter struct {
@@ -44,7 +43,7 @@ func (w *responseWriter) Write(b []byte) (int, error) {
 		*w.shouldCaptureBody = w.isSupportedContentType(w.Header().Get("Content-Type"))
 	}
 	if *w.shouldCaptureBody && !w.exceededMaxSize {
-		if w.body.Len()+len(b) <= maxBodySize {
+		if w.body.Len()+len(b) <= internal.MaxBodySize {
 			w.body.Write(b)
 		} else {
 			w.body.Reset()
@@ -96,7 +95,7 @@ func ApitallyMiddleware(r chi.Router, config *ApitallyConfig) func(http.Handler)
 
 			// Cache request body if needed
 			var requestBody []byte
-			if r.Body != nil && requestSize <= maxBodySize &&
+			if r.Body != nil && requestSize <= internal.MaxBodySize &&
 				(requestSize == -1 ||
 					(client.Config.RequestLoggingConfig != nil &&
 						client.Config.RequestLoggingConfig.Enabled &&
