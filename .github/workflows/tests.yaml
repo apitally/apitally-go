@@ -47,7 +47,7 @@ jobs:
       fail-fast: false
       matrix:
         go-version: ["1.21", "1.22", "1.23", "1.24"]
-        framework: ["gin", "fiber"]
+        framework: ["chi", "gin", "fiber"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

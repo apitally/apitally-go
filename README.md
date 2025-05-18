@@ -24,6 +24,7 @@
 
 This SDK for Apitally currently supports the following Go web frameworks:
 
+- [Chi](https://docs.apitally.io/frameworks/chi)
 - [Fiber](https://docs.apitally.io/frameworks/fiber)
 - [Gin](https://docs.apitally.io/frameworks/gin)
 
@@ -60,6 +61,31 @@ email, Slack or Microsoft Teams.
 
 Our comprehensive [setup guides](https://docs.apitally.io/quickstart) include
 all the details you need to get started.
+
+### Chi
+
+This is an example of how to use the Apitally middleware with a Chi
+application. For further instructions, see our
+[setup guide for Chi](https://docs.apitally.io/frameworks/chi).
+
+```go
+import (
+  apitally "github.com/apitally/apitally-go/chi"
+  "github.com/go-chi/chi/v5"
+)
+
+func main() {
+  r := chi.NewRouter()
+
+  config := &apitally.ApitallyConfig{
+    ClientId: "your-client-id",
+    Env:      "dev", // or "prod" etc.
+  }
+  r.Use(apitally.ApitallyMiddleware(r, config))
+
+  // ... rest of your code ...
+}
+```
 
 ### Fiber
 

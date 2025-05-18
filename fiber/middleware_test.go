@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"slices"
+
 	"github.com/apitally/apitally-go/internal"
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
@@ -94,7 +96,7 @@ func TestMiddleware(t *testing.T) {
 		requests := c.RequestCounter.GetAndResetRequests()
 		assert.Len(t, requests, 3)
 
-		assert.True(t, containsRequest(requests, func(r internal.RequestsItem) bool {
+		assert.True(t, slices.ContainsFunc(requests, func(r internal.RequestsItem) bool {
 			return r.Consumer == "tester" &&
 				r.Method == "GET" &&
 				r.Path == "/hello" &&
@@ -102,14 +104,14 @@ func TestMiddleware(t *testing.T) {
 				r.RequestSizeSum == int64(0) &&
 				r.ResponseSizeSum > int64(0)
 		}))
-		assert.True(t, containsRequest(requests, func(r internal.RequestsItem) bool {
+		assert.True(t, slices.ContainsFunc(requests, func(r internal.RequestsItem) bool {
 			return r.Consumer == "tester" &&
 				r.Method == "POST" &&
 				r.Path == "/hello" &&
 				r.StatusCode == http.StatusOK &&
 				r.RequestSizeSum == int64(16)
 		}))
-		assert.True(t, containsRequest(requests, func(r internal.RequestsItem) bool {
+		assert.True(t, slices.ContainsFunc(requests, func(r internal.RequestsItem) bool {
 			return r.Method == "GET" &&
 				r.Path == "/error" &&
 				r.StatusCode == http.StatusInternalServerError
@@ -135,7 +137,7 @@ func TestMiddleware(t *testing.T) {
 		validationErrors := c.ValidationErrorCounter.GetAndResetValidationErrors()
 		assert.Len(t, validationErrors, 2)
 
-		assert.True(t, containsValidationError(validationErrors, func(r internal.ValidationErrorsItem) bool {
+		assert.True(t, slices.ContainsFunc(validationErrors, func(r internal.ValidationErrorsItem) bool {
 			return r.Consumer == "tester" &&
 				r.Method == "POST" &&
 				r.Path == "/hello" &&
@@ -143,7 +145,7 @@ func TestMiddleware(t *testing.T) {
 				r.Msg == "Field validation for 'Name' failed on the 'required' tag" &&
 				r.Type == "required"
 		}))
-		assert.True(t, containsValidationError(validationErrors, func(r internal.ValidationErrorsItem) bool {
+		assert.True(t, slices.ContainsFunc(validationErrors, func(r internal.ValidationErrorsItem) bool {
 			return r.Consumer == "tester" &&
 				r.Method == "POST" &&
 				r.Path == "/hello" &&
@@ -241,22 +243,4 @@ func TestMiddleware(t *testing.T) {
 		assert.Equal(t, "test panic", errorLogItem.Exception.Message)
 		assert.Contains(t, errorLogItem.Exception.StackTrace, "panic")
 	})
-}
-
-func containsRequest(requests []internal.RequestsItem, match func(internal.RequestsItem) bool) bool {
-	for _, r := range requests {
-		if match(r) {
-			return true
-		}
-	}
-	return false
-}
-
-func containsValidationError(errors []internal.ValidationErrorsItem, match func(internal.ValidationErrorsItem) bool) bool {
-	for _, r := range errors {
-		if match(r) {
-			return true
-		}
-	}
-	return false
 }
