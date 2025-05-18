@@ -91,7 +91,7 @@ func ApitallyMiddleware(r chi.Router, config *ApitallyConfig) func(http.Handler)
 			}
 
 			// Determine request size
-			requestSize := parseContentLength(r.Header.Get("Content-Length"))
+			requestSize := common.ParseContentLength(r.Header.Get("Content-Length"))
 
 			// Cache request body if needed
 			var requestBody []byte
@@ -151,7 +151,7 @@ func ApitallyMiddleware(r chi.Router, config *ApitallyConfig) func(http.Handler)
 				}
 
 				// Determine response size
-				responseSize := parseContentLength(rw.Header().Get("Content-Length"))
+				responseSize := common.ParseContentLength(rw.Header().Get("Content-Length"))
 				if responseSize == -1 {
 					responseSize = rw.Size()
 				}
@@ -178,7 +178,7 @@ func ApitallyMiddleware(r chi.Router, config *ApitallyConfig) func(http.Handler)
 									r.Method,
 									routePattern,
 									fieldError.Field(),
-									truncateValidationErrorMessage(fieldError.Error()),
+									common.TruncateValidationErrorMessage(fieldError.Error()),
 									fieldError.Tag(),
 								)
 							}
@@ -204,15 +204,15 @@ func ApitallyMiddleware(r chi.Router, config *ApitallyConfig) func(http.Handler)
 						Consumer:  consumerIdentifier,
 						Method:    r.Method,
 						Path:      routePattern,
-						URL:       getFullURL(r),
-						Headers:   transformHeaders(r.Header),
+						URL:       common.GetFullURL(r),
+						Headers:   common.TransformHeaders(r.Header),
 						Size:      requestSize,
 						Body:      requestBody,
 					}
 					response := common.Response{
 						StatusCode:   statusCode,
 						ResponseTime: float64(duration.Milliseconds()) / 1000.0,
-						Headers:      transformHeaders(rw.Header()),
+						Headers:      common.TransformHeaders(rw.Header()),
 						Size:         responseSize,
 						Body:         responseBody.Bytes(),
 					}

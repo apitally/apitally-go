@@ -72,7 +72,7 @@ func ApitallyMiddleware(r *gin.Engine, config *ApitallyConfig) gin.HandlerFunc {
 		routePattern := c.FullPath()
 
 		// Determine request size
-		requestSize := parseContentLength(c.Request.Header.Get("Content-Length"))
+		requestSize := common.ParseContentLength(c.Request.Header.Get("Content-Length"))
 
 		// Cache request body if needed
 		var requestBody []byte
@@ -137,7 +137,7 @@ func ApitallyMiddleware(r *gin.Engine, config *ApitallyConfig) gin.HandlerFunc {
 			}
 
 			// Determine response size
-			responseSize := parseContentLength(c.Writer.Header().Get("Content-Length"))
+			responseSize := common.ParseContentLength(c.Writer.Header().Get("Content-Length"))
 			if responseSize == -1 {
 				responseSize = int64(c.Writer.Size())
 			}
@@ -164,7 +164,7 @@ func ApitallyMiddleware(r *gin.Engine, config *ApitallyConfig) gin.HandlerFunc {
 								c.Request.Method,
 								routePattern,
 								fieldError.Field(),
-								truncateValidationErrorMessage(fieldError.Error()),
+								common.TruncateValidationErrorMessage(fieldError.Error()),
 								fieldError.Tag(),
 							)
 						}
@@ -190,15 +190,15 @@ func ApitallyMiddleware(r *gin.Engine, config *ApitallyConfig) gin.HandlerFunc {
 					Consumer:  consumerIdentifier,
 					Method:    c.Request.Method,
 					Path:      routePattern,
-					URL:       getFullURL(c.Request),
-					Headers:   transformHeaders(c.Request.Header),
+					URL:       common.GetFullURL(c.Request),
+					Headers:   common.TransformHeaders(c.Request.Header),
 					Size:      requestSize,
 					Body:      requestBody,
 				}
 				response := common.Response{
 					StatusCode:   statusCode,
 					ResponseTime: float64(duration.Milliseconds()) / 1000.0,
-					Headers:      transformHeaders(c.Writer.Header()),
+					Headers:      common.TransformHeaders(c.Writer.Header()),
 					Size:         responseSize,
 					Body:         responseBody.Bytes(),
 				}

@@ -37,7 +37,7 @@ func ApitallyMiddleware(app *fiber.App, config *ApitallyConfig) fiber.Handler {
 		}
 
 		// Determine request size
-		requestSize := parseContentLength(c.Get("Content-Length"))
+		requestSize := common.ParseContentLength(c.Get("Content-Length"))
 
 		// Cache request body if needed
 		var requestBody []byte
@@ -86,7 +86,7 @@ func ApitallyMiddleware(app *fiber.App, config *ApitallyConfig) fiber.Handler {
 			}
 
 			// Determine response size
-			responseSize := parseContentLength(c.GetRespHeader("Content-Length"))
+			responseSize := common.ParseContentLength(c.GetRespHeader("Content-Length"))
 
 			// Cache response body if needed
 			var responseBody []byte
@@ -122,7 +122,7 @@ func ApitallyMiddleware(app *fiber.App, config *ApitallyConfig) fiber.Handler {
 								method,
 								path,
 								fieldError.Field(),
-								truncateValidationErrorMessage(fieldError.Error()),
+								common.TruncateValidationErrorMessage(fieldError.Error()),
 								fieldError.Tag(),
 							)
 						}
