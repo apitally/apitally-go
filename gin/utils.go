@@ -53,13 +53,7 @@ func getFullURL(req *http.Request) string {
 	if req.TLS != nil || req.Header.Get("X-Forwarded-Proto") == "https" {
 		scheme = "https"
 	}
-
-	host := req.Host
-	if host == "" {
-		host = req.Header.Get("Host")
-	}
-
-	return fmt.Sprintf("%s://%s%s", scheme, host, req.URL.String())
+	return fmt.Sprintf("%s://%s%s", scheme, req.Host, req.URL.String())
 }
 
 func parseContentLength(contentLength string) int64 {

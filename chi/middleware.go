@@ -84,9 +84,6 @@ func ApitallyMiddleware(r chi.Router, config *ApitallyConfig) func(http.Handler)
 				return
 			}
 
-			// Get route pattern
-			routePattern := getRoutePattern(r)
-
 			// Determine request size
 			requestSize := parseContentLength(r.Header.Get("Content-Length"))
 
@@ -120,6 +117,7 @@ func ApitallyMiddleware(r chi.Router, config *ApitallyConfig) func(http.Handler)
 
 			defer func() {
 				duration := time.Since(start)
+				routePattern := getRoutePattern(r)
 				statusCode := rw.Status()
 
 				// Capture error from panic if any

@@ -27,14 +27,12 @@ func getRoutes(r chi.Router) []common.PathInfo {
 
 func getVersions(appVersion string) map[string]string {
 	versions := map[string]string{
-		"go":  runtime.Version(),
-		"chi": "v5", // Chi doesn't expose version info
+		"go": runtime.Version(),
+		// Chi currently doesn't expose version info
 	}
-
 	if appVersion != "" {
 		versions["app"] = strings.TrimSpace(appVersion)
 	}
-
 	return versions
 }
 
@@ -47,18 +45,12 @@ func truncateValidationErrorMessage(msg string) string {
 	return msg
 }
 
-func getFullURL(r *http.Request) string {
+func getFullURL(req *http.Request) string {
 	scheme := "http"
-	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+	if req.TLS != nil || req.Header.Get("X-Forwarded-Proto") == "https" {
 		scheme = "https"
 	}
-
-	host := r.Host
-	if host == "" {
-		host = r.Header.Get("Host")
-	}
-
-	return fmt.Sprintf("%s://%s%s", scheme, host, r.URL.String())
+	return fmt.Sprintf("%s://%s%s", scheme, req.Host, req.URL.String())
 }
 
 func parseContentLength(contentLength string) int64 {
@@ -81,8 +73,9 @@ func transformHeaders(header http.Header) [][2]string {
 }
 
 func getRoutePattern(r *http.Request) string {
-	if routePattern := chi.RouteContext(r.Context()).RoutePattern(); routePattern != "" {
-		return routePattern
+	rctx := chi.RouteContext(r.Context())
+	if rctx == nil {
+		return ""
 	}
-	return r.URL.Path
+	return rctx.RoutePattern()
 }
