@@ -15,7 +15,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-func ApitallyMiddleware(app *fiber.App, config *ApitallyConfig) fiber.Handler {
+func Middleware(app *fiber.App, config *Config) fiber.Handler {
 	client, err := internal.InitApitallyClient(*config)
 	if err != nil {
 		panic(err)
@@ -174,6 +174,9 @@ func ApitallyMiddleware(app *fiber.App, config *ApitallyConfig) fiber.Handler {
 	}
 }
 
+// Alias for backwards compatibility
+var ApitallyMiddleware = Middleware
+
 func CaptureValidationError(c *fiber.Ctx, err error) {
 	if err == nil {
 		return
@@ -183,4 +186,12 @@ func CaptureValidationError(c *fiber.Ctx, err error) {
 	if errors.As(err, &validationErrors) {
 		c.Locals("ApitallyValidationErrors", validationErrors)
 	}
+}
+
+func SetConsumerIdentifier(c *fiber.Ctx, consumerIdentifier string) {
+	c.Locals("ApitallyConsumer", consumerIdentifier)
+}
+
+func SetConsumer(c *fiber.Ctx, consumer common.Consumer) {
+	c.Locals("ApitallyConsumer", consumer)
 }

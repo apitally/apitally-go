@@ -118,7 +118,7 @@ func truncateExceptionStackTrace(stackTrace string) string {
 	cutoff := maxStacktraceLength - len(suffix)
 	lines := strings.Split(strings.TrimSpace(stackTrace), "\n")
 	if len(lines) > 5 {
-		// Remove lines related to ApitallyMiddleware recovering and re-panicking
+		// Remove lines related to Apitally middleware recovering and re-panicking
 		lines = slices.Delete(lines, 1, 5)
 	}
 	var truncatedLines []string

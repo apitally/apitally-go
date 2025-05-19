@@ -7,7 +7,7 @@ import (
 	"github.com/apitally/apitally-go/common"
 )
 
-func validateConsumer(consumer *common.ApitallyConsumer) bool {
+func validateConsumer(consumer *common.Consumer) bool {
 	if consumer == nil {
 		return false
 	}
@@ -40,21 +40,21 @@ func validateConsumer(consumer *common.ApitallyConsumer) bool {
 	return true
 }
 
-func ConsumerFromStringOrObject(consumer any) *common.ApitallyConsumer {
+func ConsumerFromStringOrObject(consumer any) *common.Consumer {
 	switch v := consumer.(type) {
 	case string:
-		c := &common.ApitallyConsumer{Identifier: v}
+		c := &common.Consumer{Identifier: v}
 		if validateConsumer(c) {
 			return c
 		}
 		return nil
-	case common.ApitallyConsumer:
+	case common.Consumer:
 		c := v
 		if validateConsumer(&c) {
 			return &c
 		}
 		return nil
-	case *common.ApitallyConsumer:
+	case *common.Consumer:
 		if validateConsumer(v) {
 			return v
 		}
@@ -65,19 +65,19 @@ func ConsumerFromStringOrObject(consumer any) *common.ApitallyConsumer {
 }
 
 type ConsumerRegistry struct {
-	consumers map[string]*common.ApitallyConsumer
+	consumers map[string]*common.Consumer
 	updated   map[string]bool
 	mutex     sync.Mutex
 }
 
 func NewConsumerRegistry() *ConsumerRegistry {
 	return &ConsumerRegistry{
-		consumers: make(map[string]*common.ApitallyConsumer),
+		consumers: make(map[string]*common.Consumer),
 		updated:   make(map[string]bool),
 	}
 }
 
-func (r *ConsumerRegistry) AddOrUpdateConsumer(consumer *common.ApitallyConsumer) {
+func (r *ConsumerRegistry) AddOrUpdateConsumer(consumer *common.Consumer) {
 	if consumer == nil || (consumer.Name == "" && consumer.Group == "") {
 		return
 	}
@@ -102,11 +102,11 @@ func (r *ConsumerRegistry) AddOrUpdateConsumer(consumer *common.ApitallyConsumer
 	}
 }
 
-func (r *ConsumerRegistry) GetAndResetUpdatedConsumers() []*common.ApitallyConsumer {
+func (r *ConsumerRegistry) GetAndResetUpdatedConsumers() []*common.Consumer {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	data := make([]*common.ApitallyConsumer, 0, len(r.updated))
+	data := make([]*common.Consumer, 0, len(r.updated))
 	for identifier := range r.updated {
 		if consumer, exists := r.consumers[identifier]; exists {
 			data = append(data, consumer)

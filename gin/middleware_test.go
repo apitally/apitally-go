@@ -16,7 +16,7 @@ import (
 )
 
 func setupTestApp(requestLoggingEnabled bool) *gin.Engine {
-	config := &common.ApitallyConfig{
+	config := &common.Config{
 		ClientId: "e117eb33-f6d2-4260-a71d-31eb49425893",
 		Env:      "test",
 		RequestLoggingConfig: &common.RequestLoggingConfig{
@@ -32,17 +32,17 @@ func setupTestApp(requestLoggingEnabled bool) *gin.Engine {
 	}
 
 	r := gin.Default()
-	r.Use(ApitallyMiddleware(r, config))
+	r.Use(Middleware(r, config))
 
 	r.GET("/hello", func(c *gin.Context) {
-		c.Set("ApitallyConsumer", "tester")
+		SetConsumerIdentifier(c, "tester")
 		c.JSON(http.StatusOK, gin.H{
 			"message": "Hello, World!",
 		})
 	})
 
 	r.POST("/hello", func(c *gin.Context) {
-		c.Set("ApitallyConsumer", ApitallyConsumer{
+		SetConsumer(c, common.Consumer{
 			Identifier: "tester",
 			Name:       "Tester",
 			Group:      "Test Group",

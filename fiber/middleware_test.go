@@ -18,7 +18,7 @@ import (
 )
 
 func setupTestApp(requestLoggingEnabled bool) *fiber.App {
-	config := &ApitallyConfig{
+	config := &Config{
 		ClientId: "e117eb33-f6d2-4260-a71d-31eb49425893",
 		Env:      "test",
 		RequestLoggingConfig: &RequestLoggingConfig{
@@ -35,15 +35,15 @@ func setupTestApp(requestLoggingEnabled bool) *fiber.App {
 
 	app := fiber.New()
 	app.Use(recover.New())
-	app.Use(ApitallyMiddleware(app, config))
+	app.Use(Middleware(app, config))
 
 	app.Get("/hello", func(c *fiber.Ctx) error {
-		c.Locals("ApitallyConsumer", "tester")
+		SetConsumerIdentifier(c, "tester")
 		return c.JSON(fiber.Map{"message": "Hello, World!"})
 	})
 
 	app.Post("/hello", func(c *fiber.Ctx) error {
-		c.Locals("ApitallyConsumer", ApitallyConsumer{
+		SetConsumer(c, Consumer{
 			Identifier: "tester",
 			Name:       "Tester",
 			Group:      "Test Group",

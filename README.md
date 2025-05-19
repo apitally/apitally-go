@@ -77,11 +77,11 @@ import (
 func main() {
   r := chi.NewRouter()
 
-  config := &apitally.ApitallyConfig{
+  config := &apitally.Config{
     ClientId: "your-client-id",
     Env:      "dev", // or "prod" etc.
   }
-  r.Use(apitally.ApitallyMiddleware(r, config))
+  r.Use(apitally.Middleware(r, config))
 
   // ... rest of your code ...
 }
@@ -102,11 +102,11 @@ import (
 func main() {
   app := fiber.New()
 
-  config := &apitally.ApitallyConfig{
+  config := &apitally.Config{
     ClientId: "your-client-id",
     Env:      "dev", // or "prod" etc.
   }
-  app.Use(apitally.ApitallyMiddleware(app, config))
+  app.Use(apitally.Middleware(app, config))
 
   // ... rest of your code ...
 }
@@ -127,11 +127,11 @@ import (
 func main() {
   r := gin.Default()
 
-  config := &apitally.ApitallyConfig{
+  config := &apitally.Config{
     ClientId: "your-client-id",
     Env:      "dev", // or "prod" etc.
   }
-  r.Use(apitally.ApitallyMiddleware(r, config))
+  r.Use(apitally.Middleware(r, config))
 
   // ... rest of your code ...
 }

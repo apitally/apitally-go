@@ -28,13 +28,13 @@ const (
 )
 
 type SyncPayload struct {
-	Timestamp        float64                    `json:"timestamp"`
-	InstanceUUID     string                     `json:"instance_uuid"`
-	MessageUUID      string                     `json:"message_uuid"`
-	Requests         []RequestsItem             `json:"requests"`
-	ValidationErrors []ValidationErrorsItem     `json:"validation_errors,omitempty"`
-	ServerErrors     []ServerErrorsItem         `json:"server_errors,omitempty"`
-	Consumers        []*common.ApitallyConsumer `json:"consumers,omitempty"`
+	Timestamp        float64                `json:"timestamp"`
+	InstanceUUID     string                 `json:"instance_uuid"`
+	MessageUUID      string                 `json:"message_uuid"`
+	Requests         []RequestsItem         `json:"requests"`
+	ValidationErrors []ValidationErrorsItem `json:"validation_errors,omitempty"`
+	ServerErrors     []ServerErrorsItem     `json:"server_errors,omitempty"`
+	Consumers        []*common.Consumer     `json:"consumers,omitempty"`
 }
 
 type StartupPayload struct {
@@ -68,7 +68,7 @@ type ApitallyClient struct {
 	done            chan struct{}
 	mutex           sync.Mutex
 
-	Config                 common.ApitallyConfig
+	Config                 common.Config
 	RequestCounter         *RequestCounter
 	RequestLogger          *RequestLogger
 	ValidationErrorCounter *ValidationErrorCounter
@@ -92,11 +92,11 @@ func ResetApitallyClient() {
 	instance = nil
 }
 
-func InitApitallyClient(config common.ApitallyConfig) (*ApitallyClient, error) {
+func InitApitallyClient(config common.Config) (*ApitallyClient, error) {
 	return InitApitallyClientWithHTTPClient(config, nil)
 }
 
-func InitApitallyClientWithHTTPClient(config common.ApitallyConfig, httpClient *retryablehttp.Client) (*ApitallyClient, error) {
+func InitApitallyClientWithHTTPClient(config common.Config, httpClient *retryablehttp.Client) (*ApitallyClient, error) {
 	mutex.Lock()
 	defer mutex.Unlock()
 
@@ -113,7 +113,7 @@ func InitApitallyClientWithHTTPClient(config common.ApitallyConfig, httpClient *
 	return instance, nil
 }
 
-func newApitallyClient(config common.ApitallyConfig, httpClient *retryablehttp.Client) (*ApitallyClient, error) {
+func newApitallyClient(config common.Config, httpClient *retryablehttp.Client) (*ApitallyClient, error) {
 	if !isValidClientId(config.ClientId) {
 		return nil, fmt.Errorf("invalid Apitally client ID '%s' (expecting hexadecimal UUID format)", config.ClientId)
 	}

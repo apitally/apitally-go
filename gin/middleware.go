@@ -46,7 +46,7 @@ func (w *responseBodyWriter) Size() int {
 	return int(w.size)
 }
 
-func ApitallyMiddleware(r *gin.Engine, config *ApitallyConfig) gin.HandlerFunc {
+func Middleware(r *gin.Engine, config *Config) gin.HandlerFunc {
 	client, err := internal.InitApitallyClient(*config)
 	if err != nil {
 		panic(err)
@@ -221,6 +221,9 @@ func ApitallyMiddleware(r *gin.Engine, config *ApitallyConfig) gin.HandlerFunc {
 	}
 }
 
+// Alias for backwards compatibility
+var ApitallyMiddleware = Middleware
+
 func CaptureValidationError(c *gin.Context, err error) {
 	if err == nil {
 		return
@@ -231,4 +234,12 @@ func CaptureValidationError(c *gin.Context, err error) {
 		// Store validation errors in the context for middleware
 		c.Set("ApitallyValidationErrors", validationErrors)
 	}
+}
+
+func SetConsumerIdentifier(c *gin.Context, consumerIdentifier string) {
+	c.Set("ApitallyConsumer", consumerIdentifier)
+}
+
+func SetConsumer(c *gin.Context, consumer common.Consumer) {
+	c.Set("ApitallyConsumer", consumer)
 }

@@ -19,7 +19,7 @@ import (
 )
 
 func setupTestApp(requestLoggingEnabled bool) *chi.Mux {
-	config := &common.ApitallyConfig{
+	config := &common.Config{
 		ClientId: "e117eb33-f6d2-4260-a71d-31eb49425893",
 		Env:      "test",
 		RequestLoggingConfig: &common.RequestLoggingConfig{
@@ -36,7 +36,7 @@ func setupTestApp(requestLoggingEnabled bool) *chi.Mux {
 
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
-	r.Use(ApitallyMiddleware(r, config))
+	r.Use(Middleware(r, config))
 
 	r.Get("/hello", func(w http.ResponseWriter, r *http.Request) {
 		ctx := context.WithValue(r.Context(), consumerKey, "tester")
@@ -47,7 +47,7 @@ func setupTestApp(requestLoggingEnabled bool) *chi.Mux {
 	})
 
 	r.Post("/hello", func(w http.ResponseWriter, r *http.Request) {
-		ctx := context.WithValue(r.Context(), consumerKey, ApitallyConsumer{
+		ctx := context.WithValue(r.Context(), consumerKey, Consumer{
 			Identifier: "tester",
 			Name:       "Tester",
 			Group:      "Test Group",

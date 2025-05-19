@@ -67,7 +67,7 @@ func (w *responseWriter) Size() int64 {
 	return w.size
 }
 
-func ApitallyMiddleware(r chi.Router, config *ApitallyConfig) func(http.Handler) http.Handler {
+func Middleware(r chi.Router, config *Config) func(http.Handler) http.Handler {
 	client, err := internal.InitApitallyClient(*config)
 	if err != nil {
 		panic(err)
@@ -241,4 +241,14 @@ func CaptureValidationError(r *http.Request, err error) {
 		ctx := r.Context()
 		*r = *r.WithContext(context.WithValue(ctx, validationErrorsKey, validationErrors))
 	}
+}
+
+func SetConsumerIdentifier(r *http.Request, consumerIdentifier string) {
+	ctx := r.Context()
+	*r = *r.WithContext(context.WithValue(ctx, consumerKey, consumerIdentifier))
+}
+
+func SetConsumer(r *http.Request, consumer common.Consumer) {
+	ctx := r.Context()
+	*r = *r.WithContext(context.WithValue(ctx, consumerKey, consumer))
 }
