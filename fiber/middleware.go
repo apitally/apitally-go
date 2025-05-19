@@ -1,6 +1,7 @@
 package apitally
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"runtime/debug"
@@ -14,7 +15,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-func ApitallyMiddleware(app *fiber.App, config *ApitallyConfig) fiber.Handler {
+func Middleware(app *fiber.App, config *Config) fiber.Handler {
 	client, err := internal.InitApitallyClient(*config)
 	if err != nil {
 		panic(err)
@@ -37,15 +38,16 @@ func ApitallyMiddleware(app *fiber.App, config *ApitallyConfig) fiber.Handler {
 		}
 
 		// Determine request size
-		requestSize := parseContentLength(c.Get("Content-Length"))
+		requestSize := common.ParseContentLength(c.Get("Content-Length"))
 
 		// Cache request body if needed
 		var requestBody []byte
-		if requestSize == -1 ||
-			(client.Config.RequestLoggingConfig != nil &&
-				client.Config.RequestLoggingConfig.Enabled &&
-				client.Config.RequestLoggingConfig.LogRequestBody &&
-				client.RequestLogger.IsSupportedContentType(c.Get("Content-Type"))) {
+		if requestSize <= internal.MaxBodySize &&
+			(requestSize == -1 ||
+				(client.Config.RequestLoggingConfig != nil &&
+					client.Config.RequestLoggingConfig.Enabled &&
+					client.Config.RequestLoggingConfig.LogRequestBody &&
+					client.RequestLogger.IsSupportedContentType(c.Get("Content-Type")))) {
 			requestBody = slices.Clone(c.Request().Body())
 			if requestSize == -1 {
 				requestSize = int64(len(requestBody))
@@ -85,7 +87,7 @@ func ApitallyMiddleware(app *fiber.App, config *ApitallyConfig) fiber.Handler {
 			}
 
 			// Determine response size
-			responseSize := parseContentLength(c.GetRespHeader("Content-Length"))
+			responseSize := common.ParseContentLength(c.GetRespHeader("Content-Length"))
 
 			// Cache response body if needed
 			var responseBody []byte
@@ -121,7 +123,7 @@ func ApitallyMiddleware(app *fiber.App, config *ApitallyConfig) fiber.Handler {
 								method,
 								path,
 								fieldError.Field(),
-								truncateValidationErrorMessage(fieldError.Error()),
+								common.TruncateValidationErrorMessage(fieldError.Error()),
 								fieldError.Tag(),
 							)
 						}
@@ -172,13 +174,24 @@ func ApitallyMiddleware(app *fiber.App, config *ApitallyConfig) fiber.Handler {
 	}
 }
 
+// Alias for backwards compatibility
+var ApitallyMiddleware = Middleware
+
 func CaptureValidationError(c *fiber.Ctx, err error) {
 	if err == nil {
 		return
 	}
 
-	validationErrors, ok := err.(validator.ValidationErrors)
-	if ok {
+	var validationErrors validator.ValidationErrors
+	if errors.As(err, &validationErrors) {
 		c.Locals("ApitallyValidationErrors", validationErrors)
 	}
+}
+
+func SetConsumerIdentifier(c *fiber.Ctx, consumerIdentifier string) {
+	c.Locals("ApitallyConsumer", consumerIdentifier)
+}
+
+func SetConsumer(c *fiber.Ctx, consumer common.Consumer) {
+	c.Locals("ApitallyConsumer", consumer)
 }

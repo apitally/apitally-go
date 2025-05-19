@@ -2,9 +2,7 @@ package apitally
 
 import (
 	"fmt"
-	"regexp"
 	"runtime"
-	"strconv"
 	"strings"
 
 	"github.com/apitally/apitally-go/common"
@@ -41,31 +39,12 @@ func getVersions(appVersion string) map[string]string {
 	return versions
 }
 
-func truncateValidationErrorMessage(msg string) string {
-	re := regexp.MustCompile(`^Key: '.+' Error:(.+)$`)
-	matches := re.FindStringSubmatch(msg)
-	if len(matches) == 2 {
-		return strings.TrimSpace(matches[1])
-	}
-	return msg
-}
-
 func getFullURL(c *fiber.Ctx) string {
 	scheme := "http"
 	if c.Protocol() == "https" {
 		scheme = "https"
 	}
-
 	return fmt.Sprintf("%s://%s%s", scheme, c.Hostname(), c.OriginalURL())
-}
-
-func parseContentLength(contentLength string) int64 {
-	if contentLength != "" {
-		if size, err := strconv.ParseInt(contentLength, 10, 64); err == nil {
-			return size
-		}
-	}
-	return -1
 }
 
 func transformHeaders(header map[string][]string) [][2]string {

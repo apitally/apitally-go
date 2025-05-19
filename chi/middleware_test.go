@@ -2,6 +2,7 @@ package apitally
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -11,11 +12,13 @@ import (
 
 	"github.com/apitally/apitally-go/common"
 	"github.com/apitally/apitally-go/internal"
-	"github.com/gin-gonic/gin"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/assert"
 )
 
-func setupTestApp(requestLoggingEnabled bool) *gin.Engine {
+func setupTestApp(requestLoggingEnabled bool) *chi.Mux {
 	config := &common.Config{
 		ClientId: "e117eb33-f6d2-4260-a71d-31eb49425893",
 		Env:      "test",
@@ -31,37 +34,52 @@ func setupTestApp(requestLoggingEnabled bool) *gin.Engine {
 		DisableSync: true,
 	}
 
-	r := gin.Default()
+	r := chi.NewRouter()
+	r.Use(middleware.Recoverer)
 	r.Use(Middleware(r, config))
 
-	r.GET("/hello", func(c *gin.Context) {
-		SetConsumerIdentifier(c, "tester")
-		c.JSON(http.StatusOK, gin.H{
-			"message": "Hello, World!",
-		})
+	r.Get("/hello", func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), consumerKey, "tester")
+		*r = *r.WithContext(ctx)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Hello, World!"})
 	})
 
-	r.POST("/hello", func(c *gin.Context) {
-		SetConsumer(c, common.Consumer{
+	r.Post("/hello", func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), consumerKey, Consumer{
 			Identifier: "tester",
 			Name:       "Tester",
 			Group:      "Test Group",
 		})
+		*r = *r.WithContext(ctx)
+
 		var req struct {
-			Name string `json:"name" binding:"required,min=3"`
+			Name string `json:"name" validate:"required,min=3"`
 		}
-		if err := c.BindJSON(&req); err != nil {
-			CaptureValidationError(c, err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
 		}
+
+		validate := validator.New()
+		if err := validate.Struct(req); err != nil {
+			CaptureValidationError(r, err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+
 		time.Sleep(100 * time.Millisecond)
-		c.JSON(http.StatusOK, gin.H{
-			"message": "Hello, " + req.Name + "!",
-		})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Hello, " + req.Name + "!"})
 	})
 
-	r.GET("/error", func(c *gin.Context) {
+	r.Get("/error", func(w http.ResponseWriter, r *http.Request) {
 		panic("test panic")
 	})
 
@@ -76,19 +94,19 @@ func TestMiddleware(t *testing.T) {
 		defer c.Shutdown()
 
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest("GET", "/hello", nil)
+		req := httptest.NewRequest(http.MethodGet, "/hello", nil)
 		r.ServeHTTP(w, req)
 		assert.Equal(t, http.StatusOK, w.Code)
 
 		w = httptest.NewRecorder()
-		req, _ = http.NewRequest("POST", "/hello", bytes.NewBuffer([]byte(`{"name": "John"}`)))
+		req = httptest.NewRequest(http.MethodPost, "/hello", bytes.NewBuffer([]byte(`{"name": "John"}`)))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Content-Length", "16")
 		r.ServeHTTP(w, req)
 		assert.Equal(t, http.StatusOK, w.Code)
 
 		w = httptest.NewRecorder()
-		req, _ = http.NewRequest("GET", "/error", nil)
+		req = httptest.NewRequest(http.MethodGet, "/error", nil)
 		r.ServeHTTP(w, req)
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
 
@@ -124,13 +142,13 @@ func TestMiddleware(t *testing.T) {
 		defer c.Shutdown()
 
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest("POST", "/hello", bytes.NewBuffer([]byte(`{}`)))
+		req := httptest.NewRequest(http.MethodPost, "/hello", bytes.NewBuffer([]byte(`{}`)))
 		req.Header.Set("Content-Type", "application/json")
 		r.ServeHTTP(w, req)
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 
 		w = httptest.NewRecorder()
-		req, _ = http.NewRequest("POST", "/hello", bytes.NewBuffer([]byte(`{"name": "x"}`)))
+		req = httptest.NewRequest(http.MethodPost, "/hello", bytes.NewBuffer([]byte(`{"name": "x"}`)))
 		req.Header.Set("Content-Type", "application/json")
 		r.ServeHTTP(w, req)
 		assert.Equal(t, http.StatusBadRequest, w.Code)
@@ -142,7 +160,7 @@ func TestMiddleware(t *testing.T) {
 			return r.Consumer == "tester" &&
 				r.Method == "POST" &&
 				r.Path == "/hello" &&
-				slices.Equal(r.Loc, []string{"Name"}) &&
+				len(r.Loc) == 1 && r.Loc[0] == "Name" &&
 				r.Msg == "Field validation for 'Name' failed on the 'required' tag" &&
 				r.Type == "required"
 		}))
@@ -150,7 +168,7 @@ func TestMiddleware(t *testing.T) {
 			return r.Consumer == "tester" &&
 				r.Method == "POST" &&
 				r.Path == "/hello" &&
-				slices.Equal(r.Loc, []string{"Name"}) &&
+				len(r.Loc) == 1 && r.Loc[0] == "Name" &&
 				r.Msg == "Field validation for 'Name' failed on the 'min' tag" &&
 				r.Type == "min"
 		}))
@@ -163,7 +181,7 @@ func TestMiddleware(t *testing.T) {
 		defer c.Shutdown()
 
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest("GET", "/error", nil)
+		req := httptest.NewRequest(http.MethodGet, "/error", nil)
 		r.ServeHTTP(w, req)
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
 
@@ -184,7 +202,7 @@ func TestMiddleware(t *testing.T) {
 		defer c.Shutdown()
 
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest("POST", "/hello", bytes.NewBuffer([]byte(`{"name": "John"}`)))
+		req := httptest.NewRequest(http.MethodPost, "/hello", bytes.NewBuffer([]byte(`{"name": "John"}`)))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Content-Length", "16")
 		req.Host = "example.com"
@@ -192,7 +210,7 @@ func TestMiddleware(t *testing.T) {
 		assert.Equal(t, http.StatusOK, w.Code)
 
 		w = httptest.NewRecorder()
-		req, _ = http.NewRequest("GET", "/error", nil)
+		req = httptest.NewRequest(http.MethodGet, "/error", nil)
 		req.Host = "example.com"
 		r.ServeHTTP(w, req)
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
@@ -218,7 +236,7 @@ func TestMiddleware(t *testing.T) {
 		assert.Contains(t, string(helloLogItem.Request.Body), "John")
 		assert.Contains(t, string(helloLogItem.Response.Body), "Hello, John!")
 		assert.Equal(t, int64(16), helloLogItem.Request.Size)
-		assert.Equal(t, int64(26), helloLogItem.Response.Size)
+		assert.Equal(t, int64(27), helloLogItem.Response.Size)
 		assert.Nil(t, helloLogItem.Exception)
 
 		reqHeaders := helloLogItem.Request.Headers
@@ -237,7 +255,7 @@ func TestMiddleware(t *testing.T) {
 		respHeaders := helloLogItem.Response.Headers
 		assert.Len(t, respHeaders, 1)
 		assert.Equal(t, "Content-Type", respHeaders[0][0])
-		assert.Equal(t, "application/json; charset=utf-8", respHeaders[0][1])
+		assert.Equal(t, "application/json", respHeaders[0][1])
 
 		// Validate log item for GET /error request
 		errorLogItem := logItems[1]

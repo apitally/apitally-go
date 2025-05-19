@@ -2,6 +2,7 @@ package apitally
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,9 +17,11 @@ import (
 
 type responseBodyWriter struct {
 	gin.ResponseWriter
+	size                   int64
 	body                   *bytes.Buffer
 	shouldCaptureBody      *bool
 	isSupportedContentType func(string) bool
+	exceededMaxSize        bool
 }
 
 func (w *responseBodyWriter) Write(b []byte) (int, error) {
@@ -26,13 +29,24 @@ func (w *responseBodyWriter) Write(b []byte) (int, error) {
 		w.shouldCaptureBody = new(bool)
 		*w.shouldCaptureBody = w.isSupportedContentType(w.Header().Get("Content-Type"))
 	}
-	if *w.shouldCaptureBody {
-		w.body.Write(b)
+	if *w.shouldCaptureBody && !w.exceededMaxSize {
+		if w.body.Len()+len(b) <= internal.MaxBodySize {
+			w.body.Write(b)
+		} else {
+			w.body.Reset()
+			w.exceededMaxSize = true
+		}
 	}
-	return w.ResponseWriter.Write(b)
+	n, err := w.ResponseWriter.Write(b)
+	w.size += int64(n)
+	return n, err
 }
 
-func ApitallyMiddleware(r *gin.Engine, config *ApitallyConfig) gin.HandlerFunc {
+func (w *responseBodyWriter) Size() int {
+	return int(w.size)
+}
+
+func Middleware(r *gin.Engine, config *Config) gin.HandlerFunc {
 	client, err := internal.InitApitallyClient(*config)
 	if err != nil {
 		panic(err)
@@ -59,11 +73,11 @@ func ApitallyMiddleware(r *gin.Engine, config *ApitallyConfig) gin.HandlerFunc {
 		routePattern := c.FullPath()
 
 		// Determine request size
-		requestSize := parseContentLength(c.Request.Header.Get("Content-Length"))
+		requestSize := common.ParseContentLength(c.Request.Header.Get("Content-Length"))
 
 		// Cache request body if needed
 		var requestBody []byte
-		if c.Request.Body != nil &&
+		if c.Request.Body != nil && requestSize <= internal.MaxBodySize &&
 			(requestSize == -1 ||
 				(client.Config.RequestLoggingConfig != nil &&
 					client.Config.RequestLoggingConfig.Enabled &&
@@ -124,7 +138,7 @@ func ApitallyMiddleware(r *gin.Engine, config *ApitallyConfig) gin.HandlerFunc {
 			}
 
 			// Determine response size
-			responseSize := parseContentLength(c.Writer.Header().Get("Content-Length"))
+			responseSize := common.ParseContentLength(c.Writer.Header().Get("Content-Length"))
 			if responseSize == -1 {
 				responseSize = int64(c.Writer.Size())
 			}
@@ -151,7 +165,7 @@ func ApitallyMiddleware(r *gin.Engine, config *ApitallyConfig) gin.HandlerFunc {
 								c.Request.Method,
 								routePattern,
 								fieldError.Field(),
-								truncateValidationErrorMessage(fieldError.Error()),
+								common.TruncateValidationErrorMessage(fieldError.Error()),
 								fieldError.Tag(),
 							)
 						}
@@ -177,15 +191,15 @@ func ApitallyMiddleware(r *gin.Engine, config *ApitallyConfig) gin.HandlerFunc {
 					Consumer:  consumerIdentifier,
 					Method:    c.Request.Method,
 					Path:      routePattern,
-					URL:       getFullURL(c.Request),
-					Headers:   transformHeaders(c.Request.Header),
+					URL:       common.GetFullURL(c.Request),
+					Headers:   common.TransformHeaders(c.Request.Header),
 					Size:      requestSize,
 					Body:      requestBody,
 				}
 				response := common.Response{
 					StatusCode:   statusCode,
 					ResponseTime: float64(duration.Milliseconds()) / 1000.0,
-					Headers:      transformHeaders(c.Writer.Header()),
+					Headers:      common.TransformHeaders(c.Writer.Header()),
 					Size:         responseSize,
 					Body:         responseBody.Bytes(),
 				}
@@ -207,14 +221,25 @@ func ApitallyMiddleware(r *gin.Engine, config *ApitallyConfig) gin.HandlerFunc {
 	}
 }
 
+// Alias for backwards compatibility
+var ApitallyMiddleware = Middleware
+
 func CaptureValidationError(c *gin.Context, err error) {
 	if err == nil {
 		return
 	}
 
-	validationErrors, ok := err.(validator.ValidationErrors)
-	if ok {
+	var validationErrors validator.ValidationErrors
+	if errors.As(err, &validationErrors) {
 		// Store validation errors in the context for middleware
 		c.Set("ApitallyValidationErrors", validationErrors)
 	}
+}
+
+func SetConsumerIdentifier(c *gin.Context, consumerIdentifier string) {
+	c.Set("ApitallyConsumer", consumerIdentifier)
+}
+
+func SetConsumer(c *gin.Context, consumer common.Consumer) {
+	c.Set("ApitallyConsumer", consumer)
 }

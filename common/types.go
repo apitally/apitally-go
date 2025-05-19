@@ -23,8 +23,8 @@ type Response struct {
 	Body         []byte      `json:"body,omitempty"`
 }
 
-// ApitallyConsumer represents a consumer of the API
-type ApitallyConsumer struct {
+// Consumer represents a consumer of the API
+type Consumer struct {
 	Identifier string `json:"identifier"`
 	Name       string `json:"name,omitempty"`
 	Group      string `json:"group,omitempty"`
@@ -53,8 +53,8 @@ type RequestLoggingConfig struct {
 	ExcludeCallback          func(request *Request, response *Response) bool
 }
 
-// ApitallyConfig defines the configuration for Apitally
-type ApitallyConfig struct {
+// Config defines the configuration for Apitally
+type Config struct {
 	ClientId             string
 	Env                  string
 	RequestLoggingConfig *RequestLoggingConfig

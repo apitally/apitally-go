@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/apitally/apitally-go/common"
@@ -14,7 +15,7 @@ func TestConsumerRegistry(t *testing.T) {
 		assert.Nil(t, consumer)
 
 		// Empty identifier in struct should return nil
-		consumer = ConsumerFromStringOrObject(common.ApitallyConsumer{Identifier: " "})
+		consumer = ConsumerFromStringOrObject(common.Consumer{Identifier: " "})
 		assert.Nil(t, consumer)
 
 		// Valid string should return consumer with identifier
@@ -23,12 +24,12 @@ func TestConsumerRegistry(t *testing.T) {
 		assert.Equal(t, "test", consumer.Identifier)
 
 		// Valid struct should return consumer with identifier
-		consumer = ConsumerFromStringOrObject(common.ApitallyConsumer{Identifier: "test"})
+		consumer = ConsumerFromStringOrObject(common.Consumer{Identifier: "test"})
 		assert.NotNil(t, consumer)
 		assert.Equal(t, "test", consumer.Identifier)
 
 		// Consumer with name and group should trim spaces
-		consumer = ConsumerFromStringOrObject(common.ApitallyConsumer{
+		consumer = ConsumerFromStringOrObject(common.Consumer{
 			Identifier: "test",
 			Name:       "Test ",
 			Group:      " Testers ",
@@ -42,93 +43,83 @@ func TestConsumerRegistry(t *testing.T) {
 	})
 
 	t.Run("AddOrUpdateConsumer", func(t *testing.T) {
-		// Create a new registry
 		registry := NewConsumerRegistry()
 
-		// Adding nil consumer should not change anything
+		// Adding nil consumer should not panic
 		registry.AddOrUpdateConsumer(nil)
-		data := registry.GetAndResetUpdatedConsumers()
-		assert.Empty(t, data)
 
-		// Adding consumer without name or group should not change anything
-		registry.AddOrUpdateConsumer(&common.ApitallyConsumer{Identifier: "test"})
-		data = registry.GetAndResetUpdatedConsumers()
-		assert.Empty(t, data)
+		// Adding consumer without name or group should not update
+		registry.AddOrUpdateConsumer(&common.Consumer{Identifier: "test"})
+		assert.Empty(t, registry.GetAndResetUpdatedConsumers())
 
-		// Adding consumer with name should work
-		testConsumer := &common.ApitallyConsumer{
+		// Adding consumer with name should update
+		testConsumer := &common.Consumer{
 			Identifier: "test",
 			Name:       "Test",
-			Group:      "Testers",
 		}
 		registry.AddOrUpdateConsumer(testConsumer)
-		data = registry.GetAndResetUpdatedConsumers()
-		assert.Len(t, data, 1)
-		assert.Equal(t, testConsumer, data[0])
+		updatedConsumers := registry.GetAndResetUpdatedConsumers()
+		assert.Len(t, updatedConsumers, 1)
+		assert.Equal(t, testConsumer, updatedConsumers[0])
 
-		// Adding same consumer again should not mark as updated
-		registry.AddOrUpdateConsumer(testConsumer)
-		data = registry.GetAndResetUpdatedConsumers()
-		assert.Empty(t, data)
+		// Adding consumer with same name should not update
+		registry.AddOrUpdateConsumer(&common.Consumer{
+			Identifier: "test",
+			Name:       "Test",
+		})
+		assert.Empty(t, registry.GetAndResetUpdatedConsumers())
 
-		// Changing name should mark as updated
-		registry.AddOrUpdateConsumer(&common.ApitallyConsumer{
+		// Adding consumer with different name should update
+		registry.AddOrUpdateConsumer(&common.Consumer{
 			Identifier: "test",
 			Name:       "Test 2",
-			Group:      "Testers",
 		})
-		data = registry.GetAndResetUpdatedConsumers()
-		assert.Len(t, data, 1)
-		assert.Equal(t, "Test 2", data[0].Name)
+		updatedConsumers = registry.GetAndResetUpdatedConsumers()
+		assert.Len(t, updatedConsumers, 1)
+		assert.Equal(t, "Test 2", updatedConsumers[0].Name)
 
-		// Changing group should mark as updated
-		registry.AddOrUpdateConsumer(&common.ApitallyConsumer{
+		// Adding consumer with group should update
+		registry.AddOrUpdateConsumer(&common.Consumer{
 			Identifier: "test",
 			Name:       "Test 2",
-			Group:      "Testers 2",
+			Group:      "Test Group",
 		})
-		data = registry.GetAndResetUpdatedConsumers()
-		assert.Len(t, data, 1)
-		assert.Equal(t, "Testers 2", data[0].Group)
+		updatedConsumers = registry.GetAndResetUpdatedConsumers()
+		assert.Len(t, updatedConsumers, 1)
+		assert.Equal(t, "Test Group", updatedConsumers[0].Group)
+
+		// Adding consumer with same group should not update
+		registry.AddOrUpdateConsumer(&common.Consumer{
+			Identifier: "test",
+			Name:       "Test 2",
+			Group:      "Test Group",
+		})
+		assert.Empty(t, registry.GetAndResetUpdatedConsumers())
 	})
 
 	t.Run("GetAndResetUpdatedConsumers", func(t *testing.T) {
 		registry := NewConsumerRegistry()
 
-		// Empty registry should return empty slice
-		data := registry.GetAndResetUpdatedConsumers()
-		assert.Empty(t, data)
-
 		// Add multiple consumers
-		registry.AddOrUpdateConsumer(&common.ApitallyConsumer{
-			Identifier: "test1",
-			Name:       "Test 1",
-			Group:      "Group 1",
-		})
-
-		registry.AddOrUpdateConsumer(&common.ApitallyConsumer{
-			Identifier: "test2",
-			Name:       "Test 2",
-			Group:      "Group 2",
-		})
-
-		// Should get both consumers
-		data = registry.GetAndResetUpdatedConsumers()
-		assert.Len(t, data, 2)
-
-		// Map to check both consumers exist
-		consumerMap := make(map[string]*common.ApitallyConsumer)
-		for _, c := range data {
-			consumerMap[c.Identifier] = c
+		consumerMap := make(map[string]*common.Consumer)
+		for i := 0; i < 3; i++ {
+			consumer := &common.Consumer{
+				Identifier: fmt.Sprintf("test%d", i),
+				Name:       fmt.Sprintf("Test %d", i),
+			}
+			registry.AddOrUpdateConsumer(consumer)
+			consumerMap[consumer.Identifier] = consumer
 		}
 
-		assert.Contains(t, consumerMap, "test1")
-		assert.Contains(t, consumerMap, "test2")
-		assert.Equal(t, "Test 1", consumerMap["test1"].Name)
-		assert.Equal(t, "Test 2", consumerMap["test2"].Name)
+		// Get updated consumers
+		updatedConsumers := registry.GetAndResetUpdatedConsumers()
+		assert.Len(t, updatedConsumers, 3)
+		for _, consumer := range updatedConsumers {
+			assert.Equal(t, consumerMap[consumer.Identifier], consumer)
+		}
 
-		// After reset, should return empty slice
-		data = registry.GetAndResetUpdatedConsumers()
-		assert.Empty(t, data)
+		// Get updated consumers again should return empty slice
+		updatedConsumers = registry.GetAndResetUpdatedConsumers()
+		assert.Empty(t, updatedConsumers)
 	})
 }

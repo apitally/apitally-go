@@ -15,7 +15,7 @@ import (
 
 func TestApitallyClient(t *testing.T) {
 	t.Run("StartupSyncShutdown", func(t *testing.T) {
-		config := &common.ApitallyConfig{
+		config := &common.Config{
 			ClientId: "e117eb33-f6d2-4260-a71d-31eb49425893",
 			Env:      "test",
 			RequestLoggingConfig: &common.RequestLoggingConfig{
