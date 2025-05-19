@@ -70,20 +70,20 @@ application. For further instructions, see our
 
 ```go
 import (
-  apitally "github.com/apitally/apitally-go/chi"
-  "github.com/go-chi/chi/v5"
+    apitally "github.com/apitally/apitally-go/chi"
+    "github.com/go-chi/chi/v5"
 )
 
 func main() {
-  r := chi.NewRouter()
+    r := chi.NewRouter()
 
-  config := &apitally.Config{
-    ClientId: "your-client-id",
-    Env:      "dev", // or "prod" etc.
-  }
-  r.Use(apitally.Middleware(r, config))
+    config := &apitally.Config{
+        ClientId: "your-client-id",
+        Env:      "dev", // or "prod" etc.
+    }
+    r.Use(apitally.Middleware(r, config))
 
-  // ... rest of your code ...
+    // ... rest of your code ...
 }
 ```
 
@@ -95,20 +95,20 @@ application. For further instructions, see our
 
 ```go
 import (
-  apitally "github.com/apitally/apitally-go/fiber"
-  "github.com/gofiber/fiber/v2"
+    apitally "github.com/apitally/apitally-go/fiber"
+    "github.com/gofiber/fiber/v2"
 )
 
 func main() {
-  app := fiber.New()
+    app := fiber.New()
 
-  config := &apitally.Config{
-    ClientId: "your-client-id",
-    Env:      "dev", // or "prod" etc.
-  }
-  app.Use(apitally.Middleware(app, config))
+    config := &apitally.Config{
+        ClientId: "your-client-id",
+        Env:      "dev", // or "prod" etc.
+    }
+    app.Use(apitally.Middleware(app, config))
 
-  // ... rest of your code ...
+    // ... rest of your code ...
 }
 ```
 
@@ -120,20 +120,20 @@ For further instructions, see our
 
 ```go
 import (
-  apitally "github.com/apitally/apitally-go/gin"
-  "github.com/gin-gonic/gin"
+    apitally "github.com/apitally/apitally-go/gin"
+    "github.com/gin-gonic/gin"
 )
 
 func main() {
-  r := gin.Default()
+    r := gin.Default()
 
-  config := &apitally.Config{
-    ClientId: "your-client-id",
-    Env:      "dev", // or "prod" etc.
-  }
-  r.Use(apitally.Middleware(r, config))
+    config := &apitally.Config{
+        ClientId: "your-client-id",
+        Env:      "dev", // or "prod" etc.
+    }
+    r.Use(apitally.Middleware(r, config))
 
-  // ... rest of your code ...
+    // ... rest of your code ...
 }
 ```
 
