@@ -67,10 +67,7 @@ func TestResponseWriter(t *testing.T) {
 		rw.Header().Set("Content-Type", "application/json")
 
 		// Write data that exceeds MaxBodySize
-		largeData := make([]byte, MaxBodySize+1)
-		for i := range largeData {
-			largeData[i] = 'a'
-		}
+		largeData := bytes.Repeat([]byte("a"), MaxBodySize+1)
 
 		rw.Write(largeData)
 		assert.Empty(t, body.String()) // Body should be reset when max size exceeded

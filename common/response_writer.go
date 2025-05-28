@@ -1,7 +1,10 @@
 package common
 
 import (
+	"bufio"
 	"bytes"
+	"errors"
+	"net"
 	"net/http"
 )
 
@@ -52,4 +55,28 @@ func (w *ResponseWriter) Status() int {
 
 func (w *ResponseWriter) Size() int64 {
 	return w.size
+}
+
+// The below methods ensure that optional interfaces (Flusher, Hijacker, Pusher) implemented by the
+// underlying ResponseWriter are still accessible when wrapped, preventing middleware from breaking
+// advanced HTTP features like WebSockets, Server-Sent Events, and HTTP/2 Server Push.
+
+func (w *ResponseWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func (w *ResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if h, ok := w.ResponseWriter.(http.Hijacker); ok {
+		return h.Hijack()
+	}
+	return nil, nil, errors.New("underlying writer does not implement http.Hijacker")
+}
+
+func (w *ResponseWriter) Push(target string, opts *http.PushOptions) error {
+	if p, ok := w.ResponseWriter.(http.Pusher); ok {
+		return p.Push(target, opts)
+	}
+	return http.ErrNotSupported
 }
