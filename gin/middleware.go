@@ -90,9 +90,7 @@ func Middleware(r *gin.Engine, config *Config) gin.HandlerFunc {
 				requestBody, err = io.ReadAll(c.Request.Body)
 				if err == nil {
 					c.Request.Body = io.NopCloser(bytes.NewBuffer(requestBody))
-					if requestSize == -1 {
-						requestSize = int64(len(requestBody))
-					}
+					requestSize = int64(len(requestBody))
 				}
 			} else if requestSize == -1 {
 				// Only measure request body size

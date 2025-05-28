@@ -65,9 +65,7 @@ func Middleware(r chi.Router, config *Config) func(http.Handler) http.Handler {
 					requestBody, err = io.ReadAll(r.Body)
 					if err == nil {
 						r.Body = io.NopCloser(bytes.NewBuffer(requestBody))
-						if requestSize == -1 {
-							requestSize = int64(len(requestBody))
-						}
+						requestSize = int64(len(requestBody))
 					}
 				} else if requestSize == -1 {
 					// Only measure request body size

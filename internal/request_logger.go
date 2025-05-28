@@ -160,6 +160,8 @@ func (rl *RequestLogger) LogRequest(request *common.Request, response *common.Re
 	// Process request body
 	if !rl.config.LogRequestBody || !rl.hasSupportedContentType(request.Headers) {
 		request.Body = nil
+	} else if request.Size > common.MaxBodySize {
+		request.Body = bodyTooLarge
 	} else if request.Body != nil {
 		if len(request.Body) > common.MaxBodySize {
 			request.Body = bodyTooLarge
@@ -174,6 +176,8 @@ func (rl *RequestLogger) LogRequest(request *common.Request, response *common.Re
 	// Process response body
 	if !rl.config.LogResponseBody || !rl.hasSupportedContentType(response.Headers) {
 		response.Body = nil
+	} else if response.Size > common.MaxBodySize {
+		response.Body = bodyTooLarge
 	} else if response.Body != nil {
 		if len(response.Body) > common.MaxBodySize {
 			response.Body = bodyTooLarge

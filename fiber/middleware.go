@@ -96,9 +96,7 @@ func Middleware(app *fiber.App, config *Config) fiber.Handler {
 					client.Config.RequestLoggingConfig.Enabled &&
 					client.Config.RequestLoggingConfig.LogResponseBody) {
 				responseBody = slices.Clone(c.Response().Body())
-				if responseSize == -1 {
-					responseSize = int64(len(responseBody))
-				}
+				responseSize = int64(len(responseBody))
 			}
 
 			// Count request
