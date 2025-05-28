@@ -28,6 +28,7 @@ func TestUtils(t *testing.T) {
 		appVersion := "1.0.0"
 		versions := getVersions(appVersion)
 		assert.NotEmpty(t, versions["go"])
+		assert.NotEmpty(t, versions["echo"])
 		assert.Equal(t, appVersion, versions["app"])
 	})
 }
