@@ -2,7 +2,6 @@ package apitally
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -12,18 +11,11 @@ import (
 
 	"github.com/apitally/apitally-go/common"
 	"github.com/apitally/apitally-go/internal"
-	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
+	"github.com/labstack/echo/v4"
 )
 
-type contextKey string
-
-const (
-	validationErrorsKey contextKey = "ApitallyValidationErrors"
-	consumerKey         contextKey = "ApitallyConsumer"
-)
-
-func Middleware(r chi.Router, config *Config) func(http.Handler) http.Handler {
+func Middleware(e *echo.Echo, config *Config) echo.MiddlewareFunc {
 	client, err := internal.InitApitallyClient(*config)
 	if err != nil {
 		panic(err)
@@ -36,19 +28,18 @@ func Middleware(r chi.Router, config *Config) func(http.Handler) http.Handler {
 		// Delay startup data collection to ensure all routes are registered
 		go func() {
 			time.Sleep(time.Second)
-			client.SetStartupData(getRoutes(r), getVersions(config.AppVersion), "go:chi")
+			client.SetStartupData(getRoutes(e), getVersions(config.AppVersion), "go:echo")
 		}()
 	}
 
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
 			if !client.IsEnabled() {
-				next.ServeHTTP(w, r)
-				return
+				return next(c)
 			}
 
 			// Determine request size
-			requestSize := common.ParseContentLength(r.Header.Get("Content-Length"))
+			requestSize := common.ParseContentLength(c.Request().Header.Get("Content-Length"))
 
 			// Cache request body if needed
 			var requestBody []byte
@@ -56,40 +47,41 @@ func Middleware(r chi.Router, config *Config) func(http.Handler) http.Handler {
 			captureRequestBody := client.Config.RequestLoggingConfig != nil &&
 				client.Config.RequestLoggingConfig.Enabled &&
 				client.Config.RequestLoggingConfig.LogRequestBody &&
-				client.RequestLogger.IsSupportedContentType(r.Header.Get("Content-Type"))
+				client.RequestLogger.IsSupportedContentType(c.Request().Header.Get("Content-Type"))
 
-			if r.Body != nil && requestSize <= common.MaxBodySize {
+			if c.Request().Body != nil && requestSize <= common.MaxBodySize {
 				if captureRequestBody {
 					// Capture the body for logging
 					var err error
-					requestBody, err = io.ReadAll(r.Body)
+					requestBody, err = io.ReadAll(c.Request().Body)
 					if err == nil {
-						r.Body = io.NopCloser(bytes.NewBuffer(requestBody))
+						c.Request().Body = io.NopCloser(bytes.NewBuffer(requestBody))
 						requestSize = int64(len(requestBody))
 					}
 				} else if requestSize == -1 {
 					// Only measure request body size
-					requestReader = &common.RequestReader{Reader: r.Body}
-					r.Body = requestReader
+					requestReader = &common.RequestReader{Reader: c.Request().Body}
+					c.Request().Body = requestReader
 				}
 			}
 
 			// Prepare response writer to capture body if needed
 			var responseBody bytes.Buffer
 			rw := &common.ResponseWriter{
-				ResponseWriter: w,
+				ResponseWriter: c.Response().Writer,
 				Body:           &responseBody,
 				CaptureBody: client.Config.RequestLoggingConfig != nil &&
 					client.Config.RequestLoggingConfig.Enabled &&
 					client.Config.RequestLoggingConfig.LogResponseBody,
 				IsSupportedContentType: client.RequestLogger.IsSupportedContentType,
 			}
+			c.Response().Writer = rw
 
 			start := time.Now()
 
 			defer func() {
 				duration := time.Since(start)
-				routePattern := getRoutePattern(r)
+				routePattern := c.Path()
 				statusCode := rw.Status()
 
 				// Update request size from reader if needed
@@ -114,7 +106,7 @@ func Middleware(r chi.Router, config *Config) func(http.Handler) http.Handler {
 
 				// Get consumer info if available
 				var consumerIdentifier string
-				if consumer := r.Context().Value(consumerKey); consumer != nil {
+				if consumer := c.Get("ApitallyConsumer"); consumer != nil {
 					if consumerObj := internal.ConsumerFromStringOrObject(consumer); consumerObj != nil {
 						consumerIdentifier = consumerObj.Identifier
 						client.ConsumerRegistry.AddOrUpdateConsumer(consumerObj)
@@ -122,7 +114,7 @@ func Middleware(r chi.Router, config *Config) func(http.Handler) http.Handler {
 				}
 
 				// Determine response size
-				responseSize := common.ParseContentLength(rw.Header().Get("Content-Length"))
+				responseSize := common.ParseContentLength(c.Response().Header().Get("Content-Length"))
 				if responseSize == -1 {
 					responseSize = rw.Size()
 				}
@@ -131,7 +123,7 @@ func Middleware(r chi.Router, config *Config) func(http.Handler) http.Handler {
 				if routePattern != "" {
 					client.RequestCounter.AddRequest(
 						consumerIdentifier,
-						r.Method,
+						c.Request().Method,
 						routePattern,
 						statusCode,
 						float64(duration.Milliseconds())/1000.0,
@@ -140,13 +132,13 @@ func Middleware(r chi.Router, config *Config) func(http.Handler) http.Handler {
 					)
 
 					// Count validation errors if any
-					if valErrValue := r.Context().Value(validationErrorsKey); valErrValue != nil {
+					if valErrValue := c.Get("ApitallyValidationErrors"); valErrValue != nil {
 						validationErrors, ok := valErrValue.(validator.ValidationErrors)
 						if ok {
 							for _, fieldError := range validationErrors {
 								client.ValidationErrorCounter.AddValidationError(
 									consumerIdentifier,
-									r.Method,
+									c.Request().Method,
 									routePattern,
 									fieldError.Field(),
 									common.TruncateValidationErrorMessage(fieldError.Error()),
@@ -160,7 +152,7 @@ func Middleware(r chi.Router, config *Config) func(http.Handler) http.Handler {
 					if recoveredErr != nil {
 						client.ServerErrorCounter.AddServerError(
 							consumerIdentifier,
-							r.Method,
+							c.Request().Method,
 							routePattern,
 							recoveredErr,
 							stackTrace,
@@ -173,17 +165,17 @@ func Middleware(r chi.Router, config *Config) func(http.Handler) http.Handler {
 					request := common.Request{
 						Timestamp: float64(time.Now().UnixMilli()) / 1000.0,
 						Consumer:  consumerIdentifier,
-						Method:    r.Method,
+						Method:    c.Request().Method,
 						Path:      routePattern,
-						URL:       common.GetFullURL(r),
-						Headers:   common.TransformHeaders(r.Header),
+						URL:       common.GetFullURL(c.Request()),
+						Headers:   common.TransformHeaders(c.Request().Header),
 						Size:      requestSize,
 						Body:      requestBody,
 					}
 					response := common.Response{
 						StatusCode:   statusCode,
 						ResponseTime: float64(duration.Milliseconds()) / 1000.0,
-						Headers:      common.TransformHeaders(rw.Header()),
+						Headers:      common.TransformHeaders(c.Response().Header()),
 						Size:         responseSize,
 						Body:         responseBody.Bytes(),
 					}
@@ -196,29 +188,26 @@ func Middleware(r chi.Router, config *Config) func(http.Handler) http.Handler {
 				}
 			}()
 
-			next.ServeHTTP(rw, r)
-		})
+			return next(c)
+		}
 	}
 }
 
-func CaptureValidationError(r *http.Request, err error) {
+func CaptureValidationError(c echo.Context, err error) {
 	if err == nil {
 		return
 	}
 
 	var validationErrors validator.ValidationErrors
 	if errors.As(err, &validationErrors) {
-		ctx := r.Context()
-		*r = *r.WithContext(context.WithValue(ctx, validationErrorsKey, validationErrors))
+		c.Set("ApitallyValidationErrors", validationErrors)
 	}
 }
 
-func SetConsumerIdentifier(r *http.Request, consumerIdentifier string) {
-	ctx := r.Context()
-	*r = *r.WithContext(context.WithValue(ctx, consumerKey, consumerIdentifier))
+func SetConsumerIdentifier(c echo.Context, consumerIdentifier string) {
+	c.Set("ApitallyConsumer", consumerIdentifier)
 }
 
-func SetConsumer(r *http.Request, consumer common.Consumer) {
-	ctx := r.Context()
-	*r = *r.WithContext(context.WithValue(ctx, consumerKey, consumer))
+func SetConsumer(c echo.Context, consumer common.Consumer) {
+	c.Set("ApitallyConsumer", consumer)
 }

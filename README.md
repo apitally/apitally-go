@@ -21,6 +21,7 @@
 This SDK for Apitally currently supports the following Go web frameworks:
 
 - [Chi](https://docs.apitally.io/frameworks/chi)
+- [Echo](https://docs.apitally.io/frameworks/echo)
 - [Fiber](https://docs.apitally.io/frameworks/fiber)
 - [Gin](https://docs.apitally.io/frameworks/gin)
 
@@ -78,6 +79,31 @@ func main() {
         Env:      "dev", // or "prod" etc.
     }
     r.Use(apitally.Middleware(r, config))
+
+    // ... rest of your code ...
+}
+```
+
+### Echo
+
+This is an example of how to use the Apitally middleware with an Echo
+application. For further instructions, see our
+[setup guide for Echo](https://docs.apitally.io/frameworks/echo).
+
+```go
+import (
+    apitally "github.com/apitally/apitally-go/echo"
+    "github.com/labstack/echo/v4"
+)
+
+func main() {
+    e := echo.New()
+
+    config := &apitally.Config{
+        ClientId: "your-client-id",
+        Env:      "dev", // or "prod" etc.
+    }
+    e.Use(apitally.Middleware(e, config))
 
     // ... rest of your code ...
 }
