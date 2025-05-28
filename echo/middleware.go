@@ -15,50 +15,6 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-type responseWriter struct {
-	http.ResponseWriter
-	statusCode             int
-	size                   int64
-	body                   *bytes.Buffer
-	shouldCaptureBody      *bool
-	isSupportedContentType func(string) bool
-	exceededMaxSize        bool
-}
-
-func (w *responseWriter) WriteHeader(statusCode int) {
-	w.statusCode = statusCode
-	w.ResponseWriter.WriteHeader(statusCode)
-}
-
-func (w *responseWriter) Write(b []byte) (int, error) {
-	if w.shouldCaptureBody == nil {
-		w.shouldCaptureBody = new(bool)
-		*w.shouldCaptureBody = w.isSupportedContentType(w.Header().Get("Content-Type"))
-	}
-	if *w.shouldCaptureBody && !w.exceededMaxSize {
-		if w.body.Len()+len(b) <= internal.MaxBodySize {
-			w.body.Write(b)
-		} else {
-			w.body.Reset()
-			w.exceededMaxSize = true
-		}
-	}
-	n, err := w.ResponseWriter.Write(b)
-	w.size += int64(n)
-	return n, err
-}
-
-func (w *responseWriter) Status() int {
-	if w.statusCode == 0 {
-		return http.StatusOK
-	}
-	return w.statusCode
-}
-
-func (w *responseWriter) Size() int64 {
-	return w.size
-}
-
 func Middleware(e *echo.Echo, config *Config) echo.MiddlewareFunc {
 	client, err := internal.InitApitallyClient(*config)
 	if err != nil {
@@ -87,7 +43,7 @@ func Middleware(e *echo.Echo, config *Config) echo.MiddlewareFunc {
 
 			// Cache request body if needed
 			var requestBody []byte
-			if c.Request().Body != nil && requestSize <= internal.MaxBodySize &&
+			if c.Request().Body != nil && requestSize <= common.MaxBodySize &&
 				(requestSize == -1 ||
 					(client.Config.RequestLoggingConfig != nil &&
 						client.Config.RequestLoggingConfig.Enabled &&
@@ -105,10 +61,10 @@ func Middleware(e *echo.Echo, config *Config) echo.MiddlewareFunc {
 
 			// Prepare response writer to capture body if needed
 			var responseBody bytes.Buffer
-			rw := &responseWriter{
+			rw := &common.ResponseWriter{
 				ResponseWriter:         c.Response().Writer,
-				body:                   &responseBody,
-				isSupportedContentType: client.RequestLogger.IsSupportedContentType,
+				Body:                   &responseBody,
+				IsSupportedContentType: client.RequestLogger.IsSupportedContentType,
 			}
 			c.Response().Writer = rw
 

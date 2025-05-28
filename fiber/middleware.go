@@ -42,7 +42,7 @@ func Middleware(app *fiber.App, config *Config) fiber.Handler {
 
 		// Cache request body if needed
 		var requestBody []byte
-		if requestSize <= internal.MaxBodySize &&
+		if requestSize <= common.MaxBodySize &&
 			(requestSize == -1 ||
 				(client.Config.RequestLoggingConfig != nil &&
 					client.Config.RequestLoggingConfig.Enabled &&

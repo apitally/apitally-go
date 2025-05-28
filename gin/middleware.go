@@ -30,7 +30,7 @@ func (w *responseBodyWriter) Write(b []byte) (int, error) {
 		*w.shouldCaptureBody = w.isSupportedContentType(w.Header().Get("Content-Type"))
 	}
 	if *w.shouldCaptureBody && !w.exceededMaxSize {
-		if w.body.Len()+len(b) <= internal.MaxBodySize {
+		if w.body.Len()+len(b) <= common.MaxBodySize {
 			w.body.Write(b)
 		} else {
 			w.body.Reset()
@@ -77,7 +77,7 @@ func Middleware(r *gin.Engine, config *Config) gin.HandlerFunc {
 
 		// Cache request body if needed
 		var requestBody []byte
-		if c.Request.Body != nil && requestSize <= internal.MaxBodySize &&
+		if c.Request.Body != nil && requestSize <= common.MaxBodySize &&
 			(requestSize == -1 ||
 				(client.Config.RequestLoggingConfig != nil &&
 					client.Config.RequestLoggingConfig.Enabled &&
