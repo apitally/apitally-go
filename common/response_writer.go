@@ -33,7 +33,7 @@ func (w *ResponseWriter) Write(b []byte) (int, error) {
 		w.shouldCaptureBody = new(bool)
 		*w.shouldCaptureBody = w.IsSupportedContentType(w.Header().Get("Content-Type"))
 	}
-	if *w.shouldCaptureBody && !w.exceededMaxSize {
+	if *w.shouldCaptureBody && w.Body != nil && !w.exceededMaxSize {
 		if w.Body.Len()+len(b) <= MaxBodySize {
 			w.Body.Write(b)
 		} else {
