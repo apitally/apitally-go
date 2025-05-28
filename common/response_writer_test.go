@@ -16,6 +16,7 @@ func TestResponseWriter(t *testing.T) {
 		rw := &ResponseWriter{
 			ResponseWriter: recorder,
 			Body:           body,
+			CaptureBody:    true,
 			IsSupportedContentType: func(contentType string) bool {
 				return contentType == "application/json"
 			},
@@ -36,12 +37,31 @@ func TestResponseWriter(t *testing.T) {
 		assert.Equal(t, int64(4), rw.Size())
 	})
 
+	t.Run("DontCaptureBody", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		body := &bytes.Buffer{}
+		rw := &ResponseWriter{
+			ResponseWriter: recorder,
+			Body:           body,
+			CaptureBody:    false,
+			IsSupportedContentType: func(contentType string) bool {
+				return true
+			},
+		}
+
+		// Test body not captured
+		rw.Write([]byte("test"))
+		assert.Equal(t, "", body.String())
+		assert.Equal(t, int64(4), rw.Size())
+	})
+
 	t.Run("UnsupportedContentType", func(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		body := &bytes.Buffer{}
 		rw := &ResponseWriter{
 			ResponseWriter: recorder,
 			Body:           body,
+			CaptureBody:    true,
 			IsSupportedContentType: func(contentType string) bool {
 				return contentType == "application/json"
 			},
@@ -59,12 +79,11 @@ func TestResponseWriter(t *testing.T) {
 		rw := &ResponseWriter{
 			ResponseWriter: recorder,
 			Body:           body,
+			CaptureBody:    true,
 			IsSupportedContentType: func(contentType string) bool {
 				return true
 			},
 		}
-
-		rw.Header().Set("Content-Type", "application/json")
 
 		// Write data that exceeds MaxBodySize
 		largeData := bytes.Repeat([]byte("a"), MaxBodySize+1)
