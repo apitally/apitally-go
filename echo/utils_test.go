@@ -2,7 +2,6 @@ package apitally
 
 import (
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/labstack/echo/v4"
@@ -30,25 +29,5 @@ func TestUtils(t *testing.T) {
 		versions := getVersions(appVersion)
 		assert.NotEmpty(t, versions["go"])
 		assert.Equal(t, appVersion, versions["app"])
-	})
-
-	t.Run("GetRoutePattern", func(t *testing.T) {
-		e := echo.New()
-		e.GET("/users/:id", func(c echo.Context) error {
-			return nil
-		})
-
-		req := httptest.NewRequest("GET", "/users/123", nil)
-		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
-
-		// Set the path on the context
-		c.SetPath("/users/:id")
-
-		assert.Equal(t, "/users/:id", getRoutePattern(c))
-
-		// Without path set
-		c2 := e.NewContext(req, rec)
-		assert.Equal(t, "", getRoutePattern(c2))
 	})
 }

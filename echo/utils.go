@@ -34,10 +34,3 @@ func getVersions(appVersion string) map[string]string {
 
 	return versions
 }
-
-func getRoutePattern(c echo.Context) string {
-	if c.Path() != "" {
-		return c.Path()
-	}
-	return ""
-}

@@ -116,7 +116,7 @@ func Middleware(e *echo.Echo, config *Config) echo.MiddlewareFunc {
 
 			defer func() {
 				duration := time.Since(start)
-				routePattern := getRoutePattern(c)
+				routePattern := c.Path()
 				statusCode := rw.Status()
 
 				// Capture error from panic if any
