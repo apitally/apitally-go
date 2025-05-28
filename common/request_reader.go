@@ -7,16 +7,16 @@ type RequestReader struct {
 	size   int64
 }
 
-func (cr *RequestReader) Read(p []byte) (n int, err error) {
-	n, err = cr.Reader.Read(p)
-	cr.size += int64(n)
+func (rr *RequestReader) Read(p []byte) (n int, err error) {
+	n, err = rr.Reader.Read(p)
+	rr.size += int64(n)
 	return n, err
 }
 
-func (cr *RequestReader) Close() error {
-	return cr.Reader.Close()
+func (rr *RequestReader) Close() error {
+	return rr.Reader.Close()
 }
 
-func (cr *RequestReader) Size() int64 {
-	return cr.size
+func (rr *RequestReader) Size() int64 {
+	return rr.size
 }

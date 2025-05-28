@@ -15,7 +15,7 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
-type responseBodyWriter struct {
+type responseWriter struct {
 	gin.ResponseWriter
 	size                   int64
 	body                   *bytes.Buffer
@@ -24,7 +24,7 @@ type responseBodyWriter struct {
 	exceededMaxSize        bool
 }
 
-func (w *responseBodyWriter) Write(b []byte) (int, error) {
+func (w *responseWriter) Write(b []byte) (int, error) {
 	if w.shouldCaptureBody == nil {
 		w.shouldCaptureBody = new(bool)
 		*w.shouldCaptureBody = w.isSupportedContentType(w.Header().Get("Content-Type"))
@@ -42,7 +42,7 @@ func (w *responseBodyWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
-func (w *responseBodyWriter) Size() int {
+func (w *responseWriter) Size() int {
 	return int(w.size)
 }
 
@@ -77,19 +77,27 @@ func Middleware(r *gin.Engine, config *Config) gin.HandlerFunc {
 
 		// Cache request body if needed
 		var requestBody []byte
-		if c.Request.Body != nil && requestSize <= common.MaxBodySize &&
-			(requestSize == -1 ||
-				(client.Config.RequestLoggingConfig != nil &&
-					client.Config.RequestLoggingConfig.Enabled &&
-					client.Config.RequestLoggingConfig.LogRequestBody &&
-					client.RequestLogger.IsSupportedContentType(c.Request.Header.Get("Content-Type")))) {
-			var err error
-			requestBody, err = io.ReadAll(c.Request.Body)
-			if err == nil {
-				c.Request.Body = io.NopCloser(bytes.NewBuffer(requestBody))
-				if requestSize == -1 {
-					requestSize = int64(len(requestBody))
+		var requestReader *common.RequestReader
+		captureRequestBody := client.Config.RequestLoggingConfig != nil &&
+			client.Config.RequestLoggingConfig.Enabled &&
+			client.Config.RequestLoggingConfig.LogRequestBody &&
+			client.RequestLogger.IsSupportedContentType(c.Request.Header.Get("Content-Type"))
+
+		if c.Request.Body != nil && requestSize <= common.MaxBodySize {
+			if captureRequestBody {
+				// Capture the body for logging
+				var err error
+				requestBody, err = io.ReadAll(c.Request.Body)
+				if err == nil {
+					c.Request.Body = io.NopCloser(bytes.NewBuffer(requestBody))
+					if requestSize == -1 {
+						requestSize = int64(len(requestBody))
+					}
 				}
+			} else if requestSize == -1 {
+				// Only measure request body size
+				requestReader = &common.RequestReader{Reader: c.Request.Body}
+				c.Request.Body = requestReader
 			}
 		}
 
@@ -100,7 +108,7 @@ func Middleware(r *gin.Engine, config *Config) gin.HandlerFunc {
 			client.Config.RequestLoggingConfig.Enabled &&
 			client.Config.RequestLoggingConfig.LogResponseBody {
 			originalWriter = c.Writer
-			c.Writer = &responseBodyWriter{
+			c.Writer = &responseWriter{
 				ResponseWriter:         c.Writer,
 				body:                   &responseBody,
 				isSupportedContentType: client.RequestLogger.IsSupportedContentType,
@@ -112,6 +120,11 @@ func Middleware(r *gin.Engine, config *Config) gin.HandlerFunc {
 		defer func() {
 			duration := time.Since(start)
 			statusCode := c.Writer.Status()
+
+			// Update request size from reader if needed
+			if requestReader != nil && requestSize == -1 {
+				requestSize = requestReader.Size()
+			}
 
 			// Capture error from panic if any
 			var panicValue any

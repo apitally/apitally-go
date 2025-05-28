@@ -52,19 +52,27 @@ func Middleware(r chi.Router, config *Config) func(http.Handler) http.Handler {
 
 			// Cache request body if needed
 			var requestBody []byte
-			if r.Body != nil && requestSize <= common.MaxBodySize &&
-				(requestSize == -1 ||
-					(client.Config.RequestLoggingConfig != nil &&
-						client.Config.RequestLoggingConfig.Enabled &&
-						client.Config.RequestLoggingConfig.LogRequestBody &&
-						client.RequestLogger.IsSupportedContentType(r.Header.Get("Content-Type")))) {
-				var err error
-				requestBody, err = io.ReadAll(r.Body)
-				if err == nil {
-					r.Body = io.NopCloser(bytes.NewBuffer(requestBody))
-					if requestSize == -1 {
-						requestSize = int64(len(requestBody))
+			var requestReader *common.RequestReader
+			captureRequestBody := client.Config.RequestLoggingConfig != nil &&
+				client.Config.RequestLoggingConfig.Enabled &&
+				client.Config.RequestLoggingConfig.LogRequestBody &&
+				client.RequestLogger.IsSupportedContentType(r.Header.Get("Content-Type"))
+
+			if r.Body != nil && requestSize <= common.MaxBodySize {
+				if captureRequestBody {
+					// Capture the body for logging
+					var err error
+					requestBody, err = io.ReadAll(r.Body)
+					if err == nil {
+						r.Body = io.NopCloser(bytes.NewBuffer(requestBody))
+						if requestSize == -1 {
+							requestSize = int64(len(requestBody))
+						}
 					}
+				} else if requestSize == -1 {
+					// Only measure request body size
+					requestReader = &common.RequestReader{Reader: r.Body}
+					r.Body = requestReader
 				}
 			}
 
@@ -82,6 +90,11 @@ func Middleware(r chi.Router, config *Config) func(http.Handler) http.Handler {
 				duration := time.Since(start)
 				routePattern := getRoutePattern(r)
 				statusCode := rw.Status()
+
+				// Update request size from reader if needed
+				if requestReader != nil && requestSize == -1 {
+					requestSize = requestReader.Size()
+				}
 
 				// Capture error from panic if any
 				var panicValue any
