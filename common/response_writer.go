@@ -15,6 +15,7 @@ const (
 type ResponseWriter struct {
 	http.ResponseWriter
 	Body                   *bytes.Buffer
+	CaptureBody            bool
 	IsSupportedContentType func(string) bool
 
 	statusCode        int
@@ -31,7 +32,7 @@ func (w *ResponseWriter) WriteHeader(statusCode int) {
 func (w *ResponseWriter) Write(b []byte) (int, error) {
 	if w.shouldCaptureBody == nil {
 		w.shouldCaptureBody = new(bool)
-		*w.shouldCaptureBody = w.IsSupportedContentType(w.Header().Get("Content-Type"))
+		*w.shouldCaptureBody = w.CaptureBody && w.IsSupportedContentType(w.Header().Get("Content-Type"))
 	}
 	if *w.shouldCaptureBody && w.Body != nil && !w.exceededMaxSize {
 		if w.Body.Len()+len(b) <= MaxBodySize {

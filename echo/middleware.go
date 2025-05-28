@@ -68,8 +68,11 @@ func Middleware(e *echo.Echo, config *Config) echo.MiddlewareFunc {
 			// Prepare response writer to capture body if needed
 			var responseBody bytes.Buffer
 			rw := &common.ResponseWriter{
-				ResponseWriter:         c.Response().Writer,
-				Body:                   &responseBody,
+				ResponseWriter: c.Response().Writer,
+				Body:           &responseBody,
+				CaptureBody: client.Config.RequestLoggingConfig != nil &&
+					client.Config.RequestLoggingConfig.Enabled &&
+					client.Config.RequestLoggingConfig.LogResponseBody,
 				IsSupportedContentType: client.RequestLogger.IsSupportedContentType,
 			}
 			c.Response().Writer = rw

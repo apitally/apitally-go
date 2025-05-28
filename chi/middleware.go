@@ -77,8 +77,11 @@ func Middleware(r chi.Router, config *Config) func(http.Handler) http.Handler {
 			// Prepare response writer to capture body if needed
 			var responseBody bytes.Buffer
 			rw := &common.ResponseWriter{
-				ResponseWriter:         w,
-				Body:                   &responseBody,
+				ResponseWriter: w,
+				Body:           &responseBody,
+				CaptureBody: client.Config.RequestLoggingConfig != nil &&
+					client.Config.RequestLoggingConfig.Enabled &&
+					client.Config.RequestLoggingConfig.LogResponseBody,
 				IsSupportedContentType: client.RequestLogger.IsSupportedContentType,
 			}
 
