@@ -354,4 +354,59 @@ func TestRequestLogger(t *testing.T) {
 		}
 		assert.Equal(t, "******", authHeader)
 	})
+
+	t.Run("Suspend", func(t *testing.T) {
+		config := &common.RequestLoggingConfig{
+			Enabled: true,
+		}
+		requestLogger := NewRequestLogger(config)
+		defer requestLogger.Close()
+
+		requestLogger.SuspendFor(1 * time.Second)
+		assert.True(t, requestLogger.IsSuspended())
+	})
+
+	t.Run("RetryFileLater", func(t *testing.T) {
+		config := &common.RequestLoggingConfig{
+			Enabled: true,
+		}
+		requestLogger := NewRequestLogger(config)
+		defer requestLogger.Close()
+
+		tempFile, _ := NewTempGzipFile()
+		tempFile.WriteLine([]byte("test"))
+		tempFile.Close()
+
+		requestLogger.RetryFileLater(tempFile)
+
+		// File should be available in the channel
+		retrievedFile := requestLogger.GetFile()
+		assert.NotNil(t, retrievedFile)
+		assert.Equal(t, tempFile, retrievedFile)
+		retrievedFile.Delete()
+
+		// Fill the channel to capacity (maxFiles = 50)
+		for i := 0; i < 50; i++ {
+			file, err := NewTempGzipFile()
+			assert.NoError(t, err)
+			err = file.Close()
+			assert.NoError(t, err)
+			requestLogger.RetryFileLater(file)
+		}
+
+		// Create another file to retry when channel is full
+		tempFile, _ = NewTempGzipFile()
+		tempFile.WriteLine([]byte("test"))
+		tempFile.Close()
+
+		// This should delete the file since channel is full
+		requestLogger.RetryFileLater(tempFile)
+
+		// Verify the overflow file was deleted
+		_, err := tempFile.GetContent()
+		assert.Error(t, err) // Should error because file was deleted
+
+		// Clean up
+		requestLogger.Clear()
+	})
 }
