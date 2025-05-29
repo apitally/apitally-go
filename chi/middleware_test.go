@@ -2,7 +2,6 @@ package apitally
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -39,20 +38,18 @@ func setupTestApp(requestLoggingEnabled bool) *chi.Mux {
 	r.Use(Middleware(r, config))
 
 	r.Get("/hello", func(w http.ResponseWriter, r *http.Request) {
-		ctx := context.WithValue(r.Context(), consumerKey, "tester")
-		*r = *r.WithContext(ctx)
+		SetConsumerIdentifier(r, "tester")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]string{"message": "Hello, World!"})
 	})
 
 	r.Post("/hello", func(w http.ResponseWriter, r *http.Request) {
-		ctx := context.WithValue(r.Context(), consumerKey, Consumer{
+		SetConsumer(r, common.Consumer{
 			Identifier: "tester",
 			Name:       "Tester",
 			Group:      "Test Group",
 		})
-		*r = *r.WithContext(ctx)
 
 		var req struct {
 			Name string `json:"name" validate:"required,min=3"`
