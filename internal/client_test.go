@@ -91,6 +91,8 @@ func TestApitallyClient(t *testing.T) {
 	})
 
 	t.Run("GetAndResetApitallyClient", func(t *testing.T) {
+		ResetApitallyClient()
+
 		config := &common.Config{
 			ClientId: "e117eb33-f6d2-4260-a71d-31eb49425893",
 			Env:      "test",
