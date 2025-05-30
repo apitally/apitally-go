@@ -68,6 +68,38 @@ func TestApitallyClient(t *testing.T) {
 			return strings.Contains(url, "/test/log?uuid=")
 		}))
 	})
+
+	t.Run("ConfigValidation", func(t *testing.T) {
+		config := &common.Config{
+			ClientId: "e117eb33-xxxx-4260-a71d-31eb49425893",
+			Env:      "test",
+		}
+		client, err := InitApitallyClient(*config)
+		assert.Nil(t, client)
+		assert.Error(t, err)
+
+		config = &common.Config{
+			ClientId: "e117eb33-f6d2-4260-a71d-31eb49425893",
+			Env:      "invalid_env",
+		}
+		client, err = InitApitallyClient(*config)
+		assert.Nil(t, client)
+		assert.Error(t, err)
+	})
+
+	t.Run("GetAndResetApitallyClient", func(t *testing.T) {
+		config := &common.Config{
+			ClientId: "e117eb33-f6d2-4260-a71d-31eb49425893",
+			Env:      "test",
+		}
+		client, _ := InitApitallyClient(*config)
+		defer client.Shutdown()
+
+		assert.True(t, client.IsEnabled())
+		assert.Equal(t, client, GetApitallyClient())
+		ResetApitallyClient()
+		assert.Nil(t, GetApitallyClient())
+	})
 }
 
 func createMockHTTPClient() (*retryablehttp.Client, *mockTransport) {
