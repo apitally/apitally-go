@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -208,9 +209,10 @@ func TestRequestLogger(t *testing.T) {
 		assert.Nil(t, logFile)
 	})
 
-	t.Run("ExcludeHealthCheckPath", func(t *testing.T) {
+	t.Run("ExcludeBasedOnPath", func(t *testing.T) {
 		config := &common.RequestLoggingConfig{
-			Enabled: true,
+			Enabled:      true,
+			ExcludePaths: []*regexp.Regexp{regexp.MustCompile(`/status$`)},
 		}
 		requestLogger := NewRequestLogger(config)
 		defer requestLogger.Close()
@@ -231,6 +233,17 @@ func TestRequestLogger(t *testing.T) {
 			Body:         []byte(`{"healthy": true}`),
 		}
 		requestLogger.LogRequest(request, response, nil, "")
+
+		request = &common.Request{
+			Timestamp: timestamp,
+			Method:    "GET",
+			Path:      "/status",
+			URL:       "http://test/status",
+			Headers:   [][2]string{},
+			Body:      []byte{},
+		}
+		requestLogger.LogRequest(request, response, nil, "")
+
 		requestLogger.writeToFile()
 		requestLogger.rotateFile()
 
@@ -278,6 +291,8 @@ func TestRequestLogger(t *testing.T) {
 			LogRequestBody:     true,
 			LogResponseHeaders: true,
 			LogResponseBody:    true,
+			MaskQueryParams:    []*regexp.Regexp{regexp.MustCompile(`(?i)mask`)},
+			MaskHeaders:        []*regexp.Regexp{regexp.MustCompile(`(?i)mask`)},
 			MaskRequestBodyCallback: func(req *common.Request) []byte {
 				return []byte("<masked>")
 			},
@@ -293,10 +308,11 @@ func TestRequestLogger(t *testing.T) {
 			Timestamp: timestamp,
 			Method:    "POST",
 			Path:      "/items",
-			URL:       "http://test/items?token=my-secret-token",
+			URL:       "http://test/items?token=my-secret-token&mask=123&test=123",
 			Headers: [][2]string{
 				{"Authorization", "Bearer 1234567890"},
 				{"Content-Type", "application/json"},
+				{"Mask", "123"},
 			},
 			Body: []byte(`{"key": "value"}`),
 		}
@@ -333,7 +349,7 @@ func TestRequestLogger(t *testing.T) {
 		assert.NoError(t, err)
 
 		reqData := logItem["request"].(map[string]any)
-		assert.Equal(t, "http://test/items?token=%2A%2A%2A%2A%2A%2A", reqData["url"])
+		assert.Equal(t, "http://test/items?mask=%2A%2A%2A%2A%2A%2A&test=123&token=%2A%2A%2A%2A%2A%2A", reqData["url"])
 
 		reqBody, err := base64.StdEncoding.DecodeString(reqData["body"].(string))
 		assert.NoError(t, err)
@@ -345,14 +361,18 @@ func TestRequestLogger(t *testing.T) {
 
 		reqHeaders := reqData["headers"].([]any)
 		var authHeader string
+		var maskHeader string
 		for _, h := range reqHeaders {
 			header := h.([]any)
 			if header[0] == "Authorization" {
 				authHeader = header[1].(string)
-				break
+			}
+			if header[0] == "Mask" {
+				maskHeader = header[1].(string)
 			}
 		}
 		assert.Equal(t, "******", authHeader)
+		assert.Equal(t, "******", maskHeader)
 	})
 
 	t.Run("Suspend", func(t *testing.T) {
@@ -408,5 +428,19 @@ func TestRequestLogger(t *testing.T) {
 
 		// Clean up
 		requestLogger.Clear()
+	})
+
+	t.Run("IsSupportedContentType", func(t *testing.T) {
+		requestLogger := NewRequestLogger(&common.RequestLoggingConfig{})
+		defer requestLogger.Close()
+
+		// Supported content types
+		assert.True(t, requestLogger.IsSupportedContentType("application/json"))
+		assert.True(t, requestLogger.IsSupportedContentType("application/json; charset=utf-8"))
+		assert.True(t, requestLogger.IsSupportedContentType("text/plain"))
+
+		// Unsupported content types
+		assert.False(t, requestLogger.IsSupportedContentType("multipart/form-data"))
+		assert.False(t, requestLogger.IsSupportedContentType(""))
 	})
 }
