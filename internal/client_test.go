@@ -15,6 +15,8 @@ import (
 
 func TestApitallyClient(t *testing.T) {
 	t.Run("StartupSyncShutdown", func(t *testing.T) {
+		ResetApitallyClient()
+
 		config := &common.Config{
 			ClientId: "e117eb33-f6d2-4260-a71d-31eb49425893",
 			Env:      "test",
@@ -67,6 +69,42 @@ func TestApitallyClient(t *testing.T) {
 		assert.True(t, slices.ContainsFunc(recordedURLs, func(url string) bool {
 			return strings.Contains(url, "/test/log?uuid=")
 		}))
+	})
+
+	t.Run("ConfigValidation", func(t *testing.T) {
+		ResetApitallyClient()
+
+		config := &common.Config{
+			ClientId: "e117eb33-xxxx-4260-a71d-31eb49425893",
+			Env:      "test",
+		}
+		client, err := InitApitallyClient(*config)
+		assert.Nil(t, client)
+		assert.Error(t, err)
+
+		config = &common.Config{
+			ClientId: "e117eb33-f6d2-4260-a71d-31eb49425893",
+			Env:      "invalid_env",
+		}
+		client, err = InitApitallyClient(*config)
+		assert.Nil(t, client)
+		assert.Error(t, err)
+	})
+
+	t.Run("GetAndResetApitallyClient", func(t *testing.T) {
+		ResetApitallyClient()
+
+		config := &common.Config{
+			ClientId: "e117eb33-f6d2-4260-a71d-31eb49425893",
+			Env:      "test",
+		}
+		client, _ := InitApitallyClient(*config)
+		defer client.Shutdown()
+
+		assert.True(t, client.IsEnabled())
+		assert.Equal(t, client, GetApitallyClient())
+		ResetApitallyClient()
+		assert.Nil(t, GetApitallyClient())
 	})
 }
 

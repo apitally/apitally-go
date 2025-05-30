@@ -2,6 +2,7 @@ package internal
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/apitally/apitally-go/common"
@@ -10,13 +11,22 @@ import (
 
 func TestConsumerRegistry(t *testing.T) {
 	t.Run("ConsumerFromStringOrObject", func(t *testing.T) {
+		// Nil should return nil
+		consumer := ConsumerFromStringOrObject(nil)
+		assert.Nil(t, consumer)
+
 		// Empty string should return nil
-		consumer := ConsumerFromStringOrObject("")
+		consumer = ConsumerFromStringOrObject("")
 		assert.Nil(t, consumer)
 
 		// Empty identifier in struct should return nil
 		consumer = ConsumerFromStringOrObject(common.Consumer{Identifier: " "})
 		assert.Nil(t, consumer)
+
+		// Long identifier should be truncated to 128 characters
+		consumer = ConsumerFromStringOrObject(strings.Repeat("a", 256))
+		assert.NotNil(t, consumer)
+		assert.Equal(t, 128, len(consumer.Identifier))
 
 		// Valid string should return consumer with identifier
 		consumer = ConsumerFromStringOrObject("test")
@@ -25,6 +35,12 @@ func TestConsumerRegistry(t *testing.T) {
 
 		// Valid struct should return consumer with identifier
 		consumer = ConsumerFromStringOrObject(common.Consumer{Identifier: "test"})
+		assert.NotNil(t, consumer)
+		assert.Equal(t, "test", consumer.Identifier)
+
+		// Valid pointer to struct should return consumer with identifier
+		consumerPtr := &common.Consumer{Identifier: "test"}
+		consumer = ConsumerFromStringOrObject(consumerPtr)
 		assert.NotNil(t, consumer)
 		assert.Equal(t, "test", consumer.Identifier)
 
@@ -40,6 +56,16 @@ func TestConsumerRegistry(t *testing.T) {
 		assert.Equal(t, "Test", consumer.Name)
 		assert.NotNil(t, consumer.Group)
 		assert.Equal(t, "Testers", consumer.Group)
+
+		// Long name and group should be truncated to 64 characters
+		consumer = ConsumerFromStringOrObject(common.Consumer{
+			Identifier: "test",
+			Name:       strings.Repeat("a", 128),
+			Group:      strings.Repeat("a", 128),
+		})
+		assert.NotNil(t, consumer)
+		assert.Equal(t, 64, len(consumer.Name))
+		assert.Equal(t, 64, len(consumer.Group))
 	})
 
 	t.Run("AddOrUpdateConsumer", func(t *testing.T) {
