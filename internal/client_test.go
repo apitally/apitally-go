@@ -15,6 +15,8 @@ import (
 
 func TestApitallyClient(t *testing.T) {
 	t.Run("StartupSyncShutdown", func(t *testing.T) {
+		ResetApitallyClient()
+
 		config := &common.Config{
 			ClientId: "e117eb33-f6d2-4260-a71d-31eb49425893",
 			Env:      "test",
@@ -25,10 +27,7 @@ func TestApitallyClient(t *testing.T) {
 		httpClient, mockTransport := createMockHTTPClient()
 		client, _ := InitApitallyClientWithHTTPClient(*config, httpClient)
 		client.StartSync()
-		defer func() {
-			client.Shutdown()
-			ResetApitallyClient()
-		}()
+		defer client.Shutdown()
 
 		// Set startup data
 		client.SetStartupData([]common.PathInfo{}, map[string]string{}, "test")
@@ -73,6 +72,8 @@ func TestApitallyClient(t *testing.T) {
 	})
 
 	t.Run("ConfigValidation", func(t *testing.T) {
+		ResetApitallyClient()
+
 		config := &common.Config{
 			ClientId: "e117eb33-xxxx-4260-a71d-31eb49425893",
 			Env:      "test",
