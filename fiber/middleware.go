@@ -25,11 +25,10 @@ func Middleware(app *fiber.App, config *Config) fiber.Handler {
 	if !config.DisableSync {
 		client.StartSync()
 
-		// Delay startup data collection to ensure all routes are registered
-		go func() {
-			time.Sleep(time.Second)
+		app.Hooks().OnListen(func(data fiber.ListenData) error {
 			client.SetStartupData(getRoutes(app), getVersions(config.AppVersion), "go:fiber")
-		}()
+			return nil
+		})
 	}
 
 	return func(c *fiber.Ctx) error {
