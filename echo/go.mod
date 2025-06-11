@@ -3,7 +3,7 @@ module github.com/apitally/apitally-go/echo
 go 1.21
 
 require (
-	github.com/apitally/apitally-go v0.0.0
+	github.com/apitally/apitally-go v0.6.1
 	github.com/go-playground/validator/v10 v10.16.0
 	github.com/labstack/echo/v4 v4.11.4
 	github.com/stretchr/testify v1.10.0
