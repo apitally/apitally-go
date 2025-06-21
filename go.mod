@@ -1,10 +1,12 @@
 module github.com/apitally/apitally-go
 
-go 1.21
+go 1.23
+
+toolchain go1.24.4
 
 require (
 	github.com/google/uuid v1.6.0
-	github.com/hashicorp/go-retryablehttp v0.7.7
+	github.com/hashicorp/go-retryablehttp v0.7.8
 	github.com/stretchr/testify v1.10.0
 )
 
