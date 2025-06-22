@@ -24,8 +24,9 @@ func getRoutes(r *gin.Engine) []common.PathInfo {
 
 func getVersions(appVersion string) map[string]string {
 	versions := map[string]string{
-		"go":  runtime.Version(),
-		"gin": gin.Version,
+		"go":       runtime.Version(),
+		"gin":      gin.Version,
+		"apitally": common.Version,
 	}
 
 	if appVersion != "" {

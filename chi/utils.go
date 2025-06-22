@@ -23,9 +23,10 @@ func getRoutes(r chi.Router) []common.PathInfo {
 }
 
 func getVersions(appVersion string) map[string]string {
+	// Chi currently doesn't expose version info
 	versions := map[string]string{
-		"go": runtime.Version(),
-		// Chi currently doesn't expose version info
+		"go":       runtime.Version(),
+		"apitally": common.Version,
 	}
 	if appVersion != "" {
 		versions["app"] = strings.TrimSpace(appVersion)

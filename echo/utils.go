@@ -24,8 +24,9 @@ func getRoutes(e *echo.Echo) []common.PathInfo {
 
 func getVersions(appVersion string) map[string]string {
 	versions := map[string]string{
-		"go":   runtime.Version(),
-		"echo": echo.Version,
+		"go":       runtime.Version(),
+		"echo":     echo.Version,
+		"apitally": common.Version,
 	}
 
 	if appVersion != "" {
