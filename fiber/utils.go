@@ -3,19 +3,21 @@ package apitally
 import (
 	"fmt"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/apitally/apitally-go/common"
 	"github.com/gofiber/fiber/v2"
 )
 
+var excludedMethods = []string{"HEAD", "OPTIONS", "CONNECT", "TRACE"}
+
 func getRoutes(app *fiber.App) []common.PathInfo {
 	fiberRoutes := app.GetRoutes()
 	paths := make([]common.PathInfo, 0, len(fiberRoutes))
 
 	for _, route := range fiberRoutes {
-		// Filter out auto-generated routes
-		if route.Method != "HEAD" && route.Path != "/" {
+		if !slices.Contains(excludedMethods, route.Method) && route.Path != "/" {
 			paths = append(paths, common.PathInfo{
 				Method: route.Method,
 				Path:   route.Path,
