@@ -29,6 +29,8 @@ jobs:
           VERSION=${{ github.event.release.tag_name }}
           BRANCH=release-$VERSION
           git checkout -b "$BRANCH"
+          sed -E -i 's|const Version = "0.0.0"|const Version = "'${VERSION#v}'"|' common/version.go
+          git add common/version.go
           for mod in */go.mod; do
             dir=$(dirname "$mod")
             sed -E -i 's|github.com/apitally/apitally-go v0.0.0|github.com/apitally/apitally-go '$VERSION'|' "$mod"

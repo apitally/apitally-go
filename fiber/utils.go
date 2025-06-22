@@ -30,8 +30,9 @@ func getRoutes(app *fiber.App) []common.PathInfo {
 
 func getVersions(appVersion string) map[string]string {
 	versions := map[string]string{
-		"go":    runtime.Version(),
-		"fiber": fiber.Version,
+		"go":       runtime.Version(),
+		"fiber":    fiber.Version,
+		"apitally": common.Version,
 	}
 
 	if appVersion != "" {
