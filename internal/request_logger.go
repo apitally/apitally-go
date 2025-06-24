@@ -22,6 +22,7 @@ const (
 
 var (
 	bodyTooLarge        = []byte("<body too large>")
+	bodyMasked          = []byte("<masked>")
 	allowedContentTypes = []string{"application/json", "text/plain"}
 
 	excludePathPatterns = []*regexp.Regexp{
@@ -53,6 +54,17 @@ var (
 		regexp.MustCompile(`(?i)token`),
 		regexp.MustCompile(`(?i)cookie`),
 	}
+	maskBodyFieldPatterns = []*regexp.Regexp{
+		regexp.MustCompile(`(?i)password`),
+		regexp.MustCompile(`(?i)pwd`),
+		regexp.MustCompile(`(?i)token`),
+		regexp.MustCompile(`(?i)secret`),
+		regexp.MustCompile(`(?i)auth`),
+		regexp.MustCompile(`(?i)card[-_ ]?number`),
+		regexp.MustCompile(`(?i)ccv`),
+		regexp.MustCompile(`(?i)ssn`),
+	}
+	jsonContentTypePattern = regexp.MustCompile(`(?i)\bjson\b`)
 )
 
 type RequestLogger struct {
@@ -60,7 +72,7 @@ type RequestLogger struct {
 	enabled          bool
 	enabledMutex     sync.Mutex
 	suspendUntil     *time.Time
-	pendingWrites    chan string
+	pendingWrites    chan RequestLogItem
 	currentFile      *TempGzipFile
 	currentFileMutex sync.Mutex
 	files            chan *TempGzipFile
@@ -87,7 +99,7 @@ func NewRequestLogger(config *common.RequestLoggingConfig) *RequestLogger {
 	logger := &RequestLogger{
 		config:        config,
 		enabled:       config.Enabled,
-		pendingWrites: make(chan string, maxPendingWrites),
+		pendingWrites: make(chan RequestLogItem, maxPendingWrites),
 		files:         make(chan *TempGzipFile, maxFiles),
 	}
 	return logger
@@ -128,11 +140,6 @@ func (rl *RequestLogger) LogRequest(request *common.Request, response *common.Re
 		return
 	}
 
-	parsedURL, parseErr := url.Parse(request.URL)
-	if parseErr != nil {
-		return
-	}
-
 	var userAgent string
 	for _, header := range request.Headers {
 		if header[0] == "User-Agent" {
@@ -144,61 +151,15 @@ func (rl *RequestLogger) LogRequest(request *common.Request, response *common.Re
 	if rl.shouldExcludePath(request.Path) || rl.shouldExcludeUserAgent(userAgent) {
 		return
 	}
-
 	if rl.config.ExcludeCallback != nil && rl.config.ExcludeCallback(request, response) {
 		return
 	}
 
-	// Process query params
-	if rl.config.LogQueryParams {
-		parsedURL.RawQuery = rl.maskQueryParams(parsedURL.RawQuery)
-	} else {
-		parsedURL.RawQuery = ""
-	}
-	request.URL = parsedURL.String()
-
-	// Process request body
 	if !rl.config.LogRequestBody || !rl.hasSupportedContentType(request.Headers) {
 		request.Body = nil
-	} else if request.Size > common.MaxBodySize {
-		request.Body = bodyTooLarge
-	} else if request.Body != nil {
-		if len(request.Body) > common.MaxBodySize {
-			request.Body = bodyTooLarge
-		} else if rl.config.MaskRequestBodyCallback != nil {
-			request.Body = rl.config.MaskRequestBodyCallback(request)
-			if len(request.Body) > common.MaxBodySize {
-				request.Body = bodyTooLarge
-			}
-		}
 	}
-
-	// Process response body
 	if !rl.config.LogResponseBody || !rl.hasSupportedContentType(response.Headers) {
 		response.Body = nil
-	} else if response.Size > common.MaxBodySize {
-		response.Body = bodyTooLarge
-	} else if response.Body != nil {
-		if len(response.Body) > common.MaxBodySize {
-			response.Body = bodyTooLarge
-		} else if rl.config.MaskResponseBodyCallback != nil {
-			response.Body = rl.config.MaskResponseBodyCallback(request, response)
-			if len(response.Body) > common.MaxBodySize {
-				response.Body = bodyTooLarge
-			}
-		}
-	}
-
-	// Process headers
-	if !rl.config.LogRequestHeaders {
-		request.Headers = nil
-	} else {
-		request.Headers = rl.maskHeaders(request.Headers)
-	}
-	if !rl.config.LogResponseHeaders {
-		response.Headers = nil
-	} else {
-		response.Headers = rl.maskHeaders(response.Headers)
 	}
 
 	item := RequestLogItem{
@@ -217,26 +178,21 @@ func (rl *RequestLogger) LogRequest(request *common.Request, response *common.Re
 		}
 	}
 
-	jsonData, err := json.Marshal(item)
-	if err != nil {
-		return
-	}
-
 	select {
-	case rl.pendingWrites <- string(jsonData):
+	case rl.pendingWrites <- item:
 	default:
 		// Channel is full, drop the oldest item and try again
 		select {
 		case <-rl.pendingWrites:
-			rl.pendingWrites <- string(jsonData)
+			rl.pendingWrites <- item
 		default:
 		}
 	}
 }
 
 // For testing purposes
-func (rl *RequestLogger) GetPendingWrites() []string {
-	result := make([]string, 0, len(rl.pendingWrites))
+func (rl *RequestLogger) GetPendingWrites() []RequestLogItem {
+	result := make([]RequestLogItem, 0, len(rl.pendingWrites))
 	for {
 		select {
 		case item := <-rl.pendingWrites:
@@ -264,13 +220,88 @@ func (rl *RequestLogger) writeToFile() error {
 					return err
 				}
 			}
-			if err := rl.currentFile.WriteLine([]byte(item)); err != nil {
+
+			rl.applyMasking(&item)
+
+			jsonData, err := json.Marshal(item)
+			if err != nil {
+				return err
+			}
+			if err := rl.currentFile.WriteLine(jsonData); err != nil {
 				return err
 			}
 		default:
 			// No more items to write
 			return nil
 		}
+	}
+}
+
+func (rl *RequestLogger) applyMasking(item *RequestLogItem) {
+	request := item.Request
+	response := item.Response
+
+	// Apply user-provided MaskRequestBodyCallback function
+	if rl.config.MaskRequestBodyCallback != nil && request.Body != nil && !bytes.Equal(request.Body, bodyTooLarge) {
+		maskedBody := rl.config.MaskRequestBodyCallback(request)
+		if maskedBody == nil {
+			request.Body = bodyMasked
+		} else {
+			request.Body = maskedBody
+		}
+	}
+
+	// Apply user-provided MaskResponseBodyCallback function
+	if rl.config.MaskResponseBodyCallback != nil && response.Body != nil && !bytes.Equal(response.Body, bodyTooLarge) {
+		maskedBody := rl.config.MaskResponseBodyCallback(request, response)
+		if maskedBody == nil {
+			response.Body = bodyMasked
+		} else {
+			response.Body = maskedBody
+		}
+	}
+
+	// Check request and response body sizes
+	if request.Body != nil && len(request.Body) > common.MaxBodySize {
+		request.Body = bodyTooLarge
+	}
+	if response.Body != nil && len(response.Body) > common.MaxBodySize {
+		response.Body = bodyTooLarge
+	}
+
+	// Mask request and response body fields
+	if request.Body != nil && !bytes.Equal(request.Body, bodyTooLarge) && !bytes.Equal(request.Body, bodyMasked) {
+		if rl.hasJSONContentType(request.Headers) {
+			request.Body = rl.maskJSONBody(request.Body)
+		}
+	}
+	if response.Body != nil && !bytes.Equal(response.Body, bodyTooLarge) && !bytes.Equal(response.Body, bodyMasked) {
+		if rl.hasJSONContentType(response.Headers) {
+			response.Body = rl.maskJSONBody(response.Body)
+		}
+	}
+
+	// Mask request and response headers
+	if !rl.config.LogRequestHeaders {
+		request.Headers = nil
+	} else if request.Headers != nil {
+		request.Headers = rl.maskHeaders(request.Headers)
+	}
+	if !rl.config.LogResponseHeaders {
+		response.Headers = nil
+	} else if response.Headers != nil {
+		response.Headers = rl.maskHeaders(response.Headers)
+	}
+
+	// Mask query params
+	parsedURL, err := url.Parse(request.URL)
+	if err == nil {
+		if rl.config.LogQueryParams {
+			parsedURL.RawQuery = rl.maskQueryParams(parsedURL.RawQuery)
+		} else {
+			parsedURL.RawQuery = ""
+		}
+		request.URL = parsedURL.String()
 	}
 }
 
@@ -446,10 +477,32 @@ func (rl *RequestLogger) shouldMaskHeader(name string) bool {
 	return false
 }
 
+func (rl *RequestLogger) shouldMaskBodyField(fieldName string) bool {
+	patterns := slices.Clone(maskBodyFieldPatterns)
+	if rl.config.MaskBodyFields != nil {
+		patterns = append(patterns, rl.config.MaskBodyFields...)
+	}
+	for _, pattern := range patterns {
+		if pattern.MatchString(fieldName) {
+			return true
+		}
+	}
+	return false
+}
+
 func (rl *RequestLogger) hasSupportedContentType(headers [][2]string) bool {
 	for _, header := range headers {
 		if header[0] == "Content-Type" {
 			return rl.IsSupportedContentType(header[1])
+		}
+	}
+	return false
+}
+
+func (rl *RequestLogger) hasJSONContentType(headers [][2]string) bool {
+	for _, header := range headers {
+		if header[0] == "Content-Type" {
+			return jsonContentTypePattern.MatchString(header[1])
 		}
 	}
 	return false
@@ -490,4 +543,42 @@ func (rl *RequestLogger) maskHeaders(headers [][2]string) [][2]string {
 		}
 	}
 	return result
+}
+
+func (rl *RequestLogger) maskBodyFields(data any) any {
+	switch v := data.(type) {
+	case map[string]any:
+		for key, value := range v {
+			if rl.shouldMaskBodyField(key) {
+				if _, ok := value.(string); ok {
+					v[key] = masked
+					continue
+				}
+			}
+			v[key] = rl.maskBodyFields(value)
+		}
+		return v
+	case []any:
+		for i, item := range v {
+			v[i] = rl.maskBodyFields(item)
+		}
+		return v
+	default:
+		return v
+	}
+}
+
+func (rl *RequestLogger) maskJSONBody(body []byte) []byte {
+	var data any
+	if err := json.Unmarshal(body, &data); err != nil {
+		return body
+	}
+
+	rl.maskBodyFields(data)
+	maskedBody, err := json.Marshal(data)
+	if err != nil {
+		return body
+	}
+
+	return maskedBody
 }
