@@ -2,7 +2,6 @@ package apitally
 
 import (
 	"bytes"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -191,15 +190,8 @@ func TestMiddleware(t *testing.T) {
 		resp, _ = app.Test(req)
 		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
 
-		pendingWrites := c.RequestLogger.GetPendingWrites()
-		assert.Len(t, pendingWrites, 2)
-
-		// Deserialize log items
-		logItems := make([]internal.RequestLogItem, len(pendingWrites))
-		for i, write := range pendingWrites {
-			err := json.Unmarshal([]byte(write), &logItems[i])
-			assert.NoError(t, err)
-		}
+		logItems := c.RequestLogger.GetPendingWrites()
+		assert.Len(t, logItems, 2)
 
 		// Validate log item for POST /hello request
 		helloLogItem := logItems[0]
