@@ -18,9 +18,9 @@ func TestApitallyClient(t *testing.T) {
 		ResetApitallyClient()
 
 		config := &common.Config{
-			ClientId: "e117eb33-f6d2-4260-a71d-31eb49425893",
+			ClientID: "e117eb33-f6d2-4260-a71d-31eb49425893",
 			Env:      "test",
-			RequestLoggingConfig: &common.RequestLoggingConfig{
+			RequestLogging: &common.RequestLoggingConfig{
 				Enabled: true,
 			},
 		}
@@ -75,7 +75,7 @@ func TestApitallyClient(t *testing.T) {
 		ResetApitallyClient()
 
 		config := &common.Config{
-			ClientId: "e117eb33-xxxx-4260-a71d-31eb49425893",
+			ClientID: "e117eb33-xxxx-4260-a71d-31eb49425893",
 			Env:      "test",
 		}
 		client, err := InitApitallyClient(*config)
@@ -83,7 +83,7 @@ func TestApitallyClient(t *testing.T) {
 		assert.Error(t, err)
 
 		config = &common.Config{
-			ClientId: "e117eb33-f6d2-4260-a71d-31eb49425893",
+			ClientID: "e117eb33-f6d2-4260-a71d-31eb49425893",
 			Env:      "invalid_env",
 		}
 		client, err = InitApitallyClient(*config)
@@ -95,7 +95,7 @@ func TestApitallyClient(t *testing.T) {
 		ResetApitallyClient()
 
 		config := &common.Config{
-			ClientId: "e117eb33-f6d2-4260-a71d-31eb49425893",
+			ClientID: "e117eb33-f6d2-4260-a71d-31eb49425893",
 			Env:      "test",
 		}
 		client, _ := InitApitallyClient(*config)

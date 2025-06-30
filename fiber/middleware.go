@@ -43,9 +43,9 @@ func Middleware(app *fiber.App, config *Config) fiber.Handler {
 		var requestBody []byte
 		if requestSize <= common.MaxBodySize &&
 			(requestSize == -1 ||
-				(client.Config.RequestLoggingConfig != nil &&
-					client.Config.RequestLoggingConfig.Enabled &&
-					client.Config.RequestLoggingConfig.LogRequestBody &&
+				(client.Config.RequestLogging != nil &&
+					client.Config.RequestLogging.Enabled &&
+					client.Config.RequestLogging.LogRequestBody &&
 					client.RequestLogger.IsSupportedContentType(c.Get("Content-Type")))) {
 			requestBody = slices.Clone(c.Request().Body())
 			if requestSize == -1 {
@@ -91,9 +91,9 @@ func Middleware(app *fiber.App, config *Config) fiber.Handler {
 			// Cache response body if needed
 			var responseBody []byte
 			if responseSize == -1 ||
-				(client.Config.RequestLoggingConfig != nil &&
-					client.Config.RequestLoggingConfig.Enabled &&
-					client.Config.RequestLoggingConfig.LogResponseBody) {
+				(client.Config.RequestLogging != nil &&
+					client.Config.RequestLogging.Enabled &&
+					client.Config.RequestLogging.LogResponseBody) {
 				responseBody = slices.Clone(c.Response().Body())
 				responseSize = int64(len(responseBody))
 			}
@@ -140,7 +140,7 @@ func Middleware(app *fiber.App, config *Config) fiber.Handler {
 			}
 
 			// Log request if enabled
-			if client.Config.RequestLoggingConfig != nil && client.Config.RequestLoggingConfig.Enabled {
+			if client.Config.RequestLogging != nil && client.Config.RequestLogging.Enabled {
 				request := common.Request{
 					Timestamp: float64(time.Now().UnixMilli()) / 1000.0,
 					Consumer:  consumerIdentifier,

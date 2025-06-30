@@ -114,8 +114,8 @@ func InitApitallyClientWithHTTPClient(config common.Config, httpClient *retryabl
 }
 
 func newApitallyClient(config common.Config, httpClient *retryablehttp.Client) (*ApitallyClient, error) {
-	if !isValidClientId(config.ClientId) {
-		return nil, fmt.Errorf("invalid Apitally client ID '%s' (expecting hexadecimal UUID format)", config.ClientId)
+	if !isValidClientId(config.ClientID) {
+		return nil, fmt.Errorf("invalid Apitally client ID '%s' (expecting hexadecimal UUID format)", config.ClientID)
 	}
 	if !isValidEnv(config.Env) {
 		return nil, fmt.Errorf("invalid env '%s' (expecting 1-32 alphanumeric lowercase characters and hyphens only)", config.Env)
@@ -148,7 +148,7 @@ func newApitallyClient(config common.Config, httpClient *retryablehttp.Client) (
 	client.ValidationErrorCounter = NewValidationErrorCounter()
 	client.ServerErrorCounter = NewServerErrorCounter()
 	client.ConsumerRegistry = NewConsumerRegistry()
-	client.RequestLogger = NewRequestLogger(config.RequestLoggingConfig)
+	client.RequestLogger = NewRequestLogger(config.RequestLogging)
 
 	return client, nil
 }
@@ -175,7 +175,7 @@ func (c *ApitallyClient) getHubUrl(endpoint string, query string) string {
 	if envURL := os.Getenv("APITALLY_HUB_BASE_URL"); envURL != "" {
 		baseURL = envURL
 	}
-	url := fmt.Sprintf("%s/v2/%s/%s/%s", baseURL, c.Config.ClientId, c.Config.Env, endpoint)
+	url := fmt.Sprintf("%s/v2/%s/%s/%s", baseURL, c.Config.ClientID, c.Config.Env, endpoint)
 	if query != "" {
 		url += "?" + query
 	}
@@ -414,7 +414,7 @@ func (c *ApitallyClient) sendHubRequest(req *http.Request) HubRequestStatus {
 	if resp.StatusCode >= 400 {
 		switch resp.StatusCode {
 		case http.StatusNotFound:
-			c.logger.Error("Invalid Apitally client ID", "client_id", c.Config.ClientId)
+			c.logger.Error("Invalid Apitally client ID", "client_id", c.Config.ClientID)
 			c.enabled = false
 			c.stopSync()
 			return HubRequestStatusInvalidClientId

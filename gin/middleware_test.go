@@ -16,9 +16,9 @@ import (
 
 func setupTestApp(requestLoggingEnabled bool) *gin.Engine {
 	config := &common.Config{
-		ClientId: "e117eb33-f6d2-4260-a71d-31eb49425893",
+		ClientID: "e117eb33-f6d2-4260-a71d-31eb49425893",
 		Env:      "test",
-		RequestLoggingConfig: &common.RequestLoggingConfig{
+		RequestLogging: &common.RequestLoggingConfig{
 			Enabled:            requestLoggingEnabled,
 			LogQueryParams:     true,
 			LogRequestHeaders:  true,

@@ -44,9 +44,9 @@ func Middleware(e *echo.Echo, config *Config) echo.MiddlewareFunc {
 			// Cache request body if needed
 			var requestBody []byte
 			var requestReader *common.RequestReader
-			captureRequestBody := client.Config.RequestLoggingConfig != nil &&
-				client.Config.RequestLoggingConfig.Enabled &&
-				client.Config.RequestLoggingConfig.LogRequestBody &&
+			captureRequestBody := client.Config.RequestLogging != nil &&
+				client.Config.RequestLogging.Enabled &&
+				client.Config.RequestLogging.LogRequestBody &&
 				client.RequestLogger.IsSupportedContentType(c.Request().Header.Get("Content-Type"))
 
 			if c.Request().Body != nil && requestSize <= common.MaxBodySize {
@@ -70,9 +70,9 @@ func Middleware(e *echo.Echo, config *Config) echo.MiddlewareFunc {
 			rw := &common.ResponseWriter{
 				ResponseWriter: c.Response().Writer,
 				Body:           &responseBody,
-				CaptureBody: client.Config.RequestLoggingConfig != nil &&
-					client.Config.RequestLoggingConfig.Enabled &&
-					client.Config.RequestLoggingConfig.LogResponseBody,
+				CaptureBody: client.Config.RequestLogging != nil &&
+					client.Config.RequestLogging.Enabled &&
+					client.Config.RequestLogging.LogResponseBody,
 				IsSupportedContentType: client.RequestLogger.IsSupportedContentType,
 			}
 			c.Response().Writer = rw
@@ -161,7 +161,7 @@ func Middleware(e *echo.Echo, config *Config) echo.MiddlewareFunc {
 				}
 
 				// Log request if enabled
-				if client.Config.RequestLoggingConfig != nil && client.Config.RequestLoggingConfig.Enabled {
+				if client.Config.RequestLogging != nil && client.Config.RequestLogging.Enabled {
 					request := common.Request{
 						Timestamp: float64(time.Now().UnixMilli()) / 1000.0,
 						Consumer:  consumerIdentifier,
