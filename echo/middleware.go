@@ -15,6 +15,11 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+// Middleware returns the Apitally middleware for Echo.
+//
+// For more information, see:
+//   - Setup guide: https://docs.apitally.io/frameworks/echo
+//   - Reference: https://docs.apitally.io/reference/go
 func Middleware(e *echo.Echo, config *Config) echo.MiddlewareFunc {
 	client, err := internal.InitApitallyClient(*config)
 	if err != nil {

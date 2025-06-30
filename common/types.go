@@ -71,9 +71,6 @@ type Config struct {
 	DisableSync bool
 }
 
-// NewConfig creates a new Apitally configuration with sensible defaults.
-//
-// See reference: https://docs.apitally.io/reference/go
 func NewConfig(clientID string) *Config {
 	return &Config{
 		ClientID:       clientID,

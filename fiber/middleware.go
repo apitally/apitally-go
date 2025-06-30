@@ -15,6 +15,11 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
+// Middleware returns the Apitally middleware for Fiber.
+//
+// For more information, see:
+//   - Setup guide: https://docs.apitally.io/frameworks/fiber
+//   - Reference: https://docs.apitally.io/reference/go
 func Middleware(app *fiber.App, config *Config) fiber.Handler {
 	client, err := internal.InitApitallyClient(*config)
 	if err != nil {

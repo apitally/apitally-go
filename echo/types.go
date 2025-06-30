@@ -10,5 +10,7 @@ type RequestLoggingConfig = common.RequestLoggingConfig
 type Request = common.Request
 type Response = common.Response
 
-// Config constructor function
+// NewConfig creates a new Apitally configuration with sensible defaults.
+//
+// See reference: https://docs.apitally.io/reference/go
 var NewConfig = common.NewConfig

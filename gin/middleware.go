@@ -46,6 +46,11 @@ func (w *responseWriter) Size() int {
 	return int(w.size)
 }
 
+// Middleware returns the Apitally middleware for Gin.
+//
+// For more information, see:
+//   - Setup guide: https://docs.apitally.io/frameworks/gin
+//   - Reference: https://docs.apitally.io/reference/go
 func Middleware(r *gin.Engine, config *Config) gin.HandlerFunc {
 	client, err := internal.InitApitallyClient(*config)
 	if err != nil {
