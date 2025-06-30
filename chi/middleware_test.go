@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/apitally/apitally-go/common"
 	"github.com/apitally/apitally-go/internal"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -18,20 +17,13 @@ import (
 )
 
 func setupTestApp(requestLoggingEnabled bool) *chi.Mux {
-	config := &common.Config{
-		ClientID: "e117eb33-f6d2-4260-a71d-31eb49425893",
-		Env:      "test",
-		RequestLogging: &common.RequestLoggingConfig{
-			Enabled:            requestLoggingEnabled,
-			LogQueryParams:     true,
-			LogRequestHeaders:  true,
-			LogRequestBody:     true,
-			LogResponseHeaders: true,
-			LogResponseBody:    true,
-			LogPanic:           true,
-		},
-		DisableSync: true,
-	}
+	config := NewConfig("e117eb33-f6d2-4260-a71d-31eb49425893")
+	config.Env = "test"
+	config.RequestLogging.Enabled = requestLoggingEnabled
+	config.RequestLogging.LogRequestHeaders = true
+	config.RequestLogging.LogRequestBody = true
+	config.RequestLogging.LogResponseBody = true
+	config.DisableSync = true
 
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
@@ -45,7 +37,7 @@ func setupTestApp(requestLoggingEnabled bool) *chi.Mux {
 	})
 
 	r.Post("/hello", func(w http.ResponseWriter, r *http.Request) {
-		SetConsumer(r, common.Consumer{
+		SetConsumer(r, Consumer{
 			Identifier: "tester",
 			Name:       "Tester",
 			Group:      "Test Group",

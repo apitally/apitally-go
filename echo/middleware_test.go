@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/apitally/apitally-go/common"
 	"github.com/apitally/apitally-go/internal"
 	"github.com/go-playground/validator/v10"
 	"github.com/labstack/echo/v4"
@@ -17,20 +16,13 @@ import (
 )
 
 func setupTestApp(requestLoggingEnabled bool) *echo.Echo {
-	config := &common.Config{
-		ClientID: "e117eb33-f6d2-4260-a71d-31eb49425893",
-		Env:      "test",
-		RequestLogging: &common.RequestLoggingConfig{
-			Enabled:            requestLoggingEnabled,
-			LogQueryParams:     true,
-			LogRequestHeaders:  true,
-			LogRequestBody:     true,
-			LogResponseHeaders: true,
-			LogResponseBody:    true,
-			LogPanic:           true,
-		},
-		DisableSync: true,
-	}
+	config := NewConfig("e117eb33-f6d2-4260-a71d-31eb49425893")
+	config.Env = "test"
+	config.RequestLogging.Enabled = requestLoggingEnabled
+	config.RequestLogging.LogRequestHeaders = true
+	config.RequestLogging.LogRequestBody = true
+	config.RequestLogging.LogResponseBody = true
+	config.DisableSync = true
 
 	e := echo.New()
 	e.Use(middleware.Recover())

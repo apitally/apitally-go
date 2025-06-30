@@ -8,27 +8,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/apitally/apitally-go/common"
 	"github.com/apitally/apitally-go/internal"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 )
 
 func setupTestApp(requestLoggingEnabled bool) *gin.Engine {
-	config := &common.Config{
-		ClientID: "e117eb33-f6d2-4260-a71d-31eb49425893",
-		Env:      "test",
-		RequestLogging: &common.RequestLoggingConfig{
-			Enabled:            requestLoggingEnabled,
-			LogQueryParams:     true,
-			LogRequestHeaders:  true,
-			LogRequestBody:     true,
-			LogResponseHeaders: true,
-			LogResponseBody:    true,
-			LogPanic:           true,
-		},
-		DisableSync: true,
-	}
+	config := NewConfig("e117eb33-f6d2-4260-a71d-31eb49425893")
+	config.Env = "test"
+	config.RequestLogging.Enabled = requestLoggingEnabled
+	config.RequestLogging.LogRequestHeaders = true
+	config.RequestLogging.LogRequestBody = true
+	config.RequestLogging.LogResponseBody = true
+	config.DisableSync = true
 
 	r := gin.Default()
 	r.Use(Middleware(r, config))
@@ -41,7 +33,7 @@ func setupTestApp(requestLoggingEnabled bool) *gin.Engine {
 	})
 
 	r.POST("/hello", func(c *gin.Context) {
-		SetConsumer(c, common.Consumer{
+		SetConsumer(c, Consumer{
 			Identifier: "tester",
 			Name:       "Tester",
 			Group:      "Test Group",

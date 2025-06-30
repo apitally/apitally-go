@@ -17,13 +17,9 @@ func TestApitallyClient(t *testing.T) {
 	t.Run("StartupSyncShutdown", func(t *testing.T) {
 		ResetApitallyClient()
 
-		config := &common.Config{
-			ClientID: "e117eb33-f6d2-4260-a71d-31eb49425893",
-			Env:      "test",
-			RequestLogging: &common.RequestLoggingConfig{
-				Enabled: true,
-			},
-		}
+		config := common.NewConfig("e117eb33-f6d2-4260-a71d-31eb49425893")
+		config.Env = "test"
+		config.RequestLogging.Enabled = true
 		httpClient, mockTransport := createMockHTTPClient()
 		client, _ := InitApitallyClientWithHTTPClient(*config, httpClient)
 		client.StartSync()
@@ -74,18 +70,14 @@ func TestApitallyClient(t *testing.T) {
 	t.Run("ConfigValidation", func(t *testing.T) {
 		ResetApitallyClient()
 
-		config := &common.Config{
-			ClientID: "e117eb33-xxxx-4260-a71d-31eb49425893",
-			Env:      "test",
-		}
+		config := common.NewConfig("e117eb33-xxxx-4260-a71d-31eb49425893")
+		config.Env = "test"
 		client, err := InitApitallyClient(*config)
 		assert.Nil(t, client)
 		assert.Error(t, err)
 
-		config = &common.Config{
-			ClientID: "e117eb33-f6d2-4260-a71d-31eb49425893",
-			Env:      "invalid_env",
-		}
+		config = common.NewConfig("e117eb33-f6d2-4260-a71d-31eb49425893")
+		config.Env = "invalid_env"
 		client, err = InitApitallyClient(*config)
 		assert.Nil(t, client)
 		assert.Error(t, err)
@@ -94,10 +86,8 @@ func TestApitallyClient(t *testing.T) {
 	t.Run("GetAndResetApitallyClient", func(t *testing.T) {
 		ResetApitallyClient()
 
-		config := &common.Config{
-			ClientID: "e117eb33-f6d2-4260-a71d-31eb49425893",
-			Env:      "test",
-		}
+		config := common.NewConfig("e117eb33-f6d2-4260-a71d-31eb49425893")
+		config.Env = "test"
 		client, _ := InitApitallyClient(*config)
 		defer client.Shutdown()
 
