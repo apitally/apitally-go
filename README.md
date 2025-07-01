@@ -76,6 +76,7 @@ func main() {
 
     config := apitally.NewConfig("your-client-id")
     config.Env = "dev" // or "prod" etc.
+
     r.Use(apitally.Middleware(r, config))
 
     // ... rest of your code ...
@@ -99,6 +100,7 @@ func main() {
 
     config := apitally.NewConfig("your-client-id")
     config.Env = "dev" // or "prod" etc.
+
     e.Use(apitally.Middleware(e, config))
 
     // ... rest of your code ...
@@ -122,6 +124,7 @@ func main() {
 
     config := apitally.NewConfig("your-client-id")
     config.Env = "dev" // or "prod" etc.
+
     app.Use(apitally.Middleware(app, config))
 
     // ... rest of your code ...
@@ -145,6 +148,7 @@ func main() {
 
     config := apitally.NewConfig("your-client-id")
     config.Env = "dev" // or "prod" etc.
+
     r.Use(apitally.Middleware(r, config))
 
     // ... rest of your code ...
