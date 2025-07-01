@@ -2,7 +2,6 @@ package common
 
 import "regexp"
 
-// Request represents an HTTP request being logged
 type Request struct {
 	Timestamp float64     `json:"timestamp"`
 	Method    string      `json:"method"`
@@ -14,7 +13,6 @@ type Request struct {
 	Body      []byte      `json:"body,omitempty"`
 }
 
-// Response represents an HTTP response being logged
 type Response struct {
 	StatusCode   int         `json:"status_code"`
 	ResponseTime float64     `json:"response_time"`
@@ -23,20 +21,17 @@ type Response struct {
 	Body         []byte      `json:"body,omitempty"`
 }
 
-// Consumer represents a consumer of the API
 type Consumer struct {
 	Identifier string `json:"identifier"`
 	Name       string `json:"name,omitempty"`
 	Group      string `json:"group,omitempty"`
 }
 
-// PathInfo represents a method and path pair
 type PathInfo struct {
 	Method string `json:"method"`
 	Path   string `json:"path"`
 }
 
-// RequestLoggingConfig defines configuration for request logging
 type RequestLoggingConfig struct {
 	Enabled                  bool
 	LogQueryParams           bool
@@ -54,13 +49,32 @@ type RequestLoggingConfig struct {
 	ExcludeCallback          func(request *Request, response *Response) bool
 }
 
-// Config defines the configuration for Apitally
+func NewRequestLoggingConfig() *RequestLoggingConfig {
+	return &RequestLoggingConfig{
+		Enabled:            false,
+		LogQueryParams:     true,
+		LogRequestHeaders:  false,
+		LogRequestBody:     false,
+		LogResponseHeaders: true,
+		LogResponseBody:    false,
+		LogPanic:           true,
+	}
+}
+
 type Config struct {
-	ClientId             string
-	Env                  string
-	RequestLoggingConfig *RequestLoggingConfig
-	AppVersion           string
+	ClientID       string
+	Env            string
+	AppVersion     string
+	RequestLogging *RequestLoggingConfig
 
 	// For testing purposes
 	DisableSync bool
+}
+
+func NewConfig(clientID string) *Config {
+	return &Config{
+		ClientID:       clientID,
+		Env:            "dev",
+		RequestLogging: NewRequestLoggingConfig(),
+	}
 }

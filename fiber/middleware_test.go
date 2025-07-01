@@ -17,20 +17,13 @@ import (
 )
 
 func setupTestApp(requestLoggingEnabled bool) *fiber.App {
-	config := &Config{
-		ClientId: "e117eb33-f6d2-4260-a71d-31eb49425893",
-		Env:      "test",
-		RequestLoggingConfig: &RequestLoggingConfig{
-			Enabled:            requestLoggingEnabled,
-			LogQueryParams:     true,
-			LogRequestHeaders:  true,
-			LogRequestBody:     true,
-			LogResponseHeaders: true,
-			LogResponseBody:    true,
-			LogPanic:           true,
-		},
-		DisableSync: true,
-	}
+	config := NewConfig("e117eb33-f6d2-4260-a71d-31eb49425893")
+	config.Env = "test"
+	config.RequestLogging.Enabled = requestLoggingEnabled
+	config.RequestLogging.LogRequestHeaders = true
+	config.RequestLogging.LogRequestBody = true
+	config.RequestLogging.LogResponseBody = true
+	config.DisableSync = true
 
 	app := fiber.New()
 	app.Use(recover.New())

@@ -48,15 +48,11 @@ func getLoggedItems(t *testing.T, requestLogger *RequestLogger) []map[string]any
 
 func TestRequestLogger(t *testing.T) {
 	t.Run("LogRequest", func(t *testing.T) {
-		config := &common.RequestLoggingConfig{
-			Enabled:            true,
-			LogQueryParams:     true,
-			LogRequestHeaders:  true,
-			LogRequestBody:     true,
-			LogResponseHeaders: true,
-			LogResponseBody:    true,
-			LogPanic:           true,
-		}
+		config := common.NewRequestLoggingConfig()
+		config.Enabled = true
+		config.LogRequestHeaders = true
+		config.LogRequestBody = true
+		config.LogResponseBody = true
 		requestLogger := NewRequestLogger(config)
 		defer requestLogger.Close()
 
@@ -117,14 +113,10 @@ func TestRequestLogger(t *testing.T) {
 	})
 
 	t.Run("ExcludeBasedOnConfig", func(t *testing.T) {
-		config := &common.RequestLoggingConfig{
-			Enabled:            true,
-			LogQueryParams:     false,
-			LogRequestHeaders:  false,
-			LogRequestBody:     false,
-			LogResponseHeaders: false,
-			LogResponseBody:    false,
-		}
+		config := common.NewRequestLoggingConfig()
+		config.Enabled = true
+		config.LogQueryParams = false
+		config.LogResponseHeaders = false
 		requestLogger := NewRequestLogger(config)
 		defer requestLogger.Close()
 
@@ -162,11 +154,10 @@ func TestRequestLogger(t *testing.T) {
 	})
 
 	t.Run("ExcludeUsingCallback", func(t *testing.T) {
-		config := &common.RequestLoggingConfig{
-			Enabled: true,
-			ExcludeCallback: func(req *common.Request, resp *common.Response) bool {
-				return strings.Contains(req.Consumer, "tester")
-			},
+		config := common.NewRequestLoggingConfig()
+		config.Enabled = true
+		config.ExcludeCallback = func(req *common.Request, resp *common.Response) bool {
+			return strings.Contains(req.Consumer, "tester")
 		}
 		requestLogger := NewRequestLogger(config)
 		defer requestLogger.Close()
@@ -194,10 +185,9 @@ func TestRequestLogger(t *testing.T) {
 	})
 
 	t.Run("ExcludeBasedOnPath", func(t *testing.T) {
-		config := &common.RequestLoggingConfig{
-			Enabled:      true,
-			ExcludePaths: []*regexp.Regexp{regexp.MustCompile(`/status$`)},
-		}
+		config := common.NewRequestLoggingConfig()
+		config.Enabled = true
+		config.ExcludePaths = []*regexp.Regexp{regexp.MustCompile(`/status$`)}
 		requestLogger := NewRequestLogger(config)
 		defer requestLogger.Close()
 
@@ -233,9 +223,8 @@ func TestRequestLogger(t *testing.T) {
 	})
 
 	t.Run("ExcludeHealthCheckUserAgent", func(t *testing.T) {
-		config := &common.RequestLoggingConfig{
-			Enabled: true,
-		}
+		config := common.NewRequestLoggingConfig()
+		config.Enabled = true
 		requestLogger := NewRequestLogger(config)
 		defer requestLogger.Close()
 
@@ -261,11 +250,10 @@ func TestRequestLogger(t *testing.T) {
 	})
 
 	t.Run("MaskHeaders", func(t *testing.T) {
-		config := &common.RequestLoggingConfig{
-			Enabled:           true,
-			LogRequestHeaders: true,
-			MaskHeaders:       []*regexp.Regexp{regexp.MustCompile(`(?i)test`)},
-		}
+		config := common.NewRequestLoggingConfig()
+		config.Enabled = true
+		config.LogRequestHeaders = true
+		config.MaskHeaders = []*regexp.Regexp{regexp.MustCompile(`(?i)test`)}
 		requestLogger := NewRequestLogger(config)
 		defer requestLogger.Close()
 
@@ -318,11 +306,9 @@ func TestRequestLogger(t *testing.T) {
 	})
 
 	t.Run("MaskQueryParams", func(t *testing.T) {
-		config := &common.RequestLoggingConfig{
-			Enabled:         true,
-			LogQueryParams:  true,
-			MaskQueryParams: []*regexp.Regexp{regexp.MustCompile(`(?i)test`)},
-		}
+		config := common.NewRequestLoggingConfig()
+		config.Enabled = true
+		config.MaskQueryParams = []*regexp.Regexp{regexp.MustCompile(`(?i)test`)}
 		requestLogger := NewRequestLogger(config)
 		defer requestLogger.Close()
 
@@ -355,22 +341,21 @@ func TestRequestLogger(t *testing.T) {
 	})
 
 	t.Run("MaskBodyCallbacks", func(t *testing.T) {
-		config := &common.RequestLoggingConfig{
-			Enabled:         true,
-			LogRequestBody:  true,
-			LogResponseBody: true,
-			MaskRequestBodyCallback: func(req *common.Request) []byte {
-				if req.Method == "GET" && req.Path == "/test" {
-					return nil
-				}
-				return req.Body
-			},
-			MaskResponseBodyCallback: func(req *common.Request, resp *common.Response) []byte {
-				if req.Method == "GET" && req.Path == "/test" {
-					return nil
-				}
-				return resp.Body
-			},
+		config := common.NewRequestLoggingConfig()
+		config.Enabled = true
+		config.LogRequestBody = true
+		config.LogResponseBody = true
+		config.MaskRequestBodyCallback = func(req *common.Request) []byte {
+			if req.Method == "GET" && req.Path == "/test" {
+				return nil
+			}
+			return req.Body
+		}
+		config.MaskResponseBodyCallback = func(req *common.Request, resp *common.Response) []byte {
+			if req.Method == "GET" && req.Path == "/test" {
+				return nil
+			}
+			return resp.Body
 		}
 		requestLogger := NewRequestLogger(config)
 		defer requestLogger.Close()
@@ -405,12 +390,11 @@ func TestRequestLogger(t *testing.T) {
 	})
 
 	t.Run("MaskBodyFields", func(t *testing.T) {
-		config := &common.RequestLoggingConfig{
-			Enabled:         true,
-			LogRequestBody:  true,
-			LogResponseBody: true,
-			MaskBodyFields:  []*regexp.Regexp{regexp.MustCompile(`(?i)custom`)},
-		}
+		config := common.NewRequestLoggingConfig()
+		config.Enabled = true
+		config.LogRequestBody = true
+		config.LogResponseBody = true
+		config.MaskBodyFields = []*regexp.Regexp{regexp.MustCompile(`(?i)custom`)}
 		requestLogger := NewRequestLogger(config)
 		defer requestLogger.Close()
 
@@ -498,9 +482,8 @@ func TestRequestLogger(t *testing.T) {
 	})
 
 	t.Run("Suspend", func(t *testing.T) {
-		config := &common.RequestLoggingConfig{
-			Enabled: true,
-		}
+		config := common.NewRequestLoggingConfig()
+		config.Enabled = true
 		requestLogger := NewRequestLogger(config)
 		defer requestLogger.Close()
 
@@ -509,9 +492,8 @@ func TestRequestLogger(t *testing.T) {
 	})
 
 	t.Run("RetryFileLater", func(t *testing.T) {
-		config := &common.RequestLoggingConfig{
-			Enabled: true,
-		}
+		config := common.NewRequestLoggingConfig()
+		config.Enabled = true
 		requestLogger := NewRequestLogger(config)
 		defer requestLogger.Close()
 
@@ -553,7 +535,7 @@ func TestRequestLogger(t *testing.T) {
 	})
 
 	t.Run("IsSupportedContentType", func(t *testing.T) {
-		requestLogger := NewRequestLogger(&common.RequestLoggingConfig{})
+		requestLogger := NewRequestLogger(common.NewRequestLoggingConfig())
 		defer requestLogger.Close()
 
 		// Supported content types

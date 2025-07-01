@@ -23,6 +23,11 @@ const (
 	consumerKey         contextKey = "ApitallyConsumer"
 )
 
+// Middleware returns the Apitally middleware for Chi.
+//
+// For more information, see:
+//   - Setup guide: https://docs.apitally.io/frameworks/chi
+//   - Reference: https://docs.apitally.io/reference/go
 func Middleware(r chi.Router, config *Config) func(http.Handler) http.Handler {
 	client, err := internal.InitApitallyClient(*config)
 	if err != nil {
@@ -53,9 +58,9 @@ func Middleware(r chi.Router, config *Config) func(http.Handler) http.Handler {
 			// Cache request body if needed
 			var requestBody []byte
 			var requestReader *common.RequestReader
-			captureRequestBody := client.Config.RequestLoggingConfig != nil &&
-				client.Config.RequestLoggingConfig.Enabled &&
-				client.Config.RequestLoggingConfig.LogRequestBody &&
+			captureRequestBody := client.Config.RequestLogging != nil &&
+				client.Config.RequestLogging.Enabled &&
+				client.Config.RequestLogging.LogRequestBody &&
 				client.RequestLogger.IsSupportedContentType(r.Header.Get("Content-Type"))
 
 			if r.Body != nil && requestSize <= common.MaxBodySize {
@@ -79,9 +84,9 @@ func Middleware(r chi.Router, config *Config) func(http.Handler) http.Handler {
 			rw := &common.ResponseWriter{
 				ResponseWriter: w,
 				Body:           &responseBody,
-				CaptureBody: client.Config.RequestLoggingConfig != nil &&
-					client.Config.RequestLoggingConfig.Enabled &&
-					client.Config.RequestLoggingConfig.LogResponseBody,
+				CaptureBody: client.Config.RequestLogging != nil &&
+					client.Config.RequestLogging.Enabled &&
+					client.Config.RequestLogging.LogResponseBody,
 				IsSupportedContentType: client.RequestLogger.IsSupportedContentType,
 			}
 
@@ -169,7 +174,7 @@ func Middleware(r chi.Router, config *Config) func(http.Handler) http.Handler {
 				}
 
 				// Log request if enabled
-				if client.Config.RequestLoggingConfig != nil && client.Config.RequestLoggingConfig.Enabled {
+				if client.Config.RequestLogging != nil && client.Config.RequestLogging.Enabled {
 					request := common.Request{
 						Timestamp: float64(time.Now().UnixMilli()) / 1000.0,
 						Consumer:  consumerIdentifier,

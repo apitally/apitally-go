@@ -46,6 +46,11 @@ func (w *responseWriter) Size() int {
 	return int(w.size)
 }
 
+// Middleware returns the Apitally middleware for Gin.
+//
+// For more information, see:
+//   - Setup guide: https://docs.apitally.io/frameworks/gin
+//   - Reference: https://docs.apitally.io/reference/go
 func Middleware(r *gin.Engine, config *Config) gin.HandlerFunc {
 	client, err := internal.InitApitallyClient(*config)
 	if err != nil {
@@ -78,9 +83,9 @@ func Middleware(r *gin.Engine, config *Config) gin.HandlerFunc {
 		// Cache request body if needed
 		var requestBody []byte
 		var requestReader *common.RequestReader
-		captureRequestBody := client.Config.RequestLoggingConfig != nil &&
-			client.Config.RequestLoggingConfig.Enabled &&
-			client.Config.RequestLoggingConfig.LogRequestBody &&
+		captureRequestBody := client.Config.RequestLogging != nil &&
+			client.Config.RequestLogging.Enabled &&
+			client.Config.RequestLogging.LogRequestBody &&
 			client.RequestLogger.IsSupportedContentType(c.Request.Header.Get("Content-Type"))
 
 		if c.Request.Body != nil && requestSize <= common.MaxBodySize {
@@ -102,9 +107,9 @@ func Middleware(r *gin.Engine, config *Config) gin.HandlerFunc {
 		// Prepare response writer to capture body if needed
 		var responseBody bytes.Buffer
 		var originalWriter gin.ResponseWriter
-		if client.Config.RequestLoggingConfig != nil &&
-			client.Config.RequestLoggingConfig.Enabled &&
-			client.Config.RequestLoggingConfig.LogResponseBody {
+		if client.Config.RequestLogging != nil &&
+			client.Config.RequestLogging.Enabled &&
+			client.Config.RequestLogging.LogResponseBody {
 			originalWriter = c.Writer
 			c.Writer = &responseWriter{
 				ResponseWriter:         c.Writer,
@@ -196,7 +201,7 @@ func Middleware(r *gin.Engine, config *Config) gin.HandlerFunc {
 			}
 
 			// Log request if enabled
-			if client.Config.RequestLoggingConfig != nil && client.Config.RequestLoggingConfig.Enabled {
+			if client.Config.RequestLogging != nil && client.Config.RequestLogging.Enabled {
 				request := common.Request{
 					Timestamp: float64(time.Now().UnixMilli()) / 1000.0,
 					Consumer:  consumerIdentifier,
