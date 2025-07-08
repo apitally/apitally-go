@@ -39,7 +39,7 @@ func Middleware(e *echo.Echo, config *Config) echo.MiddlewareFunc {
 
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			if !client.IsEnabled() {
+			if !client.IsEnabled() || c.Request().Method == "OPTIONS" {
 				return next(c)
 			}
 
