@@ -13,10 +13,12 @@ func getRoutes(r *gin.Engine) []common.PathInfo {
 	paths := make([]common.PathInfo, 0, len(routes))
 
 	for _, route := range routes {
-		paths = append(paths, common.PathInfo{
-			Method: route.Method,
-			Path:   route.Path,
-		})
+		if route.Method != "OPTIONS" && route.Method != "HEAD" {
+			paths = append(paths, common.PathInfo{
+				Method: route.Method,
+				Path:   route.Path,
+			})
+		}
 	}
 
 	return paths

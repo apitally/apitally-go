@@ -66,6 +66,10 @@ func Middleware(app *fiber.App, config *Config) fiber.Handler {
 			method := string(c.Route().Method)
 			path := string(c.Route().Path)
 
+			if method == "OPTIONS" {
+				return
+			}
+
 			// Capture error from panic if any
 			var panicValue any
 			var recoveredErr error

@@ -12,10 +12,12 @@ import (
 func getRoutes(r chi.Router) []common.PathInfo {
 	var paths []common.PathInfo
 	walkFn := func(method string, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
-		paths = append(paths, common.PathInfo{
-			Method: method,
-			Path:   route,
-		})
+		if method != "OPTIONS" && method != "HEAD" {
+			paths = append(paths, common.PathInfo{
+				Method: method,
+				Path:   route,
+			})
+		}
 		return nil
 	}
 	chi.Walk(r, walkFn)

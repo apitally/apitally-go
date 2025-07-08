@@ -69,7 +69,7 @@ func Middleware(r *gin.Engine, config *Config) gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-		if !client.IsEnabled() {
+		if !client.IsEnabled() || c.Request.Method == "OPTIONS" {
 			c.Next()
 			return
 		}
