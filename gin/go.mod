@@ -3,7 +3,7 @@ module github.com/apitally/apitally-go/gin
 go 1.21
 
 require (
-	github.com/apitally/apitally-go v0.0.0
+	github.com/apitally/apitally-go v0.8.1
 	github.com/gin-gonic/gin v1.9.1
 	github.com/go-playground/validator/v10 v10.14.0
 	github.com/stretchr/testify v1.10.0
