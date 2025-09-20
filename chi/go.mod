@@ -4,7 +4,7 @@ go 1.21
 
 require (
 	github.com/apitally/apitally-go v0.0.0
-	github.com/go-chi/chi/v5 v5.1.0
+	github.com/go-chi/chi/v5 v5.2.3
 	github.com/go-playground/validator/v10 v10.16.0
 	github.com/stretchr/testify v1.10.0
 )
