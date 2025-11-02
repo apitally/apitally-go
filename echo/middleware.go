@@ -21,10 +21,7 @@ import (
 //   - Setup guide: https://docs.apitally.io/frameworks/echo
 //   - Reference: https://docs.apitally.io/reference/go
 func Middleware(e *echo.Echo, config *Config) echo.MiddlewareFunc {
-	client, err := internal.InitApitallyClient(*config)
-	if err != nil {
-		panic(err)
-	}
+	client := internal.InitApitallyClient(*config)
 
 	// Sync should only be disabled for testing purposes
 	if !config.DisableSync {

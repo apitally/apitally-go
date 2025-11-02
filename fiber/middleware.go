@@ -21,10 +21,7 @@ import (
 //   - Setup guide: https://docs.apitally.io/frameworks/fiber
 //   - Reference: https://docs.apitally.io/reference/go
 func Middleware(app *fiber.App, config *Config) fiber.Handler {
-	client, err := internal.InitApitallyClient(*config)
-	if err != nil {
-		panic(err)
-	}
+	client := internal.InitApitallyClient(*config)
 
 	// Sync should only be disabled for testing purposes
 	if !config.DisableSync {
