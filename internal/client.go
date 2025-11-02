@@ -104,7 +104,7 @@ func InitApitallyClientWithHTTPClient(config common.Config, httpClient *retryabl
 		return instance
 	}
 
-	instance := newApitallyClient(config, httpClient)
+	instance = newApitallyClient(config, httpClient)
 	return instance
 }
 
@@ -203,6 +203,10 @@ func (c *ApitallyClient) sync() {
 }
 
 func (c *ApitallyClient) StartSync() {
+	if !c.enabled {
+		return
+	}
+
 	c.syncStarted = true
 	c.RequestLogger.StartMaintenance()
 
