@@ -3,7 +3,7 @@ module github.com/apitally/apitally-go/chi
 go 1.21
 
 require (
-	github.com/apitally/apitally-go v0.0.0
+	github.com/apitally/apitally-go v0.8.2
 	github.com/go-chi/chi/v5 v5.1.0
 	github.com/go-playground/validator/v10 v10.16.0
 	github.com/stretchr/testify v1.11.1
