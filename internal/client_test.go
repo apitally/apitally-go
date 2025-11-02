@@ -21,7 +21,7 @@ func TestApitallyClient(t *testing.T) {
 		config.Env = "test"
 		config.RequestLogging.Enabled = true
 		httpClient, mockTransport := createMockHTTPClient()
-		client, _ := InitApitallyClientWithHTTPClient(*config, httpClient)
+		client := InitApitallyClientWithHTTPClient(*config, httpClient)
 		client.StartSync()
 		defer client.Shutdown()
 
@@ -72,15 +72,13 @@ func TestApitallyClient(t *testing.T) {
 
 		config := common.NewConfig("e117eb33-xxxx-4260-a71d-31eb49425893")
 		config.Env = "test"
-		client, err := InitApitallyClient(*config)
-		assert.Nil(t, client)
-		assert.Error(t, err)
+		client := InitApitallyClient(*config)
+		assert.False(t, client.IsEnabled())
 
 		config = common.NewConfig("e117eb33-f6d2-4260-a71d-31eb49425893")
 		config.Env = "invalid_env"
-		client, err = InitApitallyClient(*config)
-		assert.Nil(t, client)
-		assert.Error(t, err)
+		client = InitApitallyClient(*config)
+		assert.False(t, client.IsEnabled())
 	})
 
 	t.Run("GetAndResetApitallyClient", func(t *testing.T) {
@@ -88,7 +86,7 @@ func TestApitallyClient(t *testing.T) {
 
 		config := common.NewConfig("e117eb33-f6d2-4260-a71d-31eb49425893")
 		config.Env = "test"
-		client, _ := InitApitallyClient(*config)
+		client := InitApitallyClient(*config)
 		defer client.Shutdown()
 
 		assert.True(t, client.IsEnabled())

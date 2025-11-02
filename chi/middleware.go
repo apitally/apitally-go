@@ -29,10 +29,7 @@ const (
 //   - Setup guide: https://docs.apitally.io/frameworks/chi
 //   - Reference: https://docs.apitally.io/reference/go
 func Middleware(r chi.Router, config *Config) func(http.Handler) http.Handler {
-	client, err := internal.InitApitallyClient(*config)
-	if err != nil {
-		panic(err)
-	}
+	client := internal.InitApitallyClient(*config)
 
 	// Sync should only be disabled for testing purposes
 	if !config.DisableSync {

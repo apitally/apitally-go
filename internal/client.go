@@ -92,35 +92,23 @@ func ResetApitallyClient() {
 	instance = nil
 }
 
-func InitApitallyClient(config common.Config) (*ApitallyClient, error) {
+func InitApitallyClient(config common.Config) *ApitallyClient {
 	return InitApitallyClientWithHTTPClient(config, nil)
 }
 
-func InitApitallyClientWithHTTPClient(config common.Config, httpClient *retryablehttp.Client) (*ApitallyClient, error) {
+func InitApitallyClientWithHTTPClient(config common.Config, httpClient *retryablehttp.Client) *ApitallyClient {
 	mutex.Lock()
 	defer mutex.Unlock()
 
 	if instance != nil {
-		return instance, nil
+		return instance
 	}
 
-	client, err := newApitallyClient(config, httpClient)
-	if err != nil {
-		return nil, err
-	}
-
-	instance = client
-	return instance, nil
+	instance := newApitallyClient(config, httpClient)
+	return instance
 }
 
-func newApitallyClient(config common.Config, httpClient *retryablehttp.Client) (*ApitallyClient, error) {
-	if !isValidClientId(config.ClientID) {
-		return nil, fmt.Errorf("invalid Apitally client ID '%s' (expecting hexadecimal UUID format)", config.ClientID)
-	}
-	if !isValidEnv(config.Env) {
-		return nil, fmt.Errorf("invalid env '%s' (expecting 1-32 alphanumeric lowercase characters and hyphens only)", config.Env)
-	}
-
+func newApitallyClient(config common.Config, httpClient *retryablehttp.Client) *ApitallyClient {
 	logLevel := slog.LevelInfo
 	if parseBoolEnv("APITALLY_DEBUG") {
 		logLevel = slog.LevelDebug
@@ -130,12 +118,22 @@ func newApitallyClient(config common.Config, httpClient *retryablehttp.Client) (
 	}
 	logger := slog.New(slog.NewTextHandler(os.Stdout, loggerOpts))
 
+	enabled := true
+	if !isValidClientId(config.ClientID) {
+		enabled = false
+		logger.Error("Invalid Apitally client ID (expecting hexadecimal UUID format)", "clientId", config.ClientID)
+	}
+	if !isValidEnv(config.Env) {
+		enabled = false
+		logger.Error("Invalid Apitally env (expecting 1-32 alphanumeric characters and hyphens only)", "env", config.Env)
+	}
+
 	if httpClient == nil {
 		httpClient = getHttpClient()
 	}
 
 	client := &ApitallyClient{
-		enabled:      true,
+		enabled:      enabled,
 		instanceUUID: uuid.New().String(),
 		httpClient:   httpClient,
 		syncDataChan: make(chan SyncPayload, maxQueueSize),
@@ -150,7 +148,7 @@ func newApitallyClient(config common.Config, httpClient *retryablehttp.Client) (
 	client.ConsumerRegistry = NewConsumerRegistry()
 	client.RequestLogger = NewRequestLogger(config.RequestLogging)
 
-	return client, nil
+	return client
 }
 
 func (c *ApitallyClient) IsEnabled() bool {

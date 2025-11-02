@@ -52,10 +52,7 @@ func (w *responseWriter) Size() int {
 //   - Setup guide: https://docs.apitally.io/frameworks/gin
 //   - Reference: https://docs.apitally.io/reference/go
 func Middleware(r *gin.Engine, config *Config) gin.HandlerFunc {
-	client, err := internal.InitApitallyClient(*config)
-	if err != nil {
-		panic(err)
-	}
+	client := internal.InitApitallyClient(*config)
 
 	// Sync should only be disabled for testing purposes
 	if !config.DisableSync {
