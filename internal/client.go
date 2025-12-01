@@ -35,6 +35,7 @@ type SyncPayload struct {
 	ValidationErrors []ValidationErrorsItem `json:"validation_errors,omitempty"`
 	ServerErrors     []ServerErrorsItem     `json:"server_errors,omitempty"`
 	Consumers        []*common.Consumer     `json:"consumers,omitempty"`
+	Resources        *ResourceUsage         `json:"resources,omitempty"`
 }
 
 type StartupPayload struct {
@@ -74,6 +75,7 @@ type ApitallyClient struct {
 	ValidationErrorCounter *ValidationErrorCounter
 	ServerErrorCounter     *ServerErrorCounter
 	ConsumerRegistry       *ConsumerRegistry
+	ResourceMonitor        *ResourceMonitor
 }
 
 var (
@@ -147,6 +149,7 @@ func newApitallyClient(config common.Config, httpClient *retryablehttp.Client) *
 	client.ServerErrorCounter = NewServerErrorCounter()
 	client.ConsumerRegistry = NewConsumerRegistry()
 	client.RequestLogger = NewRequestLogger(config.RequestLogging)
+	client.ResourceMonitor = NewResourceMonitor()
 
 	return client
 }
@@ -296,6 +299,7 @@ func (c *ApitallyClient) sendSyncData() error {
 		ValidationErrors: c.ValidationErrorCounter.GetAndResetValidationErrors(),
 		ServerErrors:     c.ServerErrorCounter.GetAndResetServerErrors(),
 		Consumers:        c.ConsumerRegistry.GetAndResetUpdatedConsumers(),
+		Resources:        c.ResourceMonitor.GetCpuMemoryUsage(),
 	}
 
 	select {
