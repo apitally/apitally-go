@@ -32,6 +32,15 @@ var (
 		regexp.MustCompile(`(?i)/ping$`),
 		regexp.MustCompile(`(?i)/ready$`),
 		regexp.MustCompile(`(?i)/live$`),
+		regexp.MustCompile(`/favicon(?:-[\w-]+)?\.(ico|png|svg)$`),
+		regexp.MustCompile(`/apple-touch-icon(?:-[\w-]+)?\.png$`),
+		regexp.MustCompile(`/robots\.txt$`),
+		regexp.MustCompile(`/sitemap\.xml$`),
+		regexp.MustCompile(`/manifest\.json$`),
+		regexp.MustCompile(`/site\.webmanifest$`),
+		regexp.MustCompile(`/service-worker\.js$`),
+		regexp.MustCompile(`/sw\.js$`),
+		regexp.MustCompile(`/\.well-known/`),
 	}
 	excludeUserAgentPatterns = []*regexp.Regexp{
 		regexp.MustCompile(`(?i)health[-_ ]?check`),
@@ -148,7 +157,14 @@ func (rl *RequestLogger) LogRequest(request *common.Request, response *common.Re
 		}
 	}
 
-	if rl.shouldExcludePath(request.Path) || rl.shouldExcludeUserAgent(userAgent) {
+	path := request.Path
+	if path == "" {
+		if parsedURL, err := url.Parse(request.URL); err == nil {
+			path = parsedURL.Path
+		}
+	}
+
+	if rl.shouldExcludePath(path) || rl.shouldExcludeUserAgent(userAgent) {
 		return
 	}
 	if rl.config.ExcludeCallback != nil && rl.config.ExcludeCallback(request, response) {
