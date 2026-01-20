@@ -40,6 +40,13 @@ func Middleware(e *echo.Echo, config *Config) echo.MiddlewareFunc {
 				return next(c)
 			}
 
+			// Start span collection
+			spanHandle := client.SpanCollector.StartSpan(c.Request().Context())
+			traceID := spanHandle.TraceID()
+
+			// Inject span context into request
+			c.SetRequest(c.Request().WithContext(spanHandle.Context()))
+
 			// Determine request size
 			requestSize := common.ParseContentLength(c.Request().Header.Get("Content-Length"))
 
@@ -105,6 +112,10 @@ func Middleware(e *echo.Echo, config *Config) echo.MiddlewareFunc {
 						recoveredErr = fmt.Errorf("%v", r)
 					}
 				}
+
+				// End span collection and get spans
+				spanHandle.SetName(fmt.Sprintf("%s %s", c.Request().Method, routePattern))
+				spans := spanHandle.End()
 
 				// Get consumer info if available
 				var consumerIdentifier string
@@ -181,7 +192,7 @@ func Middleware(e *echo.Echo, config *Config) echo.MiddlewareFunc {
 						Size:         responseSize,
 						Body:         responseBody.Bytes(),
 					}
-					client.RequestLogger.LogRequest(&request, &response, recoveredErr, stackTrace)
+					client.RequestLogger.LogRequest(&request, &response, recoveredErr, stackTrace, spans, traceID)
 				}
 
 				// Re-panic if there was a panic

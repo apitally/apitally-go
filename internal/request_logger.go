@@ -93,6 +93,8 @@ type RequestLogItem struct {
 	Request   *common.Request  `json:"request"`
 	Response  *common.Response `json:"response"`
 	Exception *ExceptionInfo   `json:"exception,omitempty"`
+	Spans     []SpanData       `json:"spans,omitempty"`
+	TraceID   string           `json:"trace_id,omitempty"`
 }
 
 type ExceptionInfo struct {
@@ -144,7 +146,7 @@ func (rl *RequestLogger) StartMaintenance() {
 	}
 }
 
-func (rl *RequestLogger) LogRequest(request *common.Request, response *common.Response, handlerError error, stackTrace string) {
+func (rl *RequestLogger) LogRequest(request *common.Request, response *common.Response, handlerError error, stackTrace string, spans []SpanData, traceID string) {
 	if !rl.IsEnabled() || rl.IsSuspended() || request == nil || response == nil {
 		return
 	}
@@ -182,6 +184,8 @@ func (rl *RequestLogger) LogRequest(request *common.Request, response *common.Re
 		UUID:     uuid.New().String(),
 		Request:  request,
 		Response: response,
+		Spans:    spans,
+		TraceID:  traceID,
 	}
 
 	if handlerError != nil && rl.config.LogPanic {

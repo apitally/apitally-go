@@ -38,6 +38,13 @@ func Middleware(app *fiber.App, config *Config) fiber.Handler {
 			return c.Next()
 		}
 
+		// Start span collection
+		spanHandle := client.SpanCollector.StartSpan(c.UserContext())
+		traceID := spanHandle.TraceID()
+
+		// Inject span context into request
+		c.SetUserContext(spanHandle.Context())
+
 		// Determine request size
 		requestSize := common.ParseContentLength(c.Get("Content-Length"))
 
@@ -81,6 +88,10 @@ func Middleware(app *fiber.App, config *Config) fiber.Handler {
 					recoveredErr = fmt.Errorf("%v", r)
 				}
 			}
+
+			// End span collection and get spans
+			spanHandle.SetName(fmt.Sprintf("%s %s", method, path))
+			spans := spanHandle.End()
 
 			// Get consumer info if available
 			var consumerIdentifier string
@@ -164,7 +175,7 @@ func Middleware(app *fiber.App, config *Config) fiber.Handler {
 					Size:         responseSize,
 					Body:         responseBody,
 				}
-				client.RequestLogger.LogRequest(&request, &response, recoveredErr, stackTrace)
+				client.RequestLogger.LogRequest(&request, &response, recoveredErr, stackTrace, spans, traceID)
 			}
 
 			// Re-panic if there was a panic

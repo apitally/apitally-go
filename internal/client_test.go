@@ -47,7 +47,7 @@ func TestApitallyClient(t *testing.T) {
 			Headers:      [][2]string{},
 			Body:         []byte{},
 		}
-		client.RequestLogger.LogRequest(request, response, nil, "")
+		client.RequestLogger.LogRequest(request, response, nil, "", nil, "")
 
 		// Wait for request logger maintenance to run
 		time.Sleep(time.Millisecond * 1100)

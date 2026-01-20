@@ -72,6 +72,7 @@ type ApitallyClient struct {
 	Config                 common.Config
 	RequestCounter         *RequestCounter
 	RequestLogger          *RequestLogger
+	SpanCollector          *SpanCollector
 	ValidationErrorCounter *ValidationErrorCounter
 	ServerErrorCounter     *ServerErrorCounter
 	ConsumerRegistry       *ConsumerRegistry
@@ -149,6 +150,7 @@ func newApitallyClient(config common.Config, httpClient *retryablehttp.Client) *
 	client.ServerErrorCounter = NewServerErrorCounter()
 	client.ConsumerRegistry = NewConsumerRegistry()
 	client.RequestLogger = NewRequestLogger(config.RequestLogging)
+	client.SpanCollector = NewSpanCollector(config.RequestLogging != nil && config.RequestLogging.Enabled && config.RequestLogging.CaptureSpans)
 	client.ResourceMonitor = NewResourceMonitor()
 
 	return client

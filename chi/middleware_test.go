@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/assert"
+	"go.opentelemetry.io/otel"
 )
 
 func setupTestApp(requestLoggingEnabled bool) *chi.Mux {
@@ -23,6 +24,7 @@ func setupTestApp(requestLoggingEnabled bool) *chi.Mux {
 	config.RequestLogging.LogRequestHeaders = true
 	config.RequestLogging.LogRequestBody = true
 	config.RequestLogging.LogResponseBody = true
+	config.RequestLogging.CaptureSpans = true
 	config.DisableSync = true
 
 	r := chi.NewRouter()
@@ -62,7 +64,10 @@ func setupTestApp(requestLoggingEnabled bool) *chi.Mux {
 			return
 		}
 
+		_, span := otel.Tracer("test").Start(r.Context(), "child-span")
 		time.Sleep(100 * time.Millisecond)
+		span.End()
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]string{"message": "Hello, " + req.Name + "!"})
@@ -238,6 +243,13 @@ func TestMiddleware(t *testing.T) {
 		assert.Len(t, respHeaders, 1)
 		assert.Equal(t, "Content-Type", respHeaders[0][0])
 		assert.Equal(t, "application/json", respHeaders[0][1])
+
+		// Validate spans are logged
+		assert.Len(t, helloLogItem.TraceID, 32)
+		assert.Len(t, helloLogItem.Spans, 2)
+		spanNames := []string{helloLogItem.Spans[0].Name, helloLogItem.Spans[1].Name}
+		assert.Contains(t, spanNames, "POST /hello")
+		assert.Contains(t, spanNames, "child-span")
 
 		// Validate log item for GET /error request
 		errorLogItem := logItems[1]
