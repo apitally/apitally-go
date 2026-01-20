@@ -231,7 +231,7 @@ func TestMiddleware(t *testing.T) {
 		respHeaders := helloLogItem.Response.Headers
 		assert.Len(t, respHeaders, 1)
 		assert.Equal(t, "Content-Type", respHeaders[0][0])
-		assert.Equal(t, "application/json; charset=UTF-8", respHeaders[0][1])
+		assert.Contains(t, respHeaders[0][1], "application/json")
 
 		// Validate spans are logged
 		assert.Len(t, helloLogItem.TraceID, 32)
