@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go-version: ["1.21", "1.22", "1.23", "1.24"]
+        go-version: ["1.21", "1.24", "1.25"]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
@@ -46,8 +46,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go-version: ["1.21", "1.22", "1.23", "1.24"]
+        go-version: ["1.21", "1.24", "1.25"]
         framework: ["chi", "echo", "fiber", "gin"]
+        framework-version: ["min"]
+        include:
+          - go-version: "1.25"
+            framework: chi
+            framework-version: latest
+          - go-version: "1.25"
+            framework: echo
+            framework-version: latest
+          - go-version: "1.25"
+            framework: fiber
+            framework-version: latest
+          - go-version: "1.25"
+            framework: gin
+            framework-version: latest
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
@@ -57,6 +71,17 @@ jobs:
       - name: Install dependencies
         working-directory: ./${{ matrix.framework }}
         run: go mod download
+      - name: Upgrade to latest framework version
+        if: matrix.framework-version == 'latest'
+        working-directory: ./${{ matrix.framework }}
+        run: |
+          case "${{ matrix.framework }}" in
+            chi) go get github.com/go-chi/chi/v5@latest ;;
+            echo) go get github.com/labstack/echo/v4@latest ;;
+            fiber) go get github.com/gofiber/fiber/v2@latest ;;
+            gin) go get github.com/gin-gonic/gin@latest ;;
+          esac
+          go mod tidy
       - name: Run tests with coverage
         working-directory: ./${{ matrix.framework }}
         run: go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
