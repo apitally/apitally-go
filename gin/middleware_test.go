@@ -11,6 +11,7 @@ import (
 	"github.com/apitally/apitally-go/internal"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"go.opentelemetry.io/otel"
 )
 
 func setupTestApp(requestLoggingEnabled bool) *gin.Engine {
@@ -20,6 +21,7 @@ func setupTestApp(requestLoggingEnabled bool) *gin.Engine {
 	config.RequestLogging.LogRequestHeaders = true
 	config.RequestLogging.LogRequestBody = true
 	config.RequestLogging.LogResponseBody = true
+	config.RequestLogging.CaptureSpans = true
 	config.DisableSync = true
 
 	r := gin.Default()
@@ -46,7 +48,11 @@ func setupTestApp(requestLoggingEnabled bool) *gin.Engine {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
+
+		_, span := otel.Tracer("test").Start(c.Request.Context(), "child-span")
 		time.Sleep(100 * time.Millisecond)
+		span.End()
+
 		c.JSON(http.StatusOK, gin.H{
 			"message": "Hello, " + req.Name + "!",
 		})
@@ -222,6 +228,13 @@ func TestMiddleware(t *testing.T) {
 		assert.Len(t, respHeaders, 1)
 		assert.Equal(t, "Content-Type", respHeaders[0][0])
 		assert.Equal(t, "application/json; charset=utf-8", respHeaders[0][1])
+
+		// Validate spans are logged
+		assert.Len(t, helloLogItem.TraceID, 32)
+		assert.Len(t, helloLogItem.Spans, 2)
+		spanNames := []string{helloLogItem.Spans[0].Name, helloLogItem.Spans[1].Name}
+		assert.Contains(t, spanNames, "POST /hello")
+		assert.Contains(t, spanNames, "child-span")
 
 		// Validate log item for GET /error request
 		errorLogItem := logItems[1]

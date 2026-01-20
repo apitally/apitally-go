@@ -40,6 +40,7 @@ type RequestLoggingConfig struct {
 	LogResponseHeaders       bool
 	LogResponseBody          bool
 	LogPanic                 bool
+	CaptureSpans             bool
 	MaskQueryParams          []*regexp.Regexp
 	MaskHeaders              []*regexp.Regexp
 	MaskBodyFields           []*regexp.Regexp
@@ -58,6 +59,7 @@ func NewRequestLoggingConfig() *RequestLoggingConfig {
 		LogResponseHeaders: true,
 		LogResponseBody:    false,
 		LogPanic:           true,
+		CaptureSpans:       false,
 	}
 }
 

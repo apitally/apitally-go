@@ -56,7 +56,9 @@ func TestRequestLogger(t *testing.T) {
 		requestLogger := NewRequestLogger(config)
 		defer requestLogger.Close()
 
-		timestamp := float64(time.Now().Unix())
+		now := time.Now()
+		timestamp := float64(now.UnixMilli()) / 1000.0
+		startTimeNs := now.UnixNano()
 		request := &common.Request{
 			Timestamp: timestamp,
 			Consumer:  "tester",
@@ -73,7 +75,25 @@ func TestRequestLogger(t *testing.T) {
 			Size:         13,
 			Body:         []byte(`{"items": []}`),
 		}
-		requestLogger.LogRequest(request, response, errors.New("test"), "")
+		spans := []SpanData{
+			{
+				SpanID:    "a1b2c3d4e5f67890",
+				Name:      "GET /items",
+				Kind:      "internal",
+				StartTime: startTimeNs,
+				EndTime:   startTimeNs + 100*int64(time.Millisecond),
+			},
+			{
+				SpanID:       "1234567890abcdef",
+				ParentSpanID: "a1b2c3d4e5f67890",
+				Name:         "db.query",
+				Kind:         "client",
+				StartTime:    startTimeNs + 10*int64(time.Millisecond),
+				EndTime:      startTimeNs + 50*int64(time.Millisecond),
+			},
+		}
+		traceID := "0123456789abcdef0123456789abcdef"
+		requestLogger.LogRequest(request, response, errors.New("test"), "", spans, traceID)
 
 		items := getLoggedItems(t, requestLogger)
 		assert.Len(t, items, 1)
@@ -107,6 +127,18 @@ func TestRequestLogger(t *testing.T) {
 		assert.Equal(t, "errors.errorString", exceptionData["type"])
 		assert.Equal(t, "test", exceptionData["message"])
 
+		// Check trace ID and spans
+		assert.Equal(t, "0123456789abcdef0123456789abcdef", items[0]["trace_id"])
+		spansData := items[0]["spans"].([]any)
+		assert.Len(t, spansData, 2)
+		span0 := spansData[0].(map[string]any)
+		assert.Equal(t, "a1b2c3d4e5f67890", span0["span_id"])
+		assert.Equal(t, "GET /items", span0["name"])
+		span1 := spansData[1].(map[string]any)
+		assert.Equal(t, "1234567890abcdef", span1["span_id"])
+		assert.Equal(t, "a1b2c3d4e5f67890", span1["parent_span_id"])
+		assert.Equal(t, "db.query", span1["name"])
+
 		// Cleanup
 		requestLogger.Clear()
 		assert.Nil(t, requestLogger.GetFile())
@@ -138,7 +170,7 @@ func TestRequestLogger(t *testing.T) {
 			Headers:      [][2]string{{"Content-Type", "application/json"}},
 			Body:         []byte(`{"key": "value"}`),
 		}
-		requestLogger.LogRequest(request, response, nil, "")
+		requestLogger.LogRequest(request, response, nil, "", nil, "")
 
 		items := getLoggedItems(t, requestLogger)
 		assert.Len(t, items, 1)
@@ -178,7 +210,7 @@ func TestRequestLogger(t *testing.T) {
 			Headers:      [][2]string{},
 			Body:         []byte(`{"items": []}`),
 		}
-		requestLogger.LogRequest(request, response, nil, "")
+		requestLogger.LogRequest(request, response, nil, "", nil, "")
 
 		items := getLoggedItems(t, requestLogger)
 		assert.Len(t, items, 0)
@@ -206,7 +238,7 @@ func TestRequestLogger(t *testing.T) {
 			Headers:      [][2]string{},
 			Body:         []byte(`{"healthy": true}`),
 		}
-		requestLogger.LogRequest(request, response, nil, "")
+		requestLogger.LogRequest(request, response, nil, "", nil, "")
 
 		request = &common.Request{
 			Timestamp: timestamp,
@@ -216,7 +248,7 @@ func TestRequestLogger(t *testing.T) {
 			Headers:   [][2]string{},
 			Body:      []byte{},
 		}
-		requestLogger.LogRequest(request, response, nil, "")
+		requestLogger.LogRequest(request, response, nil, "", nil, "")
 
 		items := getLoggedItems(t, requestLogger)
 		assert.Len(t, items, 0)
@@ -243,7 +275,7 @@ func TestRequestLogger(t *testing.T) {
 			Headers:      [][2]string{},
 			Body:         []byte{},
 		}
-		requestLogger.LogRequest(request, response, nil, "")
+		requestLogger.LogRequest(request, response, nil, "", nil, "")
 
 		items := getLoggedItems(t, requestLogger)
 		assert.Len(t, items, 0)
@@ -277,7 +309,7 @@ func TestRequestLogger(t *testing.T) {
 			Headers:      [][2]string{{"Content-Type", "text/plain"}},
 			Body:         []byte("test"),
 		}
-		requestLogger.LogRequest(request, response, nil, "")
+		requestLogger.LogRequest(request, response, nil, "", nil, "")
 
 		items := getLoggedItems(t, requestLogger)
 		assert.Len(t, items, 1)
@@ -327,7 +359,7 @@ func TestRequestLogger(t *testing.T) {
 			Headers:      [][2]string{{"Content-Type", "text/plain"}},
 			Body:         []byte("test"),
 		}
-		requestLogger.LogRequest(request, response, nil, "")
+		requestLogger.LogRequest(request, response, nil, "", nil, "")
 
 		items := getLoggedItems(t, requestLogger)
 		assert.Len(t, items, 1)
@@ -375,7 +407,7 @@ func TestRequestLogger(t *testing.T) {
 			Headers:      [][2]string{{"Content-Type", "application/json"}},
 			Body:         []byte("test"),
 		}
-		requestLogger.LogRequest(request, response, nil, "")
+		requestLogger.LogRequest(request, response, nil, "", nil, "")
 
 		items := getLoggedItems(t, requestLogger)
 		assert.Len(t, items, 1)
@@ -442,7 +474,7 @@ func TestRequestLogger(t *testing.T) {
 			Headers:      [][2]string{{"Content-Type", "application/json"}},
 			Body:         responseBodyJSON,
 		}
-		requestLogger.LogRequest(request, response, nil, "")
+		requestLogger.LogRequest(request, response, nil, "", nil, "")
 
 		items := getLoggedItems(t, requestLogger)
 		assert.Len(t, items, 1)
