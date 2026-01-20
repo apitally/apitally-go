@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
 	"sync"
 	"unicode/utf8"
 )
@@ -111,10 +112,14 @@ func (lc *LogCollector) Enabled(ctx context.Context, level slog.Level) bool {
 // Handle implements slog.Handler.
 func (lc *LogCollector) Handle(ctx context.Context, r slog.Record) error {
 	if handle, ok := ctx.Value(logBufferKey{}).(*LogHandle); ok {
+		message := r.Message
+		if attrs := formatLogAttrs(r); attrs != "" {
+			message += "\n" + attrs
+		}
 		record := LogRecord{
 			Timestamp: float64(r.Time.UnixMilli()) / 1000.0,
 			Level:     r.Level.String(),
-			Message:   truncateLogMessage(r.Message),
+			Message:   truncateLogMessage(message),
 		}
 		if r.PC != 0 {
 			frames := runtime.CallersFrames([]uintptr{r.PC})
@@ -175,4 +180,27 @@ func truncateLogMessage(msg string) string {
 		truncateAt--
 	}
 	return msg[:truncateAt] + suffix
+}
+
+func formatLogAttrs(r slog.Record) string {
+	if r.NumAttrs() == 0 {
+		return ""
+	}
+	var parts []string
+	r.Attrs(func(a slog.Attr) bool {
+		parts = append(parts, formatLogAttr(a, ""))
+		return true
+	})
+	return strings.Join(parts, " ")
+}
+
+func formatLogAttr(a slog.Attr, prefix string) string {
+	if a.Value.Kind() == slog.KindGroup {
+		var parts []string
+		for _, nested := range a.Value.Group() {
+			parts = append(parts, formatLogAttr(nested, prefix+a.Key+"."))
+		}
+		return strings.Join(parts, " ")
+	}
+	return prefix + a.Key + "=" + a.Value.String()
 }

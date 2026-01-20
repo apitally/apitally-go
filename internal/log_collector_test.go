@@ -20,15 +20,26 @@ func TestLogCollector(t *testing.T) {
 		ctx := handle.Context()
 
 		slog.InfoContext(ctx, "test message")
+		slog.InfoContext(ctx, "user logged in", "user_id", 123, "method", "oauth")
+		slog.InfoContext(ctx, "request processed", slog.Group("request", "path", "/api/users", "method", "GET"))
 
 		logs := handle.End()
 		assert.NotNil(t, logs)
-		assert.Len(t, logs, 1)
+		assert.Len(t, logs, 3)
+
 		assert.Equal(t, "test message", logs[0].Message)
 		assert.Equal(t, "INFO", logs[0].Level)
 		assert.NotEmpty(t, logs[0].File)
 		assert.NotZero(t, logs[0].Line)
 		assert.NotEmpty(t, logs[0].Logger)
+
+		assert.True(t, strings.HasPrefix(logs[1].Message, "user logged in\n"))
+		assert.Contains(t, logs[1].Message, "user_id=123")
+		assert.Contains(t, logs[1].Message, "method=oauth")
+
+		assert.True(t, strings.HasPrefix(logs[2].Message, "request processed\n"))
+		assert.Contains(t, logs[2].Message, "request.path=/api/users")
+		assert.Contains(t, logs[2].Message, "request.method=GET")
 	})
 
 	t.Run("NoOpWhenDisabled", func(t *testing.T) {
