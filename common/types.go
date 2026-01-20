@@ -59,6 +59,7 @@ func NewRequestLoggingConfig() *RequestLoggingConfig {
 		LogResponseHeaders: true,
 		LogResponseBody:    false,
 		LogPanic:           true,
+		CaptureSpans:       false,
 	}
 }
 
