@@ -55,23 +55,31 @@ func TestLogCollector(t *testing.T) {
 	})
 
 	t.Run("WithAttrs", func(t *testing.T) {
-		lc := &LogCollector{enabled: true}
+		originalHandler := slog.Default().Handler()
+		t.Cleanup(func() { slog.SetDefault(slog.New(originalHandler)) })
+
+		lc := NewLogCollector(true)
 		newHandler := lc.WithAttrs([]slog.Attr{slog.String("key", "value")})
 
 		assert.NotSame(t, lc, newHandler)
 
 		newCollector := newHandler.(*LogCollector)
 		assert.True(t, newCollector.enabled)
+		assert.NotNil(t, newCollector.next)
 	})
 
 	t.Run("WithGroup", func(t *testing.T) {
-		lc := &LogCollector{enabled: true}
+		originalHandler := slog.Default().Handler()
+		t.Cleanup(func() { slog.SetDefault(slog.New(originalHandler)) })
+
+		lc := NewLogCollector(true)
 		newHandler := lc.WithGroup("mygroup")
 
 		assert.NotSame(t, lc, newHandler)
 
 		newCollector := newHandler.(*LogCollector)
 		assert.True(t, newCollector.enabled)
+		assert.NotNil(t, newCollector.next)
 	})
 
 	t.Run("TruncateMessage", func(t *testing.T) {
