@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"reflect"
 	"runtime"
 	"sync"
@@ -120,7 +121,7 @@ func (lc *LogCollector) Handle(ctx context.Context, r slog.Record) error {
 			frame, _ := frames.Next()
 			record.File = frame.File
 			record.Line = frame.Line
-			record.Logger = frame.Function
+			record.Logger = filepath.Base(frame.File)
 		}
 		handle.append(record)
 	}
