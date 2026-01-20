@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"runtime"
 	"sync"
+	"unicode/utf8"
 )
 
 const (
@@ -144,9 +145,13 @@ func (lc *LogCollector) WithGroup(name string) slog.Handler {
 }
 
 func truncateLogMessage(msg string) string {
-	if len(msg) > maxLogMsgLength {
-		suffix := "... (truncated)"
-		return msg[:maxLogMsgLength-len(suffix)] + suffix
+	if len(msg) <= maxLogMsgLength {
+		return msg
 	}
-	return msg
+	suffix := "... (truncated)"
+	truncateAt := maxLogMsgLength - len(suffix)
+	for truncateAt > 0 && !utf8.RuneStart(msg[truncateAt]) {
+		truncateAt--
+	}
+	return msg[:truncateAt] + suffix
 }
