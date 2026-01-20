@@ -11,26 +11,28 @@ import (
 
 func TestLogCollector(t *testing.T) {
 	t.Run("CaptureLogsWhenEnabled", func(t *testing.T) {
-		lc := &LogCollector{enabled: true}
+		originalHandler := slog.Default().Handler()
+		t.Cleanup(func() { slog.SetDefault(slog.New(originalHandler)) })
+
+		lc := NewLogCollector(true)
 
 		handle := lc.StartCapture(context.Background())
 		ctx := handle.Context()
 
-		record := slog.Record{}
-		record.Message = "test message"
-		record.Level = slog.LevelInfo
-		err := lc.Handle(ctx, record)
-		assert.NoError(t, err)
+		slog.InfoContext(ctx, "test message")
 
 		logs := handle.End()
 		assert.NotNil(t, logs)
 		assert.Len(t, logs, 1)
 		assert.Equal(t, "test message", logs[0].Message)
 		assert.Equal(t, "INFO", logs[0].Level)
+		assert.NotEmpty(t, logs[0].File)
+		assert.NotZero(t, logs[0].Line)
+		assert.NotEmpty(t, logs[0].Logger)
 	})
 
 	t.Run("NoOpWhenDisabled", func(t *testing.T) {
-		lc := &LogCollector{enabled: false}
+		lc := NewLogCollector(false)
 
 		handle := lc.StartCapture(context.Background())
 		ctx := handle.Context()
