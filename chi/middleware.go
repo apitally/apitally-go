@@ -101,6 +101,10 @@ func Middleware(r chi.Router, config *Config) func(http.Handler) http.Handler {
 				routePattern := getRoutePattern(r)
 				statusCode := rw.Status()
 
+				// End span collection and get spans
+				spanHandle.SetName(fmt.Sprintf("%s %s", r.Method, routePattern))
+				spans := spanHandle.End()
+
 				// Update request size from reader if needed
 				if requestReader != nil && requestSize == -1 {
 					requestSize = requestReader.Size()
@@ -120,10 +124,6 @@ func Middleware(r chi.Router, config *Config) func(http.Handler) http.Handler {
 						recoveredErr = fmt.Errorf("%v", r)
 					}
 				}
-
-				// End span collection and get spans
-				spanHandle.SetName(fmt.Sprintf("%s %s", r.Method, routePattern))
-				spans := spanHandle.End()
 
 				// Get consumer info if available
 				var consumerIdentifier string

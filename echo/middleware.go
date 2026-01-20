@@ -93,6 +93,10 @@ func Middleware(e *echo.Echo, config *Config) echo.MiddlewareFunc {
 				routePattern := c.Path()
 				statusCode := rw.Status()
 
+				// End span collection and get spans
+				spanHandle.SetName(fmt.Sprintf("%s %s", c.Request().Method, routePattern))
+				spans := spanHandle.End()
+
 				// Update request size from reader if needed
 				if requestReader != nil && requestSize == -1 {
 					requestSize = requestReader.Size()
@@ -112,10 +116,6 @@ func Middleware(e *echo.Echo, config *Config) echo.MiddlewareFunc {
 						recoveredErr = fmt.Errorf("%v", r)
 					}
 				}
-
-				// End span collection and get spans
-				spanHandle.SetName(fmt.Sprintf("%s %s", c.Request().Method, routePattern))
-				spans := spanHandle.End()
 
 				// Get consumer info if available
 				var consumerIdentifier string

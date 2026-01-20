@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -152,12 +153,13 @@ func TestSpanDataSerialization(t *testing.T) {
 
 	// Create a span with attributes
 	tracer := otel.Tracer("test")
-	ctx, span := tracer.Start(handle.Context(), "test_span")
+	_, span := tracer.Start(handle.Context(), "test_span")
 	span.SetAttributes(
-	// Using string attribute for simplicity
+		attribute.String("http.method", "GET"),
+		attribute.Int("http.status_code", 200),
+		attribute.Bool("success", true),
 	)
 	span.End()
-	_ = ctx
 
 	spans := handle.End()
 	assert.NotNil(t, spans)
@@ -173,9 +175,16 @@ func TestSpanDataSerialization(t *testing.T) {
 
 	assert.NotNil(t, testSpan)
 	assert.Len(t, testSpan.SpanID, 16) // Span ID is 16 hex characters
+	assert.Equal(t, "internal", testSpan.Kind)
 	assert.Greater(t, testSpan.StartTime, int64(0))
 	assert.Greater(t, testSpan.EndTime, int64(0))
 	assert.GreaterOrEqual(t, testSpan.EndTime, testSpan.StartTime)
+
+	// Verify attributes
+	assert.NotNil(t, testSpan.Attributes)
+	assert.Equal(t, "GET", testSpan.Attributes["http.method"])
+	assert.Equal(t, int64(200), testSpan.Attributes["http.status_code"])
+	assert.Equal(t, true, testSpan.Attributes["success"])
 }
 
 func TestSpanCollectorShutdown(t *testing.T) {

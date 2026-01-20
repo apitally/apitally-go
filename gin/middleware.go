@@ -128,6 +128,10 @@ func Middleware(r *gin.Engine, config *Config) gin.HandlerFunc {
 			duration := time.Since(start)
 			statusCode := c.Writer.Status()
 
+			// End span collection and get spans
+			spanHandle.SetName(fmt.Sprintf("%s %s", c.Request.Method, routePattern))
+			spans := spanHandle.End()
+
 			// Update request size from reader if needed
 			if requestReader != nil && requestSize == -1 {
 				requestSize = requestReader.Size()
@@ -147,10 +151,6 @@ func Middleware(r *gin.Engine, config *Config) gin.HandlerFunc {
 					recoveredErr = fmt.Errorf("%v", r)
 				}
 			}
-
-			// End span collection and get spans
-			spanHandle.SetName(fmt.Sprintf("%s %s", c.Request.Method, routePattern))
-			spans := spanHandle.End()
 
 			// Get consumer info if available
 			var consumerIdentifier string

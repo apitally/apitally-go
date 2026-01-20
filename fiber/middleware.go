@@ -70,6 +70,10 @@ func Middleware(app *fiber.App, config *Config) fiber.Handler {
 			method := string(c.Route().Method)
 			path := string(c.Route().Path)
 
+			// End span collection and get spans
+			spanHandle.SetName(fmt.Sprintf("%s %s", method, path))
+			spans := spanHandle.End()
+
 			if method == "OPTIONS" {
 				return
 			}
@@ -88,10 +92,6 @@ func Middleware(app *fiber.App, config *Config) fiber.Handler {
 					recoveredErr = fmt.Errorf("%v", r)
 				}
 			}
-
-			// End span collection and get spans
-			spanHandle.SetName(fmt.Sprintf("%s %s", method, path))
-			spans := spanHandle.End()
 
 			// Get consumer info if available
 			var consumerIdentifier string
