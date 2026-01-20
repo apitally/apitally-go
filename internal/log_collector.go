@@ -3,6 +3,8 @@ package internal
 import (
 	"context"
 	"log/slog"
+	"os"
+	"reflect"
 	"runtime"
 	"sync"
 	"unicode/utf8"
@@ -59,10 +61,28 @@ func NewLogCollector(enabled bool) *LogCollector {
 		enabled: enabled,
 	}
 	if enabled {
-		lc.next = slog.Default().Handler()
+		currentHandler := slog.Default().Handler()
+
+		// Go's built-in defaultHandler causes a circular dependency with the
+		// log package (which uses slog in Go 1.21+). Replace it with a TextHandler.
+		// User-configured handlers are preserved.
+		if isDefaultHandler(currentHandler) {
+			lc.next = slog.NewTextHandler(os.Stderr, nil)
+		} else {
+			lc.next = currentHandler
+		}
+
 		slog.SetDefault(slog.New(lc))
 	}
 	return lc
+}
+
+func isDefaultHandler(h slog.Handler) bool {
+	t := reflect.TypeOf(h)
+	if t.Kind() == reflect.Ptr {
+		return t.Elem().Name() == "defaultHandler" && t.Elem().PkgPath() == "log/slog"
+	}
+	return false
 }
 
 func (lc *LogCollector) StartCapture(ctx context.Context) *LogHandle {

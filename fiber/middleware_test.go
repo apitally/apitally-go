@@ -2,12 +2,12 @@ package apitally
 
 import (
 	"bytes"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 	"time"
-
-	"slices"
 
 	"github.com/apitally/apitally-go/internal"
 	"github.com/go-playground/validator/v10"
@@ -24,6 +24,7 @@ func setupTestApp(requestLoggingEnabled bool) *fiber.App {
 	config.RequestLogging.LogRequestHeaders = true
 	config.RequestLogging.LogRequestBody = true
 	config.RequestLogging.LogResponseBody = true
+	config.RequestLogging.CaptureLogs = true
 	config.RequestLogging.CaptureSpans = true
 	config.DisableSync = true
 
@@ -42,6 +43,8 @@ func setupTestApp(requestLoggingEnabled bool) *fiber.App {
 			Name:       "Tester",
 			Group:      "Test Group",
 		})
+
+		slog.InfoContext(c.UserContext(), "Processing hello request")
 
 		var req struct {
 			Name string `json:"name" validate:"required,min=3"`
@@ -229,6 +232,11 @@ func TestMiddleware(t *testing.T) {
 		spanNames := []string{helloLogItem.Spans[0].Name, helloLogItem.Spans[1].Name}
 		assert.Contains(t, spanNames, "POST /hello")
 		assert.Contains(t, spanNames, "child-span")
+
+		// Validate logs are captured
+		assert.Len(t, helloLogItem.Logs, 1)
+		assert.Equal(t, "Processing hello request", helloLogItem.Logs[0].Message)
+		assert.Equal(t, "INFO", helloLogItem.Logs[0].Level)
 
 		// Validate log item for GET /error request
 		errorLogItem := logItems[1]

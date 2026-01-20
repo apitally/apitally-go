@@ -10,7 +10,26 @@ import (
 )
 
 func TestLogCollector(t *testing.T) {
-	t.Run("Disabled", func(t *testing.T) {
+	t.Run("CaptureLogsWhenEnabled", func(t *testing.T) {
+		lc := &LogCollector{enabled: true}
+
+		handle := lc.StartCapture(context.Background())
+		ctx := handle.Context()
+
+		record := slog.Record{}
+		record.Message = "test message"
+		record.Level = slog.LevelInfo
+		err := lc.Handle(ctx, record)
+		assert.NoError(t, err)
+
+		logs := handle.End()
+		assert.NotNil(t, logs)
+		assert.Len(t, logs, 1)
+		assert.Equal(t, "test message", logs[0].Message)
+		assert.Equal(t, "INFO", logs[0].Level)
+	})
+
+	t.Run("NoOpWhenDisabled", func(t *testing.T) {
 		lc := &LogCollector{enabled: false}
 
 		handle := lc.StartCapture(context.Background())
@@ -28,21 +47,29 @@ func TestLogCollector(t *testing.T) {
 
 	t.Run("Enabled", func(t *testing.T) {
 		lc := &LogCollector{enabled: true}
+		assert.True(t, lc.Enabled(context.Background(), slog.LevelInfo))
+		assert.True(t, lc.Enabled(context.Background(), slog.LevelWarn))
+		assert.False(t, lc.Enabled(context.Background(), slog.LevelDebug))
+	})
 
-		handle := lc.StartCapture(context.Background())
-		ctx := handle.Context()
+	t.Run("WithAttrs", func(t *testing.T) {
+		lc := &LogCollector{enabled: true}
+		newHandler := lc.WithAttrs([]slog.Attr{slog.String("key", "value")})
 
-		record := slog.Record{}
-		record.Message = "test message"
-		record.Level = slog.LevelInfo
-		err := lc.Handle(ctx, record)
-		assert.NoError(t, err)
+		assert.NotSame(t, lc, newHandler)
 
-		logs := handle.End()
-		assert.NotNil(t, logs)
-		assert.Len(t, logs, 1)
-		assert.Equal(t, "test message", logs[0].Message)
-		assert.Equal(t, "INFO", logs[0].Level)
+		newCollector := newHandler.(*LogCollector)
+		assert.True(t, newCollector.enabled)
+	})
+
+	t.Run("WithGroup", func(t *testing.T) {
+		lc := &LogCollector{enabled: true}
+		newHandler := lc.WithGroup("mygroup")
+
+		assert.NotSame(t, lc, newHandler)
+
+		newCollector := newHandler.(*LogCollector)
+		assert.True(t, newCollector.enabled)
 	})
 
 	t.Run("TruncateMessage", func(t *testing.T) {
