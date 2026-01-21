@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -33,16 +32,14 @@ var lockDir = filepath.Join(os.TempDir(), "apitally")
 // The release function must be called when shutting down.
 func GetOrCreateInstanceUUID(clientID, env string) (string, func()) {
 	appEnvHash := getAppEnvHash(clientID, env)
+	now := time.Now()
 
 	if err := os.MkdirAll(lockDir, 0755); err != nil {
 		return uuid.New().String(), func() {}
 	}
 
-	validateLockFiles(lockDir, appEnvHash)
-
 	for slot := 0; slot < maxSlots; slot++ {
 		lockFile := filepath.Join(lockDir, fmt.Sprintf("instance_%s_%d.lock", appEnvHash, slot))
-
 		file, err := os.OpenFile(lockFile, os.O_RDWR|os.O_CREATE, 0644)
 		if err != nil {
 			continue
@@ -53,10 +50,16 @@ func GetOrCreateInstanceUUID(clientID, env string) (string, func()) {
 			continue
 		}
 
+		info, err := file.Stat()
+		if err != nil {
+			file.Close()
+			continue
+		}
+
 		content, _ := io.ReadAll(file)
 		existingUUID := strings.TrimSpace(string(content))
-
-		if isValidUUID(existingUUID) {
+		tooOld := now.Sub(info.ModTime()).Seconds() > maxLockAgeSeconds
+		if isValidUUID(existingUUID) && !tooOld {
 			return existingUUID, func() { file.Close() }
 		}
 
@@ -77,44 +80,6 @@ func GetOrCreateInstanceUUID(clientID, env string) (string, func()) {
 func getAppEnvHash(clientID, env string) string {
 	hash := sha256.Sum256([]byte(clientID + ":" + env))
 	return hex.EncodeToString(hash[:])[:8]
-}
-
-func validateLockFiles(dir, appEnvHash string) {
-	pattern := filepath.Join(dir, fmt.Sprintf("instance_%s_*.lock", appEnvHash))
-	matches, err := filepath.Glob(pattern)
-	if err != nil {
-		return
-	}
-
-	sort.Strings(matches)
-	seenUUIDs := make(map[string]bool)
-	now := time.Now()
-
-	for _, lockFile := range matches {
-		info, err := os.Stat(lockFile)
-		if err != nil {
-			continue
-		}
-
-		if now.Sub(info.ModTime()).Seconds() > maxLockAgeSeconds {
-			os.Remove(lockFile)
-			continue
-		}
-
-		content, err := os.ReadFile(lockFile)
-		if err != nil {
-			os.Remove(lockFile)
-			continue
-		}
-
-		uuidStr := strings.TrimSpace(string(content))
-		if !isValidUUID(uuidStr) || seenUUIDs[uuidStr] {
-			os.Remove(lockFile)
-			continue
-		}
-
-		seenUUIDs[uuidStr] = true
-	}
 }
 
 func isValidUUID(value string) bool {
