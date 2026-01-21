@@ -3,10 +3,11 @@ module github.com/apitally/apitally-go/fiber
 go 1.21
 
 require (
-	github.com/apitally/apitally-go v0.0.0
+	github.com/apitally/apitally-go v0.10.0
 	github.com/go-playground/validator/v10 v10.16.0
 	github.com/gofiber/fiber/v2 v2.51.0
 	github.com/stretchr/testify v1.11.1
+	go.opentelemetry.io/otel v1.28.0
 )
 
 require (
@@ -38,7 +39,6 @@ require (
 	github.com/valyala/fasthttp v1.50.0 // indirect
 	github.com/valyala/tcplisten v1.0.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	go.opentelemetry.io/otel v1.28.0 // indirect
 	go.opentelemetry.io/otel/metric v1.28.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.28.0 // indirect
 	go.opentelemetry.io/otel/trace v1.28.0 // indirect

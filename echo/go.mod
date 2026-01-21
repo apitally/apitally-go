@@ -3,10 +3,11 @@ module github.com/apitally/apitally-go/echo
 go 1.21
 
 require (
-	github.com/apitally/apitally-go v0.0.0
+	github.com/apitally/apitally-go v0.10.0
 	github.com/go-playground/validator/v10 v10.16.0
 	github.com/labstack/echo/v4 v4.11.4
 	github.com/stretchr/testify v1.11.1
+	go.opentelemetry.io/otel v1.28.0
 )
 
 require (
@@ -35,7 +36,6 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	go.opentelemetry.io/otel v1.28.0 // indirect
 	go.opentelemetry.io/otel/metric v1.28.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.28.0 // indirect
 	go.opentelemetry.io/otel/trace v1.28.0 // indirect
