@@ -44,8 +44,11 @@ func Middleware(e *echo.Echo, config *Config) echo.MiddlewareFunc {
 			spanHandle := client.SpanCollector.StartSpan(c.Request().Context())
 			traceID := spanHandle.TraceID()
 
-			// Inject span context into request
-			c.SetRequest(c.Request().WithContext(spanHandle.Context()))
+			// Start log capture
+			logHandle := client.LogCollector.StartCapture(spanHandle.Context())
+
+			// Inject context into request
+			c.SetRequest(c.Request().WithContext(logHandle.Context()))
 
 			// Determine request size
 			requestSize := common.ParseContentLength(c.Request().Header.Get("Content-Length"))
@@ -96,6 +99,9 @@ func Middleware(e *echo.Echo, config *Config) echo.MiddlewareFunc {
 				// End span collection and get spans
 				spanHandle.SetName(fmt.Sprintf("%s %s", c.Request().Method, routePattern))
 				spans := spanHandle.End()
+
+				// End log capture and get logs
+				logs := logHandle.End()
 
 				// Update request size from reader if needed
 				if requestReader != nil && requestSize == -1 {
@@ -192,7 +198,7 @@ func Middleware(e *echo.Echo, config *Config) echo.MiddlewareFunc {
 						Size:         responseSize,
 						Body:         responseBody.Bytes(),
 					}
-					client.RequestLogger.LogRequest(&request, &response, recoveredErr, stackTrace, spans, traceID)
+					client.RequestLogger.LogRequest(&request, &response, recoveredErr, stackTrace, logs, spans, traceID)
 				}
 
 				// Re-panic if there was a panic

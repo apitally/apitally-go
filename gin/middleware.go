@@ -75,8 +75,11 @@ func Middleware(r *gin.Engine, config *Config) gin.HandlerFunc {
 		spanHandle := client.SpanCollector.StartSpan(c.Request.Context())
 		traceID := spanHandle.TraceID()
 
-		// Inject span context into request
-		c.Request = c.Request.WithContext(spanHandle.Context())
+		// Start log capture
+		logHandle := client.LogCollector.StartCapture(spanHandle.Context())
+
+		// Inject context into request
+		c.Request = c.Request.WithContext(logHandle.Context())
 
 		// Get route pattern
 		routePattern := c.FullPath()
@@ -131,6 +134,9 @@ func Middleware(r *gin.Engine, config *Config) gin.HandlerFunc {
 			// End span collection and get spans
 			spanHandle.SetName(fmt.Sprintf("%s %s", c.Request.Method, routePattern))
 			spans := spanHandle.End()
+
+			// End log capture and get logs
+			logs := logHandle.End()
 
 			// Update request size from reader if needed
 			if requestReader != nil && requestSize == -1 {
@@ -227,7 +233,7 @@ func Middleware(r *gin.Engine, config *Config) gin.HandlerFunc {
 					Size:         responseSize,
 					Body:         responseBody.Bytes(),
 				}
-				client.RequestLogger.LogRequest(&request, &response, recoveredErr, stackTrace, spans, traceID)
+				client.RequestLogger.LogRequest(&request, &response, recoveredErr, stackTrace, logs, spans, traceID)
 			}
 
 			// Restore original writer if needed

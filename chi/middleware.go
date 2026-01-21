@@ -53,8 +53,11 @@ func Middleware(r chi.Router, config *Config) func(http.Handler) http.Handler {
 			spanHandle := client.SpanCollector.StartSpan(r.Context())
 			traceID := spanHandle.TraceID()
 
-			// Inject span context into request
-			r = r.WithContext(spanHandle.Context())
+			// Start log capture
+			logHandle := client.LogCollector.StartCapture(spanHandle.Context())
+
+			// Inject context into request
+			r = r.WithContext(logHandle.Context())
 
 			// Determine request size
 			requestSize := common.ParseContentLength(r.Header.Get("Content-Length"))
@@ -104,6 +107,9 @@ func Middleware(r chi.Router, config *Config) func(http.Handler) http.Handler {
 				// End span collection and get spans
 				spanHandle.SetName(fmt.Sprintf("%s %s", r.Method, routePattern))
 				spans := spanHandle.End()
+
+				// End log capture and get logs
+				logs := logHandle.End()
 
 				// Update request size from reader if needed
 				if requestReader != nil && requestSize == -1 {
@@ -200,7 +206,7 @@ func Middleware(r chi.Router, config *Config) func(http.Handler) http.Handler {
 						Size:         responseSize,
 						Body:         responseBody.Bytes(),
 					}
-					client.RequestLogger.LogRequest(&request, &response, recoveredErr, stackTrace, spans, traceID)
+					client.RequestLogger.LogRequest(&request, &response, recoveredErr, stackTrace, logs, spans, traceID)
 				}
 
 				// Re-panic if there was a panic

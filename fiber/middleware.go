@@ -42,8 +42,11 @@ func Middleware(app *fiber.App, config *Config) fiber.Handler {
 		spanHandle := client.SpanCollector.StartSpan(c.UserContext())
 		traceID := spanHandle.TraceID()
 
-		// Inject span context into request
-		c.SetUserContext(spanHandle.Context())
+		// Start log capture
+		logHandle := client.LogCollector.StartCapture(spanHandle.Context())
+
+		// Inject context into request
+		c.SetUserContext(logHandle.Context())
 
 		// Determine request size
 		requestSize := common.ParseContentLength(c.Get("Content-Length"))
@@ -73,6 +76,9 @@ func Middleware(app *fiber.App, config *Config) fiber.Handler {
 			// End span collection and get spans
 			spanHandle.SetName(fmt.Sprintf("%s %s", method, path))
 			spans := spanHandle.End()
+
+			// End log capture and get logs
+			logs := logHandle.End()
 
 			if method == "OPTIONS" {
 				return
@@ -175,7 +181,7 @@ func Middleware(app *fiber.App, config *Config) fiber.Handler {
 					Size:         responseSize,
 					Body:         responseBody,
 				}
-				client.RequestLogger.LogRequest(&request, &response, recoveredErr, stackTrace, spans, traceID)
+				client.RequestLogger.LogRequest(&request, &response, recoveredErr, stackTrace, logs, spans, traceID)
 			}
 
 			// Re-panic if there was a panic
