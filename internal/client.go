@@ -57,17 +57,18 @@ const (
 )
 
 type ApitallyClient struct {
-	enabled         bool
-	instanceUUID    string
-	httpClient      *retryablehttp.Client
-	syncDataChan    chan SyncPayload
-	syncStarted     bool
-	syncStopped     bool
-	startupData     *StartupPayload
-	startupDataSent bool
-	logger          *slog.Logger
-	done            chan struct{}
-	mutex           sync.Mutex
+	enabled             bool
+	instanceUUID        string
+	instanceLockRelease func()
+	httpClient          *retryablehttp.Client
+	syncDataChan        chan SyncPayload
+	syncStarted         bool
+	syncStopped         bool
+	startupData         *StartupPayload
+	startupDataSent     bool
+	logger              *slog.Logger
+	done                chan struct{}
+	mutex               sync.Mutex
 
 	Config                 common.Config
 	RequestCounter         *RequestCounter
@@ -136,13 +137,16 @@ func newApitallyClient(config common.Config, httpClient *retryablehttp.Client) *
 		httpClient = getHttpClient()
 	}
 
+	instanceUUID, instanceLockRelease := GetOrCreateInstanceUUID(config.ClientID, config.Env)
+
 	client := &ApitallyClient{
-		enabled:      enabled,
-		instanceUUID: uuid.New().String(),
-		httpClient:   httpClient,
-		syncDataChan: make(chan SyncPayload, maxQueueSize),
-		logger:       logger.With("component", "apitally"),
-		done:         make(chan struct{}),
+		enabled:             enabled,
+		instanceUUID:        instanceUUID,
+		instanceLockRelease: instanceLockRelease,
+		httpClient:          httpClient,
+		syncDataChan:        make(chan SyncPayload, maxQueueSize),
+		logger:              logger.With("component", "apitally"),
+		done:                make(chan struct{}),
 	}
 
 	client.Config = config
@@ -262,6 +266,7 @@ func (c *ApitallyClient) Shutdown() {
 
 	c.RequestLogger.Close()
 	c.httpClient.HTTPClient.CloseIdleConnections()
+	c.instanceLockRelease()
 }
 
 func (c *ApitallyClient) sendStartupData() error {
