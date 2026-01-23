@@ -156,7 +156,7 @@ func newApitallyClient(config common.Config, httpClient *retryablehttp.Client) *
 	client.ConsumerRegistry = NewConsumerRegistry()
 	client.RequestLogger = NewRequestLogger(config.RequestLogging)
 	client.LogCollector = NewLogCollector(config.RequestLogging != nil && config.RequestLogging.Enabled && config.RequestLogging.CaptureLogs)
-	client.SpanCollector = NewSpanCollector(config.RequestLogging != nil && config.RequestLogging.Enabled && config.RequestLogging.CaptureSpans)
+	client.SpanCollector = NewSpanCollector(config.RequestLogging != nil && config.RequestLogging.Enabled && config.RequestLogging.CaptureTraces)
 	client.ResourceMonitor = NewResourceMonitor()
 
 	return client

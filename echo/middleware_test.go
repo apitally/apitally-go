@@ -25,7 +25,7 @@ func setupTestApp(requestLoggingEnabled bool) *echo.Echo {
 	config.RequestLogging.LogRequestBody = true
 	config.RequestLogging.LogResponseBody = true
 	config.RequestLogging.CaptureLogs = true
-	config.RequestLogging.CaptureSpans = true
+	config.RequestLogging.CaptureTraces = true
 	config.DisableSync = true
 
 	e := echo.New()
