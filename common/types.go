@@ -41,7 +41,7 @@ type RequestLoggingConfig struct {
 	LogResponseBody          bool
 	LogPanic                 bool
 	CaptureLogs              bool
-	CaptureSpans             bool
+	CaptureTraces             bool
 	MaskQueryParams          []*regexp.Regexp
 	MaskHeaders              []*regexp.Regexp
 	MaskBodyFields           []*regexp.Regexp
@@ -61,7 +61,7 @@ func NewRequestLoggingConfig() *RequestLoggingConfig {
 		LogResponseBody:    false,
 		LogPanic:           true,
 		CaptureLogs:        false,
-		CaptureSpans:       false,
+		CaptureTraces:       false,
 	}
 }
 

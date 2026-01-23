@@ -23,7 +23,7 @@ func setupTestApp(requestLoggingEnabled bool) *gin.Engine {
 	config.RequestLogging.LogRequestBody = true
 	config.RequestLogging.LogResponseBody = true
 	config.RequestLogging.CaptureLogs = true
-	config.RequestLogging.CaptureSpans = true
+	config.RequestLogging.CaptureTraces = true
 	config.DisableSync = true
 
 	r := gin.Default()
