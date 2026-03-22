@@ -180,7 +180,7 @@ func Middleware(r *gin.Engine, config *Config) gin.HandlerFunc {
 					c.Request.Method,
 					routePattern,
 					statusCode,
-					float64(duration.Milliseconds())/1000.0,
+					float64(duration.Milliseconds()),
 					requestSize,
 					responseSize,
 				)

@@ -128,7 +128,7 @@ func Middleware(app *fiber.App, config *Config) fiber.Handler {
 					method,
 					path,
 					statusCode,
-					float64(duration.Milliseconds())/1000.0,
+					float64(duration.Milliseconds()),
 					requestSize,
 					responseSize,
 				)
