@@ -81,14 +81,14 @@ See the [SDK reference](https://docs.apitally.io/sdk-reference/go) for all avail
 Add the SDK to your dependencies:
 
 ```go
-go get github.com/apitally/apitally-go/chi
+go get github.com/apitally/apitally-go/chi-v5
 ```
 
 Then add the Apitally middleware to your application:
 
 ```go
 import (
-    apitally "github.com/apitally/apitally-go/chi"
+    apitally "github.com/apitally/apitally-go/chi-v5"
     "github.com/go-chi/chi/v5"
 )
 

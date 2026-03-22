@@ -1,4 +1,4 @@
-module github.com/apitally/apitally-go/chi
+module github.com/apitally/apitally-go/chi-v5
 
 go 1.21
 
