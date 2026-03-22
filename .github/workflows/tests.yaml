@@ -38,7 +38,7 @@ jobs:
       fail-fast: false
       matrix:
         go-version: ["1.21", "1.24", "1.25"]
-        framework: ["chi", "echo", "fiber/v2", "gin"]
+        framework: ["chi", "echo", "fiber-v2", "gin"]
         framework-version: ["min"]
         include:
           - go-version: "1.25"
@@ -48,13 +48,13 @@ jobs:
             framework: echo
             framework-version: latest
           - go-version: "1.25"
-            framework: fiber/v2
+            framework: fiber-v2
             framework-version: latest
           - go-version: "1.25"
-            framework: fiber/v3
+            framework: fiber-v3
             framework-version: min
           - go-version: "1.25"
-            framework: fiber/v3
+            framework: fiber-v3
             framework-version: latest
           - go-version: "1.25"
             framework: gin
@@ -75,8 +75,8 @@ jobs:
           case "${{ matrix.framework }}" in
             chi) go get github.com/go-chi/chi/v5@latest ;;
             echo) go get github.com/labstack/echo/v4@latest ;;
-            fiber/v2) go get github.com/gofiber/fiber/v2@latest ;;
-            fiber/v3) go get github.com/gofiber/fiber/v3@latest ;;
+            fiber-v2) go get github.com/gofiber/fiber/v2@latest ;;
+            fiber-v3) go get github.com/gofiber/fiber/v3@latest ;;
             gin) go get github.com/gin-gonic/gin@latest ;;
           esac
           go mod tidy

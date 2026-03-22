@@ -143,15 +143,15 @@ For further instructions, see our
 Add the SDK to your dependencies:
 
 ```go
-go get github.com/apitally/apitally-go/fiber/v2  # for Fiber v2
-go get github.com/apitally/apitally-go/fiber/v3  # for Fiber v3
+go get github.com/apitally/apitally-go/fiber-v2  # for Fiber v2
+go get github.com/apitally/apitally-go/fiber-v3  # for Fiber v3
 ```
 
 Then add the Apitally middleware to your application:
 
 ```go
 import (
-    apitally "github.com/apitally/apitally-go/fiber/v2" // or fiber/v3
+    apitally "github.com/apitally/apitally-go/fiber-v2" // or fiber-v3
     "github.com/gofiber/fiber/v2" // or fiber/v3
 )
 

@@ -9,7 +9,7 @@ define go-module-test
 	cd $(1) && go test -p 1 -v -race -coverprofile=coverage.out ./...
 endef
 
-MODULES := chi echo fiber/v2 fiber/v3 gin
+MODULES := chi echo fiber-v2 fiber-v3 gin
 
 check: $(addprefix check-,$(MODULES))
 test:  $(addprefix test-,$(MODULES))

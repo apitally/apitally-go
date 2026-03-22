@@ -1,4 +1,4 @@
-module github.com/apitally/apitally-go/fiber/v2
+module github.com/apitally/apitally-go/fiber-v2
 
 go 1.21
 
@@ -49,4 +49,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/apitally/apitally-go => ../../
+replace github.com/apitally/apitally-go => ../
