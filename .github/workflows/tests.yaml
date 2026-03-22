@@ -38,11 +38,11 @@ jobs:
       fail-fast: false
       matrix:
         go-version: ["1.21", "1.24", "1.25"]
-        framework: ["chi", "echo", "fiber-v2", "gin"]
+        framework: ["chi-v5", "echo", "fiber-v2", "gin"]
         framework-version: ["min"]
         include:
           - go-version: "1.25"
-            framework: chi
+            framework: chi-v5
             framework-version: latest
           - go-version: "1.25"
             framework: echo
@@ -73,7 +73,7 @@ jobs:
         working-directory: ./${{ matrix.framework }}
         run: |
           case "${{ matrix.framework }}" in
-            chi) go get github.com/go-chi/chi/v5@latest ;;
+            chi-v5) go get github.com/go-chi/chi/v5@latest ;;
             echo) go get github.com/labstack/echo/v4@latest ;;
             fiber-v2) go get github.com/gofiber/fiber/v2@latest ;;
             fiber-v3) go get github.com/gofiber/fiber/v3@latest ;;
