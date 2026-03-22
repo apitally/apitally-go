@@ -145,7 +145,7 @@ func Middleware(e *echo.Echo, config *Config) echo.MiddlewareFunc {
 						c.Request().Method,
 						routePattern,
 						statusCode,
-						float64(duration.Milliseconds())/1000.0,
+						float64(duration.Milliseconds()),
 						requestSize,
 						responseSize,
 					)

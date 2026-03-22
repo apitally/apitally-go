@@ -153,7 +153,7 @@ func Middleware(r chi.Router, config *Config) func(http.Handler) http.Handler {
 						r.Method,
 						routePattern,
 						statusCode,
-						float64(duration.Milliseconds())/1000.0,
+						float64(duration.Milliseconds()),
 						requestSize,
 						responseSize,
 					)
