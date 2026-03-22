@@ -81,3 +81,7 @@ func (w *ResponseWriter) Push(target string, opts *http.PushOptions) error {
 	}
 	return http.ErrNotSupported
 }
+
+func (w *ResponseWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}

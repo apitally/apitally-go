@@ -1,4 +1,4 @@
-module github.com/apitally/apitally-go/echo
+module github.com/apitally/apitally-go/echo-v4
 
 go 1.21
 
