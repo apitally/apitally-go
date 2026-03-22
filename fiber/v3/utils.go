@@ -9,9 +9,6 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-// Fiber v3 returns zero-copy strings from header accessors; clone them so the
-// captured values survive context recycling.
-
 var excludedMethods = []string{"HEAD", "OPTIONS", "CONNECT", "TRACE"}
 
 func getRoutes(app *fiber.App) []common.PathInfo {
@@ -44,6 +41,8 @@ func getVersions(appVersion string) map[string]string {
 	return versions
 }
 
+// Fiber v3 returns zero-copy strings from header accessors; clone them so the
+// captured values survive context recycling.
 func transformHeaders(header map[string][]string) [][2]string {
 	headers := make([][2]string, 0)
 	for k, values := range header {

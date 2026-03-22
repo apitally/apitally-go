@@ -203,9 +203,6 @@ func Middleware(app *fiber.App, config *Config) fiber.Handler {
 	}
 }
 
-// Alias for backwards compatibility
-var ApitallyMiddleware = Middleware
-
 func CaptureValidationError(c fiber.Ctx, err error) {
 	if err == nil {
 		return
