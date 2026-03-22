@@ -59,7 +59,7 @@ email, Slack and Microsoft Teams.
 
 ## Supported frameworks
 
-This SDK requires Go 1.21 or higher (Fiber v3 requires Go 1.25 or higher).
+This SDK requires Go 1.21 or higher.
 
 | Framework                                     | Supported versions | Setup guide                                         |
 | --------------------------------------------- | ------------------ | --------------------------------------------------- |
