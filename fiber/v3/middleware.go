@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"slices"
@@ -63,6 +64,14 @@ func Middleware(app *fiber.App, config *Config) fiber.Handler {
 			if requestSize == -1 {
 				requestSize = int64(len(requestBody))
 			}
+		}
+
+		// Cache request data before c.Next() as Fiber v3 uses zero-copy
+		// strings that become invalid when the context is recycled
+		fullURL := strings.Clone(c.FullURL())
+		var requestHeaders [][2]string
+		if client.Config.RequestLogging != nil && client.Config.RequestLogging.Enabled {
+			requestHeaders = transformHeaders(c.GetReqHeaders())
 		}
 
 		start := time.Now()
@@ -169,8 +178,8 @@ func Middleware(app *fiber.App, config *Config) fiber.Handler {
 					Consumer:  consumerIdentifier,
 					Method:    method,
 					Path:      path,
-					URL:       c.FullURL(),
-					Headers:   transformHeaders(c.GetReqHeaders()),
+					URL:       fullURL,
+					Headers:   requestHeaders,
 					Size:      requestSize,
 					Body:      requestBody,
 				}
