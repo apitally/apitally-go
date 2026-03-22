@@ -65,7 +65,7 @@ This SDK requires Go 1.21 or higher.
 | --------------------------------------------- | ------------------ | --------------------------------------------------- |
 | [**Chi**](https://github.com/go-chi/chi)      | `v5`               | [Link](https://docs.apitally.io/setup-guides/chi)   |
 | [**Echo**](https://github.com/labstack/echo)  | `v4`               | [Link](https://docs.apitally.io/setup-guides/echo)  |
-| [**Fiber**](https://github.com/gofiber/fiber) | `v2`               | [Link](https://docs.apitally.io/setup-guides/fiber) |
+| [**Fiber**](https://github.com/gofiber/fiber) | `v2`, `v3`         | [Link](https://docs.apitally.io/setup-guides/fiber) |
 | [**Gin**](https://github.com/gin-gonic/gin)   | `v1`               | [Link](https://docs.apitally.io/setup-guides/gin)   |
 
 Apitally also supports many other web frameworks in [JavaScript](https://github.com/apitally/apitally-js), [Python](https://github.com/apitally/apitally-py), [.NET](https://github.com/apitally/apitally-dotnet) and [Java](https://github.com/apitally/apitally-java) via our other SDKs.
@@ -143,15 +143,16 @@ For further instructions, see our
 Add the SDK to your dependencies:
 
 ```go
-go get github.com/apitally/apitally-go/fiber
+go get github.com/apitally/apitally-go/fiber-v2  # for Fiber v2
+go get github.com/apitally/apitally-go/fiber-v3  # for Fiber v3
 ```
 
 Then add the Apitally middleware to your application:
 
 ```go
 import (
-    apitally "github.com/apitally/apitally-go/fiber"
-    "github.com/gofiber/fiber/v2"
+    apitally "github.com/apitally/apitally-go/fiber-v2" // or fiber-v3
+    "github.com/gofiber/fiber/v2" // or fiber/v3
 )
 
 func main() {
