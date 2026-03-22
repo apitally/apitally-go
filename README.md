@@ -112,7 +112,7 @@ For further instructions, see our
 Add the SDK to your dependencies:
 
 ```go
-go get github.com/apitally/apitally-go/echo  # for Echo v4
+go get github.com/apitally/apitally-go/echo-v4  # for Echo v4
 go get github.com/apitally/apitally-go/echo-v5  # for Echo v5
 ```
 
@@ -120,7 +120,7 @@ Then add the Apitally middleware to your application:
 
 ```go
 import (
-    apitally "github.com/apitally/apitally-go/echo" // or echo-v5
+    apitally "github.com/apitally/apitally-go/echo-v4" // or echo-v5
     "github.com/labstack/echo/v4" // or echo/v5
 )
 
