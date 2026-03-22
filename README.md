@@ -64,7 +64,7 @@ This SDK requires Go 1.21 or higher.
 | Framework                                     | Supported versions | Setup guide                                         |
 | --------------------------------------------- | ------------------ | --------------------------------------------------- |
 | [**Chi**](https://github.com/go-chi/chi)      | `v5`               | [Link](https://docs.apitally.io/setup-guides/chi)   |
-| [**Echo**](https://github.com/labstack/echo)  | `v4`               | [Link](https://docs.apitally.io/setup-guides/echo)  |
+| [**Echo**](https://github.com/labstack/echo)  | `v4`, `v5`         | [Link](https://docs.apitally.io/setup-guides/echo)  |
 | [**Fiber**](https://github.com/gofiber/fiber) | `v2`, `v3`         | [Link](https://docs.apitally.io/setup-guides/fiber) |
 | [**Gin**](https://github.com/gin-gonic/gin)   | `v1`               | [Link](https://docs.apitally.io/setup-guides/gin)   |
 
@@ -112,15 +112,16 @@ For further instructions, see our
 Add the SDK to your dependencies:
 
 ```go
-go get github.com/apitally/apitally-go/echo
+go get github.com/apitally/apitally-go/echo  # for Echo v4
+go get github.com/apitally/apitally-go/echo-v5  # for Echo v5
 ```
 
 Then add the Apitally middleware to your application:
 
 ```go
 import (
-    apitally "github.com/apitally/apitally-go/echo"
-    "github.com/labstack/echo/v4"
+    apitally "github.com/apitally/apitally-go/echo" // or echo-v5
+    "github.com/labstack/echo/v4" // or echo/v5
 )
 
 func main() {
