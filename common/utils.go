@@ -41,13 +41,12 @@ func isHTTPS(header http.Header) bool {
 		}
 	}
 	if v := header.Get("Forwarded"); v != "" {
-		for _, element := range strings.Split(v, ",") {
-			for _, param := range strings.Split(element, ";") {
-				param = strings.TrimSpace(param)
-				if k, val, ok := strings.Cut(param, "="); ok && strings.ToLower(strings.TrimSpace(k)) == "proto" {
-					if strings.ToLower(strings.Trim(strings.TrimSpace(val), "\"")) == "https" {
-						return true
-					}
+		firstElement, _, _ := strings.Cut(v, ",")
+		for _, param := range strings.Split(firstElement, ";") {
+			param = strings.TrimSpace(param)
+			if k, val, ok := strings.Cut(param, "="); ok && strings.ToLower(strings.TrimSpace(k)) == "proto" {
+				if strings.ToLower(strings.Trim(strings.TrimSpace(val), "\"")) == "https" {
+					return true
 				}
 			}
 		}
