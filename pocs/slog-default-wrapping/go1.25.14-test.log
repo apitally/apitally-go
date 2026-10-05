@@ -1,0 +1,135 @@
+go version go1.25.14 darwin/arm64
+=== RUN   TestOutput
+=== RUN   TestOutput/pristine
+    wrapping_test.go:67: byte-identical normalized stderr (314 bytes), custom output (0 bytes); seen=5 linked=4 log=0
+=== RUN   TestOutput/shortfile
+    wrapping_test.go:67: byte-identical normalized stderr (370 bytes), custom output (0 bytes); seen=5 linked=4 log=0
+=== RUN   TestOutput/longfile-msgprefix
+    wrapping_test.go:67: byte-identical normalized stderr (839 bytes), custom output (0 bytes); seen=5 linked=4 log=0
+=== RUN   TestOutput/all-flags
+    wrapping_test.go:67: byte-identical normalized stderr (468 bytes), custom output (0 bytes); seen=5 linked=4 log=0
+=== RUN   TestOutput/level-debug
+    wrapping_test.go:58: delegated filtering preserved: initial: INFO info key=value
+        initial: INFO context-info key=value
+        initial: DEBUG debug-filtered-by-default
+        initial: WARN context-warning
+        initial: ERROR context-error
+        initial: INFO grouped bound=kept group.n=7
+        initial: bridge-printf 42
+        changed: bridge-print
+    wrapping_test.go:67: byte-identical normalized stderr (257 bytes), custom output (0 bytes); seen=6 linked=4 log=0
+=== RUN   TestOutput/level-warn
+    wrapping_test.go:58: delegated filtering preserved: initial: WARN context-warning
+        initial: ERROR context-error
+        initial: bridge-printf 42
+        changed: bridge-print
+    wrapping_test.go:67: byte-identical normalized stderr (107 bytes), custom output (0 bytes); seen=2 linked=2 log=0
+=== RUN   TestOutput/custom-output
+    wrapping_test.go:67: byte-identical normalized stderr (0 bytes), custom output (314 bytes); seen=5 linked=4 log=0
+=== RUN   TestOutput/custom-output-flags
+    wrapping_test.go:67: byte-identical normalized stderr (0 bytes), custom output (370 bytes); seen=5 linked=4 log=0
+=== RUN   TestOutput/custom-flags
+    wrapping_test.go:67: byte-identical normalized stderr (370 bytes), custom output (0 bytes); seen=5 linked=4 log=0
+=== RUN   TestOutput/derived-pristine
+    wrapping_test.go:67: byte-identical normalized stderr (303 bytes), custom output (0 bytes); seen=5 linked=4 log=0
+=== RUN   TestOutput/text
+    wrapping_test.go:67: byte-identical normalized stderr (814 bytes), custom output (0 bytes); seen=7 linked=4 log=2
+=== RUN   TestOutput/json
+    wrapping_test.go:67: byte-identical normalized stderr (1431 bytes), custom output (0 bytes); seen=7 linked=4 log=2
+=== RUN   TestOutput/text-prebound
+    wrapping_test.go:67: byte-identical normalized stderr (923 bytes), custom output (0 bytes); seen=7 linked=4 log=2
+=== RUN   TestOutput/json-prebound
+    wrapping_test.go:67: byte-identical normalized stderr (1572 bytes), custom output (0 bytes); seen=7 linked=4 log=2
+--- PASS: TestOutput (0.16s)
+    --- PASS: TestOutput/pristine (0.02s)
+    --- PASS: TestOutput/shortfile (0.01s)
+    --- PASS: TestOutput/longfile-msgprefix (0.02s)
+    --- PASS: TestOutput/all-flags (0.01s)
+    --- PASS: TestOutput/level-debug (0.01s)
+    --- PASS: TestOutput/level-warn (0.01s)
+    --- PASS: TestOutput/custom-output (0.01s)
+    --- PASS: TestOutput/custom-output-flags (0.01s)
+    --- PASS: TestOutput/custom-flags (0.01s)
+    --- PASS: TestOutput/derived-pristine (0.01s)
+    --- PASS: TestOutput/text (0.01s)
+    --- PASS: TestOutput/json (0.02s)
+    --- PASS: TestOutput/text-prebound (0.01s)
+    --- PASS: TestOutput/json-prebound (0.01s)
+=== RUN   TestCustomHandlerSourceRegression
+=== RUN   TestCustomHandlerSourceRegression/text-source
+    wrapping_test.go:94: proposal FAIL: source disappears only for log calls; before:
+        time=<TIME> level=INFO source=/Users/simon/Repos/apitally/apitally-go/pocs/slog-default-wrapping/wrapping_test.go:292 msg=info key=value
+        time=<TIME> level=INFO source=/Users/simon/Repos/apitally/apitally-go/pocs/slog-default-wrapping/wrapping_test.go:293 msg=context-info key=value
+        time=<TIME> level=WARN source=/Users/simon/Repos/apitally/apitally-go/pocs/slog-default-wrapping/wrapping_test.go:295 msg=context-warning
+        time=<TIME> level=ERROR source=/Users/simon/Repos/apitally/apitally-go/pocs/slog-default-wrapping/wrapping_test.go:296 msg=context-error
+        time=<TIME> level=INFO source=/Users/simon/Repos/apitally/apitally-go/pocs/slog-default-wrapping/wrapping_test.go:297 msg=grouped bound=kept group.n=7
+        time=<TIME> level=INFO source=/Users/simon/Repos/apitally/apitally-go/pocs/slog-default-wrapping/wrapping_test.go:298 msg="initial: bridge-printf 42"
+        time=<TIME> level=INFO source=/Users/simon/Repos/apitally/apitally-go/pocs/slog-default-wrapping/wrapping_test.go:300 msg="changed: bridge-print"
+        after:
+        time=<TIME> level=INFO source=/Users/simon/Repos/apitally/apitally-go/pocs/slog-default-wrapping/wrapping_test.go:292 msg=info key=value
+        time=<TIME> level=INFO source=/Users/simon/Repos/apitally/apitally-go/pocs/slog-default-wrapping/wrapping_test.go:293 msg=context-info key=value
+        time=<TIME> level=WARN source=/Users/simon/Repos/apitally/apitally-go/pocs/slog-default-wrapping/wrapping_test.go:295 msg=context-warning
+        time=<TIME> level=ERROR source=/Users/simon/Repos/apitally/apitally-go/pocs/slog-default-wrapping/wrapping_test.go:296 msg=context-error
+        time=<TIME> level=INFO source=/Users/simon/Repos/apitally/apitally-go/pocs/slog-default-wrapping/wrapping_test.go:297 msg=grouped bound=kept group.n=7
+        time=<TIME> level=INFO msg="initial: bridge-printf 42"
+        time=<TIME> level=INFO msg="changed: bridge-print"
+    wrapping_test.go:100: restoring the existing custom log writer preserves exact source/output, but log records bypass capture
+=== RUN   TestCustomHandlerSourceRegression/json-source
+    wrapping_test.go:94: proposal FAIL: source disappears only for log calls; before:
+        {"time":"<TIME>","level":"INFO","source":{"function":"github.com/apitally/apitally-go/pocs/slog-default-wrapping.emitLogs","file":"/Users/simon/Repos/apitally/apitally-go/pocs/slog-default-wrapping/wrapping_test.go","line":292},"msg":"info","key":"value"}
+        {"time":"<TIME>","level":"INFO","source":{"function":"github.com/apitally/apitally-go/pocs/slog-default-wrapping.emitLogs","file":"/Users/simon/Repos/apitally/apitally-go/pocs/slog-default-wrapping/wrapping_test.go","line":293},"msg":"context-info","key":"value"}
+        {"time":"<TIME>","level":"WARN","source":{"function":"github.com/apitally/apitally-go/pocs/slog-default-wrapping.emitLogs","file":"/Users/simon/Repos/apitally/apitally-go/pocs/slog-default-wrapping/wrapping_test.go","line":295},"msg":"context-warning"}
+        {"time":"<TIME>","level":"ERROR","source":{"function":"github.com/apitally/apitally-go/pocs/slog-default-wrapping.emitLogs","file":"/Users/simon/Repos/apitally/apitally-go/pocs/slog-default-wrapping/wrapping_test.go","line":296},"msg":"context-error"}
+        {"time":"<TIME>","level":"INFO","source":{"function":"github.com/apitally/apitally-go/pocs/slog-default-wrapping.emitLogs","file":"/Users/simon/Repos/apitally/apitally-go/pocs/slog-default-wrapping/wrapping_test.go","line":297},"msg":"grouped","bound":"kept","group":{"n":7}}
+        {"time":"<TIME>","level":"INFO","source":{"function":"github.com/apitally/apitally-go/pocs/slog-default-wrapping.emitLogs","file":"/Users/simon/Repos/apitally/apitally-go/pocs/slog-default-wrapping/wrapping_test.go","line":298},"msg":"initial: bridge-printf 42"}
+        {"time":"<TIME>","level":"INFO","source":{"function":"github.com/apitally/apitally-go/pocs/slog-default-wrapping.emitLogs","file":"/Users/simon/Repos/apitally/apitally-go/pocs/slog-default-wrapping/wrapping_test.go","line":300},"msg":"changed: bridge-print"}
+        after:
+        {"time":"<TIME>","level":"INFO","source":{"function":"github.com/apitally/apitally-go/pocs/slog-default-wrapping.emitLogs","file":"/Users/simon/Repos/apitally/apitally-go/pocs/slog-default-wrapping/wrapping_test.go","line":292},"msg":"info","key":"value"}
+        {"time":"<TIME>","level":"INFO","source":{"function":"github.com/apitally/apitally-go/pocs/slog-default-wrapping.emitLogs","file":"/Users/simon/Repos/apitally/apitally-go/pocs/slog-default-wrapping/wrapping_test.go","line":293},"msg":"context-info","key":"value"}
+        {"time":"<TIME>","level":"WARN","source":{"function":"github.com/apitally/apitally-go/pocs/slog-default-wrapping.emitLogs","file":"/Users/simon/Repos/apitally/apitally-go/pocs/slog-default-wrapping/wrapping_test.go","line":295},"msg":"context-warning"}
+        {"time":"<TIME>","level":"ERROR","source":{"function":"github.com/apitally/apitally-go/pocs/slog-default-wrapping.emitLogs","file":"/Users/simon/Repos/apitally/apitally-go/pocs/slog-default-wrapping/wrapping_test.go","line":296},"msg":"context-error"}
+        {"time":"<TIME>","level":"INFO","source":{"function":"github.com/apitally/apitally-go/pocs/slog-default-wrapping.emitLogs","file":"/Users/simon/Repos/apitally/apitally-go/pocs/slog-default-wrapping/wrapping_test.go","line":297},"msg":"grouped","bound":"kept","group":{"n":7}}
+        {"time":"<TIME>","level":"INFO","msg":"initial: bridge-printf 42"}
+        {"time":"<TIME>","level":"INFO","msg":"changed: bridge-print"}
+    wrapping_test.go:100: restoring the existing custom log writer preserves exact source/output, but log records bypass capture
+--- PASS: TestCustomHandlerSourceRegression (0.04s)
+    --- PASS: TestCustomHandlerSourceRegression/text-source (0.02s)
+    --- PASS: TestCustomHandlerSourceRegression/json-source (0.02s)
+=== RUN   TestPreboundAttributeVisibility
+=== RUN   TestPreboundAttributeVisibility/derived-pristine
+    wrapping_test.go:115: all-attributes guarantee FAIL: output retains setup/startup but captured context attrs are [key=value]
+=== RUN   TestPreboundAttributeVisibility/text-prebound
+    wrapping_test.go:115: all-attributes guarantee FAIL: output retains setup/startup but captured context attrs are [key=value]
+=== RUN   TestPreboundAttributeVisibility/json-prebound
+    wrapping_test.go:115: all-attributes guarantee FAIL: output retains setup/startup but captured context attrs are [key=value]
+--- PASS: TestPreboundAttributeVisibility (0.03s)
+    --- PASS: TestPreboundAttributeVisibility/derived-pristine (0.01s)
+    --- PASS: TestPreboundAttributeVisibility/text-prebound (0.01s)
+    --- PASS: TestPreboundAttributeVisibility/json-prebound (0.01s)
+=== RUN   TestConcurrencyWindow
+=== RUN   TestConcurrencyWindow/window-forced
+    wrapping_test.go:128: proposal FAIL: runtime deadlock or timeout; log.SetOutput and forwarding remained blocked (window-forced: entered bridge; restoring writer)
+=== RUN   TestConcurrencyWindow/window-forced-slog
+    wrapping_test.go:128: proposal FAIL: runtime deadlock or timeout; log.SetOutput and forwarding remained blocked (window-forced-slog: entered bridge; restoring writer)
+=== RUN   TestConcurrencyWindow/window-stress
+    wrapping_test.go:128: proposal FAIL: runtime deadlock or timeout; log.SetOutput and forwarding remained blocked (64 mixed log/slog workers; restoring writer after 10ms window)
+--- PASS: TestConcurrencyWindow (0.94s)
+    --- PASS: TestConcurrencyWindow/window-forced (0.31s)
+    --- PASS: TestConcurrencyWindow/window-forced-slog (0.31s)
+    --- PASS: TestConcurrencyWindow/window-stress (0.32s)
+=== RUN   TestNoWindowAlternatives
+=== RUN   TestNoWindowAlternatives/skip
+    wrapping_test.go:147: 64 concurrent goroutines, 500 calls each, 200 activation attempts: completed
+=== RUN   TestNoWindowAlternatives/text
+    wrapping_test.go:147: 64 concurrent goroutines, 500 calls each, 200 activation attempts: completed
+=== NAME  TestNoWindowAlternatives
+    wrapping_test.go:150: skip preserves output and requires explicit request-log capture; TextHandler is safe but changes format
+--- PASS: TestNoWindowAlternatives (0.27s)
+    --- PASS: TestNoWindowAlternatives/skip (0.06s)
+    --- PASS: TestNoWindowAlternatives/text (0.19s)
+=== RUN   TestCaptureMetadataAndIdempotence
+--- PASS: TestCaptureMetadataAndIdempotence (0.01s)
+=== RUN   TestScenarioProcess
+--- PASS: TestScenarioProcess (0.00s)
+PASS
+ok  	github.com/apitally/apitally-go/pocs/slog-default-wrapping	3.426s

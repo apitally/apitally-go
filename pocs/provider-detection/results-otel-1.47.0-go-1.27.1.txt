@@ -1,0 +1,95 @@
+=== RUN   TestScenarios
+=== RUN   TestScenarios/sdk
+    provider_test.go:59: === RUN   TestScenarios
+            provider_test.go:137: global=*trace.TracerProvider probe=sdk type=sdk probe_user_starts=0 probe_user_exports=0 selected=sdk
+        --- PASS: TestScenarios (0.00s)
+        PASS
+=== RUN   TestScenarios/foreign-recording
+    provider_test.go:59: === RUN   TestScenarios
+            provider_test.go:137: global=*detection.foreignProvider probe=foreign type=foreign probe_user_starts=1 probe_user_exports=1 selected=foreign
+        --- PASS: TestScenarios (0.00s)
+        PASS
+=== RUN   TestScenarios/propagator-baggage
+    provider_test.go:59: === RUN   TestScenarios
+            provider_test.go:271: explicit baggage: type=propagation.Baggage fields=1 preserved; Fields alone cannot identify unset
+        --- PASS: TestScenarios (0.00s)
+        PASS
+=== RUN   TestScenarios/explicit-noop
+    provider_test.go:59: === RUN   TestScenarios
+            provider_test.go:137: global=noop.TracerProvider probe=unset type=foreign probe_user_starts=0 probe_user_exports=0 selected=foreign
+        --- PASS: TestScenarios (0.00s)
+        PASS
+=== RUN   TestScenarios/unset-with-valid-parent
+    provider_test.go:59: === RUN   TestScenarios
+            provider_test.go:172: unset global inherits valid parent context; probe must use context.Background(), not request context
+        --- PASS: TestScenarios (0.00s)
+        PASS
+=== RUN   TestScenarios/cached-tracer-delegation
+    provider_test.go:59: === RUN   TestScenarios
+            provider_test.go:200: cached tracer and provider delegate: 2 correctly parented children + SERVER exported; old span remains noop
+        --- PASS: TestScenarios (0.00s)
+        PASS
+=== RUN   TestScenarios/processor-registration
+    provider_test.go:59: === RUN   TestScenarios
+            provider_test.go:336: in-flight: OnStart=0 OnEnd=1; child OnStart receives parent span + request value; 4008 traffic spans, 16 registrations
+        --- PASS: TestScenarios (0.05s)
+        PASS
+=== RUN   TestScenarios/restored-default-handle
+    provider_test.go:59: === RUN   TestScenarios
+            provider_test.go:377: restoring cached default handle keeps internal type but delegates to user SDK; dynamic type is not a public is-configured API
+        --- PASS: TestScenarios (0.00s)
+        PASS
+=== RUN   TestScenarios/unset
+    provider_test.go:59: === RUN   TestScenarios
+            provider_test.go:137: global=*global.tracerProvider probe=unset type=unset probe_user_starts=0 probe_user_exports=0 selected=unset
+        --- PASS: TestScenarios (0.00s)
+        PASS
+=== RUN   TestScenarios/foreign-nonrecording
+    provider_test.go:59: === RUN   TestScenarios
+            provider_test.go:137: global=*detection.foreignProvider probe=unset type=foreign probe_user_starts=0 probe_user_exports=0 selected=foreign
+        --- PASS: TestScenarios (0.00s)
+        PASS
+=== RUN   TestScenarios/propagator-empty
+    provider_test.go:59: === RUN   TestScenarios
+            provider_test.go:271: explicit empty: type=propagation.compositeTextMapPropagator fields=0 preserved; Fields alone cannot identify unset
+        --- PASS: TestScenarios (0.00s)
+        PASS
+=== RUN   TestScenarios/propagator-w3c
+    provider_test.go:59: === RUN   TestScenarios
+            provider_test.go:271: explicit w3c: type=propagation.compositeTextMapPropagator fields=3 preserved; Fields alone cannot identify unset
+        --- PASS: TestScenarios (0.00s)
+        PASS
+=== RUN   TestScenarios/later-replacement
+    provider_test.go:59: === RUN   TestScenarios
+            provider_test.go:365: later Set wins for new global tracers; cached default/activation tracers stay with first provider; exports owned=4 user=1; trace parent preserved across providers
+            provider_test.go:366: later propagator Set wins for new getters; cached default propagator stays with first W3C delegate
+        --- PASS: TestScenarios (0.00s)
+        PASS
+=== RUN   TestScenarios/probe-without-end
+    provider_test.go:59: === RUN   TestScenarios
+            provider_test.go:159: unended probe: OnStart=1 OnEnd=0 exports=0 after ForceFlush; Shutdown does not call OnEnd; not side-effect-free
+        --- PASS: TestScenarios (0.00s)
+        PASS
+=== RUN   TestScenarios/propagator-unset
+    provider_test.go:59: === RUN   TestScenarios
+            provider_test.go:239: default=*global.textMapPropagator fields_before=0 fields_after=3; cached + current inject traceparent/baggage and extract remote parent
+        --- PASS: TestScenarios (0.00s)
+        PASS
+--- PASS: TestScenarios (15.41s)
+    --- PASS: TestScenarios/sdk (1.02s)
+    --- PASS: TestScenarios/foreign-recording (1.01s)
+    --- PASS: TestScenarios/propagator-baggage (1.02s)
+    --- PASS: TestScenarios/explicit-noop (1.01s)
+    --- PASS: TestScenarios/unset-with-valid-parent (1.02s)
+    --- PASS: TestScenarios/cached-tracer-delegation (1.03s)
+    --- PASS: TestScenarios/processor-registration (1.08s)
+    --- PASS: TestScenarios/restored-default-handle (1.03s)
+    --- PASS: TestScenarios/unset (1.03s)
+    --- PASS: TestScenarios/foreign-nonrecording (1.03s)
+    --- PASS: TestScenarios/propagator-empty (1.03s)
+    --- PASS: TestScenarios/propagator-w3c (1.03s)
+    --- PASS: TestScenarios/later-replacement (1.02s)
+    --- PASS: TestScenarios/probe-without-end (1.02s)
+    --- PASS: TestScenarios/propagator-unset (1.03s)
+PASS
+ok  	github.com/apitally/apitally-go/pocs/provider-detection	17.174s

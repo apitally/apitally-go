@@ -1,6 +1,6 @@
 # Apitally Go v1 design
 
-Status: Decided, 2026-10-04, pending the POCs in section 17.
+Status: Decided, 2026-10-05. POC findings are incorporated (section 17).
 
 This document adapts the shared SDK design to Go, the OpenTelemetry Go SDK and the supported web frameworks. It records Go decisions and the facts behind them. It is not an implementation plan.
 
@@ -50,10 +50,14 @@ Moving from v0.x to v1.x needs no `/v2` import-path suffix. Each framework packa
 | Global tracer provider | Behavior |
 | --- | --- |
 | `*sdktrace.TracerProvider` (type assertion) | Attach Apitally's span processor with `RegisterSpanProcessor`. The user's sampler governs request-log coverage. No sampler warning, because OTel Go exposes no sampler getter. |
-| Unset (a probe span from the global has an invalid span context) | Create Apitally's provider with the fallback sampler and register it with `otel.SetTracerProvider`, so spans from application code and libraries using the global become request descendants. Also register the W3C TraceContext + Baggage propagator with `otel.SetTextMapPropagator`, because Go's default global propagator is a no-op. |
-| Any other implementation | Warn once that Apitally receives SERVER spans without descendants, and create a private Apitally provider used only by the middleware, not registered globally. |
+| Unset (identical to the value captured at package initialization) | Create Apitally's provider with the fallback sampler and register it with `otel.SetTracerProvider`, so spans from application code and libraries using the global, including tracers cached before activation, become request descendants. |
+| Any other implementation, including an explicitly set `noop.TracerProvider` | Warn once that Apitally receives SERVER spans without descendants, and create a private Apitally provider used only by the middleware, not registered globally. |
 
-There is no provider configuration option. Applications that keep their provider out of the globals register it with `otel.SetTracerProvider`, standard Go OTel practice. Spans in flight at registration may reach `OnEnd` without `OnStart`; the in-flight map treats them as unknown and drops them.
+**Confirmed unset detection:** the root package captures `otel.GetTracerProvider()` and `otel.GetTextMapPropagator()` in package-level variables at initialization, before the application's `main` runs. At activation, a global identical to its captured value is unset; `otel.SetTracerProvider` and `otel.SetTextMapPropagator` replace the returned value. This uses public API only. A probe span is not used: it is exported by recording foreign providers, and noop providers and inherited request contexts make its span context an unreliable signal. The only misclassification is a foreign provider set in another package's `init` that Go initializes before Apitally's; setting providers in `init` is not a supported practice.
+
+**Confirmed propagator:** register the W3C TraceContext + Baggage propagator with `otel.SetTextMapPropagator` only when the global propagator is also still unset, because Go's default global propagator is a no-op. An application-set propagator, including an empty one, is kept.
+
+There is no provider configuration option. Applications that keep their provider out of the globals register it with `otel.SetTracerProvider`, standard Go OTel practice. Spans in flight at registration may reach `OnEnd` without `OnStart`; the in-flight map treats them as unknown and drops them. An application that replaces the global provider after activation splits the pipelines: tracers obtained before the replacement stay bound to Apitally's provider. Apitally's batch processor exports only sampled span contexts, so spans a user's sampler marks record-only never reach Apitally.
 
 ## 3. Configuration
 
@@ -108,7 +112,7 @@ No other trigger exists. Go has no exit hook (returning from `main` ends all gor
 
 **Confirmed late telemetry:** spans and logs that arrive after their request is released are dropped locally, as in .NET. In Go these come from goroutines that outlive the request while holding its context. No completed-request cache.
 
-**Confirmed callback span type:** all four span callbacks receive OTel Go's native `sdktrace.ReadOnlySpan`, as Python and JavaScript pass their native `ReadableSpan`. `SampleOnRequest` receives the live SERVER span at start. `SampleOnResponse` and the body-mask callbacks receive Apitally's export copy: a struct embedding the original `ReadOnlySpan` (embedding satisfies the interface's unexported method, the technique OTel's own `tracetest` snapshots use) that overrides `Attributes()` and `Resource()`, and `SpanKind()` for the duplicate SERVER rule in section 5. User exporters never see the copy. To be verified by a POC.
+**Confirmed callback span type:** all four span callbacks receive OTel Go's native `sdktrace.ReadOnlySpan`, as Python and JavaScript pass their native `ReadableSpan`. `SampleOnRequest` receives the live SERVER span at start. `SampleOnResponse` and the body-mask callbacks receive Apitally's export copy: a struct embedding the original `ReadOnlySpan` (embedding satisfies the interface's unexported method, the technique OTel's own `tracetest` snapshots use) that overrides `Attributes()` and `Resource()`, and `SpanKind()` for the duplicate SERVER rule in section 5, and carries the private payload stash (raw captured bodies) that the exporter reads back by type assertion. User exporters never see the copy. The embedded original is the ended span snapshot that the user's processors also receive: the copy owns its attribute storage, never mutates slices returned by the original, and callbacks treat the span as read-only. `SampleOnRequest` runs in `OnStart` and sees only attributes present at span start; Apitally's middleware therefore passes all request attributes as span start options.
 
 **Confirmed sampling callbacks:** `SampleOnRequest` and `SampleOnResponse` are `func(span sdktrace.ReadOnlySpan) (rate float64, ok bool)`. `ok == false` abstains: the request stage falls back to `SampleRate`, the response stage keeps the earlier decision. A rate outside [0, 1], NaN or a panic warns and keeps (fail open). Keep and drop are `1, true` and `0, true`; the comma-ok result is Go's idiom for an optional value.
 
@@ -149,12 +153,12 @@ When the incoming request context already holds a recording SERVER span, because
 
 **Confirmed automatic capture sources:**
 
-- **Panics** (all frameworks): recovered in the middleware's deferred function, captured, then re-panicked so the application's or framework's recovery middleware still writes the response. A panicking request counts as status 500. `gin.Default()` registers Recovery before Apitally's middleware, so it sits outside.
-- **Echo and Fiber:** errors returned by the handler chain. The middleware invokes the framework's error handler itself (`c.Error(err)` in Echo, the app's `ErrorHandler` in Fiber), so it observes the final status. v0 read the status before the framework's error handler ran.
+- **Panics** (all frameworks): recovered in the middleware's deferred function, captured, then re-panicked with the original value so the application's or framework's recovery middleware still writes the response unchanged. `gin.Default()` registers Recovery before Apitally's middleware, so it sits outside. A recovery middleware outside Apitally's has not written its response when Apitally's deferred function runs, so the final status of a panicking request is the committed status if the response had already started, otherwise 500. This matches the default recovery of every supported framework, partial responses, and net/http's closed connection without recovery. Accepted inaccuracy: custom recovery that responds with a status other than 500 is recorded as 500. Apitally inside the recovery middleware would see the true status but cannot capture the panic, because Gin's, Chi's and Echo's default recovery consume it.
+- **Echo and Fiber:** errors returned by the handler chain. The middleware invokes the framework's error handler itself (`c.Error(err)` in Echo v4, `c.Echo().HTTPErrorHandler(c, err)` in Echo v5, `c.App().ErrorHandler(c, err)` in Fiber, with Fiber's `SendStatus(500)` fallback when the handler fails), observes the final status, and returns nil, so the error handler runs exactly once. Returning the original error would make the framework invoke its error handler a second time, writing the body twice with unguarded custom handlers; Fiber's logger middleware follows the same precedent. Consequence: middleware registered outside Apitally's does not see the returned error. v0 read the status before the framework's error handler ran.
 - **Gin:** the first entry in `c.Errors` (`c.Error`, `c.AbortWithError`).
 - **Chi:** panics and explicit `CaptureError` only; net/http has no error channel.
 
-The final-500 rule filters all sources, so for example `echo.NewHTTPError(400)` contributes nothing. Errors matching `errors.Is(err, context.Canceled)` and the `http.ErrAbortHandler` panic are not captured.
+The final-500 rule filters all sources, so for example `echo.NewHTTPError(400)` contributes nothing. Unmapped validation errors returned to Echo or Fiber produce the frameworks' default 500 and therefore count as server errors, not validation errors. Errors matching `errors.Is(err, context.Canceled)` and the `http.ErrAbortHandler` panic are not captured.
 
 **Confirmed exception fields:**
 
@@ -166,7 +170,7 @@ The final-500 rule filters all sources, so for example `echo.NewHTTPError(400)` 
 
 **Confirmed explicit deviation from the shared spec:** Go frameworks do not own validation responses; handlers typically validate and write their own 400 (Gin's `c.ShouldBind*`, Chi, Fiber v2), which no SDK mechanism can observe. Validation capture is therefore automatic where the framework sees the error, plus a public `CaptureValidationError(c/ctx, err)` helper, kept from v0, alongside the other request helpers in section 13.
 
-- **Automatic:** errors in the framework error channels from the server error section (Gin `c.Errors` from `c.Bind*`, errors returned to Echo and Fiber, including Echo's `c.Validate` and Fiber v3's `c.Bind()` with a struct validator) when the final status is 400 or 422.
+- **Automatic:** errors in the framework error channels from the server error section (Gin `c.Errors` from `c.Bind*`, errors returned to Echo and Fiber, including Echo's `c.Validate` and Fiber v3's `c.Bind()` with a struct validator) when the final status is 400 or 422. Fiber v3's `c.Bind().WithAutoHandling()` converts validator errors into a plain 400 `*fiber.Error` without the original error, so its details are unavailable; applications using it call `CaptureValidationError` or map errors themselves.
 - **Explicit:** `CaptureValidationError` records the error's details in request-local state; they are committed at transport completion under the shared eligibility rules (routed, not `OPTIONS`), regardless of status.
 
 **Confirmed recognition:** `go-playground/validator/v10` errors, the de facto Go validator (used by Gin's binding), recognized by method set rather than by import: a slice in the error's `Unwrap` chain whose elements have `Namespace()`, `Field()`, `Tag()` and `Error()`. This avoids adding the validator's dependency tree to modules whose users do not use it. Other errors are ignored. Each element maps to:
@@ -186,9 +190,10 @@ The final-500 rule filters all sources, so for example `echo.NewHTTPError(400)` 
 
 **Confirmed capture surface:** `log/slog` only; zap, zerolog and logrus are out of v1 scope.
 
-- **Automatic:** at activation, wrap the handler of `slog.Default()` with Apitally's capture handler and install it with `slog.SetDefault`. Skipped when the default handler is already an Apitally handler.
-- **Explicit:** `apitally.NewSlogHandler(next slog.Handler) slog.Handler` (root package, re-exported) for loggers not derived from `slog.Default()` at activation, such as loggers built with `slog.New(h)` and injected, or a `slog.Default()` stored before activation.
-- **Unchanged output:** when the default handler is the standard library's original one, `slog.SetDefault` would redirect the `log` package into the wrapper while the original handler writes through the `log` package, creating a loop. After installing the wrapper, the SDK restores the `log` package's original writer and flags, so both `slog` and `log` output stay identical to before. To be verified by a POC.
+- **Automatic, for application-installed default handlers only:** at activation, when the application has installed its own default handler (`slog.Default().Handler()` differs from the handler captured at package initialization), wrap it with Apitally's capture handler, install it with `slog.SetDefault`, then restore the `log` package's previous writer and flags. Restoring keeps `log` output identical, including source locations that `slog.SetDefault` would otherwise drop; `log` records then bypass capture, which loses nothing because they carry no request context. Skipped when the default handler is already an Apitally handler.
+- **Standard library default handler left unchanged:** wrapping it can permanently deadlock the application. `slog.SetDefault` redirects the `log` package into the wrapper while the original handler writes through the `log` package; a concurrent `log` or `slog` call between that redirect and the writer restoration blocks on the `log` package's output mutex, which the restoration also needs. No public API makes the switch atomic. Replacing it with a `TextHandler` (v0) would change the application's output format and its `log` flag, prefix and `SetLogLoggerLevel` behavior. Applications on the standard library default handler get log capture by installing a handler or `NewSlogHandler`; documentation states this, and a debug message records it.
+- **Explicit:** `apitally.NewSlogHandler(next slog.Handler) slog.Handler` (root package, re-exported) for applications on the standard library default handler, and for loggers not derived from `slog.Default()` at activation, such as loggers built with `slog.New(h)` and injected, or a `slog.Default()` stored before activation.
+- **Previously bound attributes:** attributes bound into the wrapped handler before wrapping (`h.WithAttrs(...)` before `slog.SetDefault`) remain in the application's output but are not visible to the capture handler, because handlers expose no public accessor for them. Attributes added through `With`/`WithGroup` after wrapping are captured. Documented; installing `NewSlogHandler` innermost captures all of them.
 
 Records are linked to a request only when the request context is passed (`slog.InfoContext(ctx, ...)`, `logger.Log(ctx, ...)`). Records without one, including all `log` package output, are dropped. `slog.SetDefault` calls after activation replace the automatic wrapper; first-request activation makes this unlikely. The capture handler forwards every record to the wrapped handler unchanged and reports `Enabled` as the wrapped handler does, so user-configured levels apply.
 
@@ -275,15 +280,15 @@ Wire attributes, scope names, default redaction and exclusion patterns, the samp
 | Setup entry point | Per-framework `Middleware(app, cfg)` with a flat `Config` from `NewConfig()`; no unified detecting entry point, since each framework is a separate module. |
 | Runtime ownership | Process-global, first configuration wins, as in Python and JavaScript. |
 | SERVER spans | Created by Apitally's middleware on all frameworks; no stock framework instrumentation. User-owned outer SERVER spans are reused. |
-| Tracer provider | Attach to a global SDK provider; otherwise register Apitally's provider and the W3C propagator as globals; private SERVER-only provider for foreign providers. No provider option. |
+| Tracer provider | Attach to a global SDK provider; if unset (identity with the value captured at package initialization), register Apitally's provider and, if also unset, the W3C propagator as globals; private SERVER-only provider for foreign providers, including noop. No provider option. |
 | Activation | First request, plus Fiber `OnListen`; `testing.Testing()` suppresses activation. |
 | Shutdown | Explicit `Shutdown(ctx)`, automatic only via Fiber shutdown hooks. No exit hook or signal handling. |
 | Request helpers | Explicit framework context or `context.Context` arguments instead of implicit request context. |
 | Validation capture | Automatic recognition of `go-playground/validator` errors in framework error channels plus a public `CaptureValidationError`; explicit deviation from the spec's no-API rule. |
-| Exceptions | Go errors and panics; Go type name without pointer; deterministic `runtime.Callers` stacktraces; empty stacktrace for automatically captured returned errors. |
+| Exceptions | Go errors and panics; Go type name without pointer; deterministic `runtime.Callers` stacktraces; empty stacktrace for automatically captured returned errors. Panicking requests use the committed status, else 500. Echo/Fiber errors are dispatched by Apitally's middleware, which returns nil. |
 | Sampling callback result | Comma-ok `(rate float64, ok bool)`. |
 | Span callback type | Native `sdktrace.ReadOnlySpan`; export copy embeds the original span. |
-| Logs | `log/slog` only; default handler wrapped automatically plus `NewSlogHandler`; linkage requires the request context; attributes exported as log attributes. |
+| Logs | `log/slog` only; application-installed default handlers wrapped automatically, the standard library default handler left unchanged; `NewSlogHandler` otherwise; linkage requires the request context; attributes exported as log attributes. |
 | Log pipeline and callback | Apitally-owned records without OTel log SDK, as in .NET; `MaskLogRecord` uses `slog.Record` with value semantics. |
 | Pattern options | `[]string`, case-insensitive by default, inline flags respected, as in Python and .NET. |
 | Brotli | Not decoded (no standard library decoder); `br` bodies are not captured. |
@@ -302,10 +307,10 @@ Add a Go language adapter and Go bookstore apps to the sibling [SDK test harness
 
 ## 17. POCs
 
-To be built in `pocs/` before the implementation plan relies on them:
+Research code in `pocs/`, each a separate module with a README recording versions, evidence and conclusions. All ran with `-race` on Go 1.27.1 and Go 1.25.14 (slog also on 1.26.8), and on OTel Go v1.46.0 and v1.47.0 where OTel is involved.
 
-1. **Export span copy:** a struct embedding `sdktrace.ReadOnlySpan` with overridden `Attributes()`, `Resource()` and `SpanKind()` passes through `BatchSpanProcessor` and is accepted where `ReadOnlySpan` is required, while user exporters receive the unmodified span.
-2. **slog default wrapping:** wrapping the standard library's original default handler and restoring the `log` package's writer and flags keeps `slog` and `log` output byte-identical and causes no loop.
-3. **Provider detection:** the type assertion and probe span distinguish an SDK provider, an unset global and a foreign provider on OTel Go v1.46 and v1.47.
-4. **Framework error handlers:** invoking Echo's and Fiber's error handlers inside the middleware yields the final status without writing the response twice, and Gin `c.Errors` and panics behave as described in section 8.
+1. [Export span copy](../pocs/export-span-copy/README.md): **confirmed.** The embedding copy satisfies `ReadOnlySpan`, passes through the stock `BatchSpanProcessor` with its concrete type and stash intact, and leaves user exports unchanged. Findings recorded in sections 2 and 6.
+2. [slog default wrapping](../pocs/slog-default-wrapping/README.md): **disproved for the standard library default handler** (permanent deadlock in the activation window); confirmed for application-installed handlers. Section 9 changed accordingly.
+3. [Provider detection](../pocs/provider-detection/README.md): **probe span disproved** (exported by recording foreign providers; misclassifies noop and request contexts). Replaced by identity comparison with values captured at package initialization (section 2). Delegation of cached tracers and live `RegisterSpanProcessor` confirmed.
+4. [Framework error handlers](../pocs/framework-error-handlers/README.md): **confirmed** with changes: Echo and Fiber error dispatch returns nil; a panicking request's status is the committed status or 500; Fiber v3 auto-handling binds lose validation details. Validation recognition without importing the validator, deterministic stacks and request context storage confirmed. Section 8 changed accordingly.
 
