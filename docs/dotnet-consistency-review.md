@@ -3,7 +3,7 @@
 Date: 2026-10-06
 Reviewed revision: `91567dc` (`docs/design.md`)
 Compared against: .NET v1 design, last version before removal (`apitally-dotnet` commit `998cca0^`, `docs/design.md`)
-Status: In progress; 7 findings resolved, 3 rejected, 1 open.
+Status: Review complete; 7 findings resolved, 4 rejected.
 
 This review lists user-observable differences between the Go and .NET designs, including performance-relevant differences and developer-experience inconsistencies, and assesses whether each is warranted by what is possible or idiomatic in Go. The shared design (`cloud/docs/sdks/design.md`) decides which side is the outlier where the two SDKs disagree. Findings and recommendations are input for discussion, not requirements. Resolving a finding means recording the user's decision here and applying the agreed documentation changes before moving to the next finding.
 
@@ -116,7 +116,9 @@ First-request activation is warranted. .NET activates before serving, so its fir
 
 ### C11. Brotli bodies on Fiber
 
-**Open | Low, optional | Design section 7, line 130**
+**Rejected | Low, optional | Design section 7, line 130**
+
+**Decision:** keep skipping `br` bodies, consistent with Python. The no-new-dependency premise does not hold across supported fasthttp versions. No design change.
 
 .NET decodes `br`. Skipping it is warranted for net/http modules (no standard library decoder). fasthttp already depends on `github.com/andybalholm/brotli`, and Fiber's compress middleware selects `br` for browsers, so decoding `br` in the Fiber modules adds no dependency.
 
@@ -161,3 +163,4 @@ First-request activation is warranted. .NET activates before serving, so its fir
 8. **C8 resolved:** user selected skipping `fmt.wrapError` wrappers over keeping v0's rule or reporting the innermost type. Verified v0 (`internal/server_error_counter.go`), OTel Go's `typeStr` and sentry-go's top-level exception type all report the wrapper type; sentry-go additionally sends the unwrap chain, which Apitally's single-type error model cannot carry. Design sections 8 and 15 updated.
 9. **C9 rejected:** user kept synchronous first-request activation. Verified Python (`shared/activation.py:78-96, 211-214`, `spool.py:80-89`) and JavaScript (`activation.ts:102-115`, `spool.ts:44-54`) run spool construction, orphan cleanup, startup route enumeration and metrics setup synchronously inside first-request activation. No design change.
 10. **C10 resolved:** user approved the proposed option list, rune-based truncation and effective-pattern serialization, and selected dropping empty-message records over exporting them. Verified: Python counts code points, JavaScript and .NET UTF-16 units; Python and JavaScript export empty-body records while .NET drops them (`ApitallyLoggerProvider.cs`); Python serializes patterns as given, JavaScript as `RegExp.toString()`, .NET as `(?i)` plus pattern (`InternalEvents.cs:108-110`). Design sections 3 and 9 updated.
+11. **C11 rejected:** user kept skipping `br` bodies. Verified Python decodes only gzip and deflate (`shared/config.py:148`); JavaScript and .NET decode `br` with runtime-provided decoders. Current fasthttp uses `molecule-man/go-brrr` and requires Go 1.26, while fasthttp versions at the Go 1.25 floor use `andybalholm/brotli`, so decoding would add a dependency for some users. No design change.
