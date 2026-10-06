@@ -2,9 +2,9 @@
 
 Date: 2026-10-05
 Reviewed revision: `aa1a35f` (`docs/design.md`)
-Status: Review complete; 7 findings resolved, 8 await design decisions (1 high, 7 medium).
+Status: Review complete; 14 findings resolved, 1 rejected.
 
-This is a companion review, not an implementation plan. Recommendations remain proposals unless a decision is recorded. Approved decisions have been applied to the Go design; findings and line references describe the reviewed revision.
+This is a companion review, not an implementation plan. Recommendations remain proposals unless a decision is recorded. Findings, recommendations and acceptance criteria are input for discussion, not requirements; decisions aim for a feasible, simple and elegant design. Approved decisions have been applied to the Go design; findings and line references describe the reviewed revision.
 
 ## Method
 
@@ -106,7 +106,9 @@ The reviewed design deliberately excluded streamed bodies from payload capture. 
 
 ### R6. Fresh slog records still share mutable attribute values
 
-**Medium | Go-specific | Design section 9, lines 200, 204**
+**Resolved | Medium | Go-specific | Design section 9, lines 200, 204**
+
+**Decision:** match .NET by converting attribute values to Apitally-owned representations before the callback. The capture handler resolves `LogValuer`s and replaces every `KindAny` value using the export conversion that follows `otelslog`: maps become nested group values, slices and arrays become newly allocated `[]any`, byte slices are copied, and structs, errors and other types become strings. The callback can modify values in place without affecting application data or output, and it sees exactly what will be exported. Callbacks cannot type-assert `slog.Any` values back to application types. Generic deep copying of arbitrary objects is rejected. Applied to design sections 9 and 15.
 
 Constructing a fresh `slog.Record` does not detach objects stored in `slog.Any`. A masking callback that replaces a password inside an attribute's map can modify the application's map and the original record subsequently forwarded to its handler. The stated guarantee that the callback cannot affect normal application output does not follow from value semantics.
 
@@ -118,7 +120,9 @@ Constructing a fresh `slog.Record` does not detach objects stored in `slog.Any`.
 
 ### R7. Startup serialization cannot implement configuration equality
 
-**Medium | Go adaptation with shared-contract consequences | Design section 3, line 68**
+**Resolved | Medium | Go adaptation with shared-contract consequences | Design section 3, line 68**
+
+**Decision:** compare resolved configurations directly, as JavaScript does. Callback fields are equal when both are set or both are unset; all other fields, including token, environment and disabled state, are compared with `reflect.DeepEqual` after clearing callback fields. The warning names no values. The startup representation is no longer used for comparison. Applied to design section 3.
 
 The startup `config` representation intentionally omits the write token, environment, disabled flag, endpoint and application version. Two routers differing only in those settings therefore compare equal under the proposed algorithm. A router configured for another Apitally application silently uses the first application's credentials, without the promised configuration-conflict warning. A disabled first configuration followed by an enabled one can similarly remain silently disabled.
 
@@ -130,7 +134,9 @@ The startup `config` representation intentionally omits the write token, environ
 
 ### R8. Consumer maps need a deterministic interpretation of the ten-entry limit
 
-**Medium | Go-specific adaptation | Design sections 9/13, lines 189, 251**
+**Resolved | Medium | Go-specific adaptation | Design sections 9/13, lines 189, 251**
+
+**Decision:** keep the map API and take the first ten valid entries in lexicographic key order, sorting before validation and the limit. Across repeated `SetConsumer` calls in one request, earlier calls' keys come first. Applied to design section 13.
 
 `Consumer.Attributes` is an unordered `map[string]string`, while the inherited contract keeps the first ten valid entries. Ranging over the same over-limit map on successive requests can select different subsets, change normalized hashes and emit redundant updates. Successive patches may eventually submit all surplus keys rather than consistently ignoring them. Sorting only the selected keys for hashing is too late.
 
@@ -142,7 +148,9 @@ The startup `config` representation intentionally omits the write token, environ
 
 ### R9. Framework compatibility floors are not settled
 
-**Medium | Implementation-readiness decision | Design sections 1/16/17, lines 36, 304, 310**
+**Resolved | Medium | Implementation-readiness decision | Design sections 1/16/17, lines 36, 304, 310**
+
+**Decision:** start from the v0 framework floors and raise one only when a v1 mechanism or behavioral check fails at it, recording the new floor and reason in the design. CI keeps floor and latest coverage for every framework module. POC-tested versions are evidence, not floors. Applied to design sections 1 and 16.
 
 The document chooses Go and OTel floors but not minimum supported versions for all six framework modules. POCs verify recent pinned versions, while existing module requirements include older releases. Implementation planning cannot infer which behavior and compatibility promises to preserve.
 
@@ -154,7 +162,9 @@ The document chooses Go and OTel floors but not minimum supported versions for a
 
 ### R10. Multi-app support does not define mixed-framework behavior
 
-**Medium | Go support decision with backend implications | Design sections 3/9, lines 68, 187**
+**Rejected | Medium | Go support decision with backend implications | Design sections 3/9, lines 68, 187**
+
+**Decision:** rejected as unrealistic. Applications do not combine different Go web frameworks in one process, so the design needs no mixed-framework support boundary, diagnostic or startup representation. No design change.
 
 Multiple apps share one runtime and a union of routes, but startup has a single `framework` value and Cloud chooses one route normalizer per Apitally application. A process combining Chi and Gin during a migration fits the current wording, yet the two route syntaxes cannot both be normalized correctly by that single choice. Reporting versions for multiple majors of one family is also unspecified.
 
@@ -194,7 +204,9 @@ A foreign global provider can wrap the official SDK and produce a recording SERV
 
 ### R13. Fiber prefork `OnListen` runs in the non-serving master
 
-**Medium | Go/Fiber-specific lifecycle adaptation | Design section 4, lines 87, 91**
+**Resolved | Medium | Go/Fiber-specific lifecycle adaptation | Design section 4, lines 87, 91**
+
+**Decision:** keep Fiber `OnListen` activation for non-prefork apps and skip it when prefork is enabled, detected through `app.Config().Prefork` on v2 and `ListenData.Prefork` on v3. Prefork children are newly executed processes that never run `OnListen` and activate on their first request. No fork-state handling is needed. Applied to design sections 4 and 15.
 
 When Fiber prefork is enabled, unconditional `OnListen` activation starts Apitally in the master process, which does not handle requests. That process emits a startup event and liveness metrics, creating a false online instance. Go does not need Python-style restoration of inherited runtime state, but Fiber still has a non-serving parent whose activation must be suppressed.
 
@@ -206,7 +218,9 @@ When Fiber prefork is enabled, unconditional `OnListen` activation starts Apital
 
 ### R14. Closing one Fiber app stops the runtime used by other apps
 
-**High | Go-specific shutdown ownership conflict | Design sections 3/4, lines 68, 89, 93**
+**Resolved | High | Go-specific shutdown ownership conflict | Design sections 3/4, lines 68, 89, 93**
+
+**Decision:** reserve terminal runtime shutdown for explicit `apitally.Shutdown(ctx)`. Fiber shutdown hooks run one non-terminal export cycle for released telemetry, matching JavaScript's server-close flush; the runtime keeps serving other apps. The hook's blocking budget is decided in R15. Applied to design sections 4 and 15.
 
 Two Fiber apps in one process, such as public and administration listeners, are expressly allowed to share the runtime. Closing either app automatically calls process-wide `apitally.Shutdown`, terminating telemetry for the still-serving app and discarding its unreleased requests. Once-only activation prevents recovery. This occurs with one framework family, independently of R10's mixed-framework issue.
 
@@ -218,7 +232,9 @@ Two Fiber apps in one process, such as public and administration listeners, are 
 
 ### R15. Fiber shutdown hooks cannot inherit the caller's context deadline
 
-**Medium | Go/Fiber-specific lifecycle decision | Design section 4, line 93**
+**Resolved | Medium | Go/Fiber-specific lifecycle decision | Design section 4, line 93**
+
+**Decision:** the R14 hook flush runs under its own fixed 5-second deadline, matching JavaScript's signal-flush deadline, because Fiber hooks receive no caller context. Files it does not deliver stay queued. `apitally.Shutdown(ctx)` remains the path governed by the caller's deadline. Applied to design sections 4 and 15.
 
 Calling Fiber `ShutdownWithContext(ctx)` does not pass that context to shutdown hooks. The automatic Apitally call therefore has no access to the caller's deployment budget. Synchronous hook execution alone does not make the final drain deadline-respecting; slow delivery can prolong application shutdown beyond that deadline.
 
@@ -251,12 +267,12 @@ The reviewers reported 18 findings, consolidated into 15 unique findings. Every 
 | Go idiomaticity 2; contract 1 | Configuration comparison via startup payload | Confirmed, merged into R7. |
 | Go idiomaticity 3; contract 2 | Unordered consumer-map selection | Confirmed, merged into R8. |
 | Contract 3 | Framework version floors | Confirmed as planning-readiness decision R9, not a demonstrated runtime defect. |
-| Contract 4 | Mixed-framework support | Confirmed support/normalization conflict R10. |
+| Contract 4 | Mixed-framework support | Recorded as R10; rejected as unrealistic. |
 | Transport 2 | Recovery order loses panic | Confirmed R2. |
 | Transport 3 | Recovery response not yet observed | Confirmed R3; separate from accepted custom-status approximation. |
 | Transport 4 | ResponseWriter optional interfaces | Confirmed R4 for the stated Unwrap-only mechanism. |
 | Transport 5 | Fiber stream completion | Confirmed R5; user additionally approved shared bounded response-stream payload capture. |
-| Transport 6 | Slog attribute aliasing | Confirmed ownership-contract gap R6; generic deep copying is not recommended. |
+| Transport 6 | Slog attribute aliasing | Confirmed ownership-contract gap R6; resolved by pre-callback value conversion, not generic deep copying. |
 | Lifecycle 1 | Reused SERVER span association | Confirmed R11. |
 | Lifecycle 2 | Foreign-span reuse defeats fallback | Confirmed R12. |
 | Lifecycle 3 | Fiber prefork master activation | Confirmed R13 from both framework implementations. |
@@ -292,6 +308,22 @@ Entries are chronological; later decisions settle or supersede earlier proposals
 11. **R5 resolved:** user selected internal streaming-completion observation consistent with Python, JavaScript and .NET. Duration includes fasthttp's server-side stream lifecycle; copied state survives middleware return, completion/error-aware close finalizes once and release waits for SERVER span end. Streamed bodies remain uncaptured, with no additional setup. Design sections 6-8, 15 and 16 updated. Verified fasthttp's fixed/unknown-length write and close paths, including separate `Close` and `CloseWithError` notifications; implementation tests must cover completion, skipped bodies and aborts.
 
 12. **Fiber response-stream payload capture approved:** user selected the same bounded response capture as Python and JavaScript, superseding decision 11's retained payload exclusion. Copy only bytes consumed by fasthttp, keep at most the shared cap, discard incomplete partial buffers and apply the shared privacy pipeline. Design sections 7, 15 and 16 and R5's decision/acceptance updated. Streamed request-body capture remains excluded; no extra user setup.
+
+13. **R6 resolved:** user selected pre-callback conversion of slog attribute values into Apitally-owned representations, matching .NET's `AttributeValues.Normalize` before `MaskLogRecord`. Python and JavaScript pass the OTel bridge's record without deep-detaching nested values; .NET is the reference that addresses the gap directly. The existing `otelslog`-based export conversion moves before the callback rather than adding new machinery. Design sections 9 and 15 updated.
+
+14. **R13 resolved:** user selected gated Fiber `OnListen` activation over first-request-only activation, preserving the shared design's preferred startup-completion trigger. Verified Fiber v2.52.15 and v3.5.0 prefork control flow: `OnListen` runs only in the master, children are started with `exec.Command` and serve without it, and the prefork flag is available inside the hook on both majors. Design sections 4 and 15 updated.
+
+15. **R14 resolved:** user selected a non-terminal flush in Fiber shutdown hooks, with explicit `Shutdown(ctx)` as the only terminal path. Verified JavaScript's Fastify `onClose` and Node server-close handlers run a flush and never tear down; Python's lifespan shutdown is process-level; Go v0 registered no Fiber shutdown hook. Discussed as a realistic but low-impact scenario; chosen because it costs no more than the reviewed design and needs no deviation from the shared design. Design sections 4 and 15 updated.
+
+16. **R15 resolved:** user selected a fixed 5-second deadline for the Fiber hook flush over an unbounded ordinary cycle. JavaScript's server-close flush has no overall deadline and its signal flush uses five seconds; Python's final drain has none. The cap prevents an Apitally outage from adding a full 10s POST timeout to application shutdown, at the cost of a context timeout around the existing cycle. Design sections 4 and 15 updated. User clarified that review findings and acceptance criteria are discussion input, not requirements.
+
+17. **R7 resolved:** user selected direct comparison of the resolved `Config`. Verified Python compares the full resolved config dataclass and JavaScript's `isSameConfig` compares every resolved field, treating any two set callbacks as equal; both warn without printing values. Design section 3 updated.
+
+18. **R8 resolved:** user selected lexicographic key ordering over an ordered-slice API. Python, JavaScript and .NET keep the first ten in caller insertion order, which their map types preserve; Go's randomized map iteration needs an explicit order. Only the over-limit case, already a user mistake, differs in which keys survive. Design section 13 updated.
+
+19. **R9 resolved:** user selected v0 floors as the starting point, raised only for concrete reasons, over adopting the POC-tested versions. Python (`django>=3.2`, `flask>=2.0`) and JavaScript (`express>=4.18.2`, `koa>=2`) keep established floors, and shared design section 8 requires behavioral validation. Existing CI already runs min and latest jobs. Design sections 1 and 16 updated.
+
+20. **R10 rejected:** user rejected the mixed-framework scenario as unrealistic. No design change.
 
 Remaining recommendations are proposals. Decisions authorize design documentation changes only, not SDK implementation.
 
