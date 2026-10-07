@@ -1,0 +1,90 @@
+go version go1.25.8 darwin/arm64
+=== RUN   TestScenarios
+=== RUN   TestScenarios/1-no-outer-attached
+    harness_test.go:69: scenarios_test.go:58: nethttp mode=attached user=work[internal,handler,47e1d1a32204bcf7] GET /work/{id}[server,apitally,50c1d22a0a25e71a] apitally=work[internal,handler,47e1d1a32204bcf7] GET /work/{id}[server,apitally,50c1d22a0a25e71a] last=root-end
+    harness_test.go:69: scenarios_test.go:58: gin mode=attached user=work[internal,handler,422c4806e6ce8ea0] GET /work/:id[server,apitally,75f8c098f1f0be60] apitally=work[internal,handler,422c4806e6ce8ea0] GET /work/:id[server,apitally,75f8c098f1f0be60] last=root-end
+    harness_test.go:69: scenarios_test.go:58: fiber mode=attached user=work[internal,handler,41801ff97fe8fc88] GET /work/:id[server,apitally,4a45c7b90c0f50b9] apitally=work[internal,handler,41801ff97fe8fc88] GET /work/:id[server,apitally,4a45c7b90c0f50b9] last=root-end
+=== RUN   TestScenarios/2a-outer-otelhttp-attached
+    harness_test.go:69: scenarios_test.go:102: request 1: mode before="" after=attached user=work[internal,handler,7181c2f02fc4ed3e] GET[server,otelhttp,f98992560422716d] apitally=work[internal,handler,7181c2f02fc4ed3e] GET[server,otelhttp,f98992560422716d] last=root-end copy(status=200 route="/work/{id}" header=yes) userSpan(route=false header=no)
+    harness_test.go:69: scenarios_test.go:102: request 2: mode before="attached" after=attached user=work[internal,handler,32c59bf61d34f379] GET[server,otelhttp,de7751048aa0f7c0] apitally=work[internal,handler,32c59bf61d34f379] GET[server,otelhttp,de7751048aa0f7c0] last=root-end copy(status=200 route="/work/{id}" header=yes) userSpan(route=false header=no)
+=== RUN   TestScenarios/2b-outer-otelgin-attached
+    harness_test.go:69: scenarios_test.go:102: request 1: mode before="" after=attached user=work[internal,handler,f6e9c173cd1cc45a] GET /work/:id[server,otelgin,6c0ef8c13fb29a28] apitally=work[internal,handler,f6e9c173cd1cc45a] GET /work/:id[server,otelgin,6c0ef8c13fb29a28] last=root-end copy(status=200 route="/work/:id" header=yes) userSpan(route=true header=no)
+    harness_test.go:69: scenarios_test.go:102: request 2: mode before="attached" after=attached user=work[internal,handler,6daa15d84b516e10] GET /work/:id[server,otelgin,2ab17e6701c5fb00] apitally=work[internal,handler,6daa15d84b516e10] GET /work/:id[server,otelgin,2ab17e6701c5fb00] last=root-end copy(status=200 route="/work/:id" header=yes) userSpan(route=true header=no)
+=== RUN   TestScenarios/3a-outer-otelhttp-owned
+    harness_test.go:69: scenarios_test.go:135: request 1: mode=owned apitally=work[internal,handler,6476fcc9c56956b2] GET /work/{id}[server,apitally,5edcf52245d1dc20] rootParentValid=false last=root-end
+    harness_test.go:69: scenarios_test.go:135: request 2: mode=owned apitally=work[internal,handler,58cb112b888bfd2b] GET[server,otelhttp,2c25fc29ab05c67c] rootParentValid=false last=root-end
+    harness_test.go:69: scenarios_test.go:135: request 3: mode=owned apitally=work[internal,handler,6e7c4180ff1119d5] GET[server,otelhttp,b2948887970d55cd] rootParentValid=false last=root-end
+=== RUN   TestScenarios/3b-outer-otelgin-owned
+    harness_test.go:69: scenarios_test.go:135: request 1: mode=owned apitally=work[internal,handler,ec4f7c9f96612d23] GET /work/:id[server,apitally,4927576dce881ce6] rootParentValid=false last=root-end
+    harness_test.go:69: scenarios_test.go:135: request 2: mode=owned apitally=work[internal,handler,c7f1a45e6590e55a] GET /work/:id[server,otelgin,51e21c371ff8c545] rootParentValid=false last=root-end
+    harness_test.go:69: scenarios_test.go:135: request 3: mode=owned apitally=work[internal,handler,b06d3994bb1d1170] GET /work/:id[server,otelgin,963e633aa6406958] rootParentValid=false last=root-end
+=== RUN   TestScenarios/3c-outer-fiberotel-owned
+    harness_test.go:69: scenarios_test.go:135: request 1: mode=owned apitally=work[internal,handler,24e4245d63b6af0e] GET /work/:id[server,apitally,8dda648bd5ec764c] rootParentValid=false last=root-end
+    harness_test.go:69: scenarios_test.go:135: request 2: mode=owned apitally=work[internal,handler,32a6714740d0da40] GET /work/:id[server,fiberotel,fec0bf13e42a73bd] rootParentValid=false last=observation
+    harness_test.go:69: scenarios_test.go:135: request 3: mode=owned apitally=work[internal,handler,1aa95c64d9444320] GET /work/:id[server,fiberotel,84de7602eeba7cfc] rootParentValid=false last=observation
+=== RUN   TestScenarios/4-outer-otelhttp-private
+    harness_test.go:69: scenarios_test.go:164: request 1: mode=private apitally=GET /work/{id}[server,apitally,ad9a26e0c681150d] foreign=work[internal,handler,287edde9d044e0cf] GET[server,otelhttp,618962c01b3a7b64] apitallyParent=foreign outer span; S6: foreign 'work' parent=ad9a26e0c681150d (Apitally private span, absent from foreign export)
+    harness_test.go:69: scenarios_test.go:164: request 2: mode=private apitally=GET /work/{id}[server,apitally,49fb15b26ce213b4] foreign=work[internal,handler,1a74d0170e8f7c14] GET[server,otelhttp,c5faf3c333cb2f1b] apitallyParent=foreign outer span; S6: foreign 'work' parent=49fb15b26ce213b4 (Apitally private span, absent from foreign export)
+=== RUN   TestScenarios/5-inner-instrumentation
+    harness_test.go:69: scenarios_test.go:201: nethttp+inner: user=work[internal,handler,15d4b86248432840] GET /work/{id}[server,otelhttp,d34d58f6e567f820] GET[server,apitally,1a22bfbf575ef215] apitally=work[internal,handler,15d4b86248432840] GET /work/{id}[internal,otelhttp,d34d58f6e567f820] GET[server,apitally,1a22bfbf575ef215]
+    harness_test.go:69: scenarios_test.go:201: gin+inner: user=work[internal,handler,de7b64572e1d8551] GET /work/:id[server,otelgin,457ca18d1a5b73da] GET /work/:id[server,apitally,1a9292f03f44836b] apitally=work[internal,handler,de7b64572e1d8551] GET /work/:id[internal,otelgin,457ca18d1a5b73da] GET /work/:id[server,apitally,1a9292f03f44836b]
+    harness_test.go:69: scenarios_test.go:201: fiber+inner: user=work[internal,handler,54829faf26accd9c] GET /work/:id[server,fiberotel,87d610d9fe6a5ba2] GET /work/:id[server,apitally,1c630e5d768aa627] apitally=work[internal,handler,54829faf26accd9c] GET /work/:id[internal,fiberotel,87d610d9fe6a5ba2] GET /work/:id[server,apitally,1c630e5d768aa627]
+=== RUN   TestScenarios/6a-user-sampler-parentbased-never
+    harness_test.go:69: scenarios_test.go:220: sampler=ParentBased{root:AlwaysOffSampler,remoteParentSampled:AlwaysOnSampler,remoteParentNotSampled:AlwaysOffSampler,localParentSampled:AlwaysOnSampler,localParentNotSampled:AlwaysOffSampler} mode=attached requests=24 apitallyReleases=0 userSpans=0 mapEntries=0
+=== RUN   TestScenarios/6b-user-sampler-ratio-zero
+    harness_test.go:69: scenarios_test.go:220: sampler=TraceIDRatioBased{0} mode=attached requests=24 apitallyReleases=0 userSpans=0 mapEntries=0
+=== RUN   TestScenarios/6c-user-sampler-record-only
+    harness_test.go:69: scenarios_test.go:220: sampler=RecordOnly mode=attached requests=24 apitallyReleases=0 userSpans=0 mapEntries=0
+=== RUN   TestScenarios/7-completion-order
+    harness_test.go:69: scenarios_test.go:258: fiber+outer /work/1: last=observation apitally=work[internal,handler,ba8690f3ba1f6e09] GET /work/:id[server,fiberotel,79b80bc26be7bba7] copy(status=200 size=11 header=["application/json"]) userSpan(header=false)
+    harness_test.go:69: scenarios_test.go:258: fiber+outer /work/2: last=observation apitally=work[internal,handler,d071301112ee5883] GET /work/:id[server,fiberotel,4f90c1b374354fbe] copy(status=200 size=11 header=["application/json"]) userSpan(header=false)
+    harness_test.go:69: scenarios_test.go:258: fiber+outer /stream: last=observation apitally=stream-write[internal,handler,ef20a93ddfc5d17c] GET /stream[server,fiberotel,a040331cbde91c39] copy(status=200 size=0 header=["text/plain; charset=utf-8"]) userSpan(header=false)
+    harness_test.go:69: scenarios_test.go:264: fiber (created): last=root-end apitally=work[internal,handler,c4cbecbeb1cc57bd] GET /work/:id[server,apitally,a795f98fb48c78a2]
+    harness_test.go:69: scenarios_test.go:272: nethttp+outer: last=root-end (observation completed before outer otelhttp span ended)
+=== RUN   TestScenarios/8-excluded-path
+    harness_test.go:69: scenarios_test.go:290: nethttp: user=healthz-work[internal,handler,fafce5544c44640f] healthz-work parentValid=false
+    harness_test.go:69: scenarios_test.go:290: gin: user=healthz-work[internal,handler,29a4f08fcdb0abbf] healthz-work parentValid=false
+    harness_test.go:69: scenarios_test.go:290: fiber: user=healthz-work[internal,handler,251a0a5707fc0e83] healthz-work parentValid=false
+    harness_test.go:69: scenarios_test.go:290: nethttp+outer: user=healthz-work[internal,handler,7bf64bcf56452e5b] GET[server,otelhttp,f28c1464bf96c29e] healthz-work parentValid=true
+    harness_test.go:69: scenarios_test.go:290: gin+outer: user=healthz-work[internal,handler,843c1413132b05a2] GET /healthz[server,otelgin,3e667bcf1c71115f] healthz-work parentValid=true
+    harness_test.go:69: scenarios_test.go:290: fiber+outer: user=healthz-work[internal,handler,b990eeea6da6e7f2] GET /healthz[server,fiberotel,443b654917c1e110] healthz-work parentValid=true
+=== RUN   TestScenarios/9-sample-on-request
+    harness_test.go:69: scenarios_test.go:332: nethttp /work/1: calls=1 releases=1 view=[http.request.method,url.path,url.scheme,user_agent.original] live=[http.request.method,url.path,url.scheme,user_agent.original]
+    harness_test.go:69: scenarios_test.go:332: nethttp /work/drop: calls=1 releases=0 view=[http.request.method,url.path,url.scheme,user_agent.original] live=[http.request.method,url.path,url.scheme,user_agent.original]
+    harness_test.go:69: scenarios_test.go:332: gin /work/1: calls=1 releases=1 view=[http.request.method,http.route,url.path,url.scheme,user_agent.original] live=[http.request.method,http.route,url.path,url.scheme,user_agent.original]
+    harness_test.go:69: scenarios_test.go:332: gin /work/drop: calls=1 releases=0 view=[http.request.method,http.route,url.path,url.scheme,user_agent.original] live=[http.request.method,http.route,url.path,url.scheme,user_agent.original]
+    harness_test.go:69: scenarios_test.go:332: fiber /work/1: calls=1 releases=1 view=[http.request.method,url.path,url.scheme,user_agent.original] live=[http.request.method,url.path,url.scheme,user_agent.original]
+    harness_test.go:69: scenarios_test.go:332: fiber /work/drop: calls=1 releases=0 view=[http.request.method,url.path,url.scheme,user_agent.original] live=[http.request.method,url.path,url.scheme,user_agent.original]
+    harness_test.go:69: scenarios_test.go:332: nethttp+outer /work/1: calls=1 releases=1 view=[client.address,http.request.method,network.peer.address,network.peer.port,network.protocol.version,server.address,url.path,url.scheme,user_agent.original] live=[client.address,http.request.method,network.peer.address,network.peer.port,network.protocol.version,server.address,url.path,url.scheme]
+    harness_test.go:69: scenarios_test.go:332: nethttp+outer /work/drop: calls=1 releases=0 view=[client.address,http.request.method,network.peer.address,network.peer.port,network.protocol.version,server.address,url.path,url.scheme,user_agent.original] live=[client.address,http.request.method,network.peer.address,network.peer.port,network.protocol.version,server.address,url.path,url.scheme]
+    harness_test.go:69: scenarios_test.go:332: gin+outer /work/1: calls=1 releases=1 view=[client.address,http.request.method,http.route,network.peer.address,network.peer.port,network.protocol.version,server.address,url.path,url.scheme,user_agent.original] live=[client.address,http.request.method,http.route,network.peer.address,network.peer.port,network.protocol.version,server.address,url.path,url.scheme]
+    harness_test.go:69: scenarios_test.go:332: gin+outer /work/drop: calls=1 releases=0 view=[client.address,http.request.method,http.route,network.peer.address,network.peer.port,network.protocol.version,server.address,url.path,url.scheme,user_agent.original] live=[client.address,http.request.method,http.route,network.peer.address,network.peer.port,network.protocol.version,server.address,url.path,url.scheme]
+    harness_test.go:69: scenarios_test.go:332: fiber+outer /work/1: calls=1 releases=1 view=[client.address,http.request.body.size,http.request.method,network.protocol.name,network.protocol.version,network.transport,server.address,url.full,url.path,url.query,url.scheme,user_agent.original] live=[client.address,http.request.body.size,http.request.method,network.protocol.name,network.protocol.version,network.transport,server.address,url.full,url.path,url.query,url.scheme,user_agent.original]
+    harness_test.go:69: scenarios_test.go:332: fiber+outer /work/drop: calls=1 releases=0 view=[client.address,http.request.body.size,http.request.method,network.protocol.name,network.protocol.version,network.transport,server.address,url.full,url.path,url.query,url.scheme,user_agent.original] live=[client.address,http.request.body.size,http.request.method,network.protocol.name,network.protocol.version,network.transport,server.address,url.full,url.path,url.query,url.scheme,user_agent.original]
+=== RUN   TestScenarios/10a-concurrency-attached
+    harness_test.go:69: scenarios_test.go:399: mode=attached apps=6 requests=600 releases=360 panicReleases(status 500)=120 lateSpansExported=0 mapAfterRequests=0 mapAfterLateSpans=0 userSpans=1020
+=== RUN   TestScenarios/10b-concurrency-owned
+    harness_test.go:69: scenarios_test.go:399: mode=owned apps=6 requests=600 releases=360 panicReleases(status 500)=120 lateSpansExported=0 mapAfterRequests=0 mapAfterLateSpans=0 userSpans=0
+=== RUN   TestScenarios/11-nested-monitored-request
+    harness_test.go:69: scenarios_test.go:449: nethttp sub-request: inner release=inner-work[internal,handler,b08a4024230bd4b4] GET /inner[server,apitally,e44d4fc38d883af6] outer release=outer-work[internal,handler,a513cf8a766884f2] GET /outer[server,apitally,81dace5df0376d96] user=outer-work[internal,handler,a513cf8a766884f2] inner-work[internal,handler,b08a4024230bd4b4] GET /inner[server,apitally,e44d4fc38d883af6] GET /outer[server,apitally,81dace5df0376d96]
+    harness_test.go:69: scenarios_test.go:449: gin HandleContext: inner release=inner-work[internal,handler,3797c2624b1e4df3] GET /inner[server,apitally,da496448b79e87a7] outer release=outer-work[internal,handler,56bfabb80a448961] GET /inner[server,apitally,e0bb0124bd257818] user=outer-work[internal,handler,56bfabb80a448961] inner-work[internal,handler,3797c2624b1e4df3] GET /inner[server,apitally,da496448b79e87a7] GET /inner[server,apitally,e0bb0124bd257818]
+--- PASS: TestScenarios (18.61s)
+    --- PASS: TestScenarios/1-no-outer-attached (1.05s)
+    --- PASS: TestScenarios/2a-outer-otelhttp-attached (1.05s)
+    --- PASS: TestScenarios/2b-outer-otelgin-attached (1.05s)
+    --- PASS: TestScenarios/3a-outer-otelhttp-owned (1.05s)
+    --- PASS: TestScenarios/3b-outer-otelgin-owned (1.05s)
+    --- PASS: TestScenarios/3c-outer-fiberotel-owned (1.05s)
+    --- PASS: TestScenarios/4-outer-otelhttp-private (1.08s)
+    --- PASS: TestScenarios/5-inner-instrumentation (1.05s)
+    --- PASS: TestScenarios/6a-user-sampler-parentbased-never (1.06s)
+    --- PASS: TestScenarios/6b-user-sampler-ratio-zero (1.11s)
+    --- PASS: TestScenarios/6c-user-sampler-record-only (1.13s)
+    --- PASS: TestScenarios/7-completion-order (1.05s)
+    --- PASS: TestScenarios/8-excluded-path (1.06s)
+    --- PASS: TestScenarios/9-sample-on-request (1.06s)
+    --- PASS: TestScenarios/10a-concurrency-attached (1.19s)
+    --- PASS: TestScenarios/10b-concurrency-owned (1.40s)
+    --- PASS: TestScenarios/11-nested-monitored-request (1.10s)
+PASS
+ok  	github.com/apitally/apitally-go/pocs/request-root-designation	20.291s

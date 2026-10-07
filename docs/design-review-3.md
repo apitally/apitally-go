@@ -2,9 +2,9 @@
 
 Date: 2026-10-07
 Reviewed revision: `6408616` (`docs/design.md`)
-Status: Open; 15 findings for discussion.
+Status: Review complete; 15 findings resolved.
 
-This review looks for decisions, rules and guarantees in the Go design that cost disproportionate implementation complexity, where a slightly altered rule allows a much simpler implementation, and for choices that a senior Go developer would read as translated from another language. Findings and recommendations are input for discussion, not requirements. Resolving a finding means recording the user's decision here and applying the agreed documentation changes before moving to the next finding.
+This review looks for decisions, rules and guarantees in the Go design that cost disproportionate implementation complexity, where a slightly altered rule allows a much simpler implementation, and for choices that a senior Go developer would read as translated from another language. Findings are **Open** unless marked **Resolved** or **Rejected**. Findings and recommendations are input for discussion, not requirements. Resolving a finding means recording the user's decision here and applying the agreed documentation changes before moving to the next finding.
 
 Findings that reopen an earlier decision (R1, R11 and R12 in [the first review](design-review.md), C3 in [the .NET consistency review](design-review-2.md)) are included only where the argument is new; each says what is new.
 
@@ -29,7 +29,9 @@ Priorities:
 
 ### S1. The slim OTLP proto module panics at startup next to any official OTLP exporter
 
-**Open | High | Design sections 1 and 10, lines 36, 229**
+**Resolved | High | Design sections 1 and 10, lines 36, 229**
+
+**Decision:** use the canonical `go.opentelemetry.io/proto/otlp` module, importing only its data packages and never `collector/...`; marshal `TracesData`, `LogsData` and `MetricsData`. Applied to design sections 1 and 10.
 
 `go.opentelemetry.io/proto/slim/otlp` v1.11.0 registers the same protobuf file names (`opentelemetry/proto/common/v1/common.proto` and so on) as the canonical `go.opentelemetry.io/proto/otlp`. Every official OTel Go OTLP exporter (`otlptracehttp`, `otlptracegrpc`, `otlpmetrichttp`, `otlploghttp`) depends on the canonical module. Protobuf's default conflict policy is `panic`, so an application that links both panics in package initialization, before `main`. Those applications are exactly the existing-OTel users section 2 is designed around. Slim v1.11.1 moved to a separate `opentelemetry.proto.slim` namespace, but it requires Go 1.26 and breaks the Go 1.25 floor.
 
@@ -41,7 +43,9 @@ Priorities:
 
 ### S2. The Fiber response-stream wrapper cannot be installed through fasthttp's public API
 
-**Open | High | Design sections 1, 6, 7 and 16, lines 38, 116-118, 139**
+**Resolved | High | Design sections 1, 6, 7 and 16, lines 38, 116-118, 139**
+
+**Decision:** option B, narrowed. A user-value `io.Closer` is the single completion signal for every Fiber response. Size for buffered bodies, declared lengths, `*io.LimitedReader` and `*bytes.Reader`/`*bytes.Buffer` streams is read after the handler without wrapping. Only unknown-length streams are wrapped, through one reflect/`unsafe` write to `Response.bodyStream` that is probed once per process and fails safe (no wrap). The wrapper counts bytes until EOF, captures eligible bodies up to the cap, and forwards `Close` and `CloseWithError` by method set, so no fasthttp floor bump. Known-length streams are never wrapped, keep zero-copy and omit body capture. This keeps stream sizes in line with the other SDKs and frameworks and narrows Decision 12 of the first review only for known-length streams. Applied to design sections 1, 6, 7, 8 and 15.
 
 Section 7 requires wrapping the final response stream, observing fasthttp's error-aware close, exposing the original stream's zero-copy path and counting consumed bytes. The only public way to replace a response stream is `Response.SetBodyStream`, which calls `ResetBody()` and therefore closes the current stream before the wrapper is installed (fasthttp v1.51.0 `http.go:247-251`, `640-651`; unchanged in v1.69.0). All other assignments to `bodyStream` are internal. Re-wrapping through the public API breaks real responses: with `SetBodyStreamWriter` (SSE) the client receives 0 bytes on fasthttp v1.50.0 and v1.73.0; with `SendFile`, v1.73.0 panics (`bug: fsFile.readersCount < 0`) and v1.50.0 reuses a pooled reader. The only working install is a reflect plus `unsafe` write to the unexported field.
 
@@ -61,36 +65,30 @@ That is five fasthttp behaviors to mirror and test at floor and latest on two Fi
 
 Either option is a strict improvement on v0 and on `otelfiber`, which both end at handler return and drain non-SSE streams through `Body()`.
 
-### S3. Always create the request span in the middleware; drop reuse of user SERVER spans
+### S3. Make the middleware the only place that designates request roots
 
-**Open | High | Reopens R11 and R12 | Design sections 2, 5, 6, 8 and 15, lines 102-104, 116, 120, 161, 309-310**
+**Resolved | High | Reopens R11 and R12 | Design sections 2, 5, 6, 8 and 15, lines 62, 102-104, 116, 120, 161, 309-310**
 
-Apitally's middleware creates the SERVER span on all six frameworks. Reuse of an outer user-owned SERVER span is a second way to establish the request root, and almost all of the request-model complexity exists only for it:
+**Decision:** keep reusing outer user-owned SERVER spans, so the user's backend and Apitally share one request span (parity with Python, which skips its own instrumentation of an already instrumented app), and simplify the rules around it:
 
-- the eligibility test (recording, SERVER kind via `ReadOnlySpan` assertion, `span.TracerProvider()` matching the attached provider);
-- association at middleware entry of a span whose `OnStart` Apitally may have missed, and reconciliation with an earlier processor entry (R11);
-- `SampleOnRequest` running in `OnStart` for created spans but at middleware entry for reused spans;
-- release coordination for transport completion and span end in either order, holding an ended SERVER snapshot. This happens in practice with `otelfiber` outside Apitally plus a Fiber stream;
-- merging transport attributes into the export copy because the live span is not Apitally's;
-- private-mode exceptions to the duplicate-SERVER and unknown-parent rules (R12).
+1. Only the middleware designates request roots. It reuses the incoming span if it is a recording SERVER span from the provider Apitally's processor is registered on (attached or Apitally-owned) and not already registered with Apitally; otherwise it creates one. Private mode needs no special case, because a foreign span never matches.
+2. The processor's `OnStart` only links spans to an already registered local parent. A missed `OnStart` on the first request needs no recovery; R11's reconciliation and R12's private-mode exceptions are gone, and the owned-provider case is defined (Apitally's own provider counts).
+3. Exclusions and `SampleOnRequest` run once in the middleware for both paths. `SampleOnRequest` sees the span with Apitally's request attributes overlaid.
+4. Only recording spans are registered; a request's span links are kept until release; a nested monitored request in the same process gets its own root.
+5. Excluded requests still get their request span, which is not registered, so the user's traces are unaffected.
+6. Release still waits for both observation and root span end, in either order. Apitally's export copy of a reused span takes the later of span end and transport completion as its end time.
 
-It also leaves a 3-provider-mode by 4-incoming-span-state matrix with at least one unspecified cell: in owned mode an outer `otelhttp` span from the global (Apitally's) provider is a local-root SERVER span that inherited classification keeps as a request root. Whether that provider counts as "attached" is not stated. If it does not, the middleware also designates its own child, giving two roots in one trace.
+Rejected: always creating the request span (INTERNAL under a local parent), the original recommendation of this finding. It removes about 25-35 lines but adds an extra span to every request in the user's backend for users with their own server instrumentation, and breaks parity with the other SDKs.
 
-R11 and R12 were decided on correctness. The new argument is that Go is the only SDK that owns the span. Python and JavaScript rely on stock instrumentation and .NET on the hosting activity, so they must classify at span start and coordinate either order (Python `span_processor.py` `defer_export`/`finish_export`, .NET `RequestState.TryClaimFinalization`). When the middleware owns the span it ends it after observation completes, and `End` runs `OnEnd` synchronously (`sdk/trace/span.go:457-463`), so release becomes a single event. The shared design allows this ("finish transport observation within the span's lifetime").
+Applied to design sections 2, 5, 6, 8 and 15.
 
-**Recommendation:**
-
-1. The middleware always creates the request span with the selected provider, as a child of the incoming context. When the incoming parent is a valid local span (outer `otelhttp`, `otelgin`, `otelfiber`), create it with kind INTERNAL; Apitally's export copy reports it as SERVER through the existing `SpanKind()` override. The user's backend sees SERVER then INTERNAL, not a duplicate SERVER.
-2. Only the middleware designates request roots. It runs exclusions from framework data before `Start`, inserts the root into the request map right after `Start` returns (no child can start before `next` runs), and runs `SampleOnRequest` there, in one place. The processor's `OnStart` only does parent lookup and the duplicate-SERVER flag; unknown local roots get no entry. In owned mode the fallback sampler recognizes the designated root through a context marker (samplers receive the `Start` context), so it records only Apitally's root and children of recorded local parents, not every SERVER span in the process (for example `otelgrpc` servers or excluded health checks).
-3. Transport attributes are set on the live span before `End`; only payloads stay in the stash.
-
-R11, R12, the eligibility rule, reconciliation, the `SampleOnRequest` split and two-order release disappear. Private-provider mode becomes only a different choice of provider.
-
-**Lost:** for users with server instrumentation wrapped outside Apitally only: one extra INTERNAL span per request in their own backend (today's ineligible-reuse path already produces a full duplicate SERVER span, which is worse); Apitally's request span excludes time in outer middleware; attributes set by the outer span are not seen (section 5 already reads framework data instead). This deviates from the shared design's "reuse existing user-owned request spans rather than creating duplicates" in mechanism, not in outcome: no duplicate SERVER span reaches either backend.
+**Evidence:** [the request-root designation POC](../pocs/request-root-designation/README.md) implements these rules with real `otelhttp`, `otelgin` and Fiber v3 OTel middleware on Go 1.25.8 and OTel v1.46.0. All 17 scenarios pass under `-race`: first and later requests under outer instrumentation, owned, attached and private provider modes, inner instrumentation, sampler drops, Fiber's reversed end order, exclusions, nested requests and 600 concurrent requests with no leaked map entries. The core logic is about 216 lines, of which about 25-35 exist because of reuse. The POC found the nested-request, keep-links-until-release and recording-only rules, which the original proposal lacked.
 
 ### S4. `MaskLogRecord` on `slog.Record` makes the natural masking code leak
 
-**Open | Medium-High | Design sections 9 and 15, lines 223, 319**
+**Resolved | Medium-High | Design sections 9 and 15, lines 223, 319**
+
+**Decision:** an SDK-owned `LogRecord` struct (`Time`, `Level`, `Message`, `Attrs []slog.Attr`) and `MaskLogRecord func(*LogRecord) bool`, modified in place; `false` or a panic drops. No code-location fields for now. Applied to design sections 9, 13 and 15.
 
 `slog.Record` has `Attrs` (iterates copies), `AddAttrs` and `Add` (append), and no way to replace or remove an attribute. Its documentation also says copies share state. User code written the obvious ways leaks the value:
 
@@ -120,7 +118,9 @@ Modify in place, return false to drop, matching the shared "modify or drop" cont
 
 ### S5. Reuse the public `otlptrace` conversion instead of writing one
 
-**Open | Medium | Design section 10, line 229; depends on S1**
+**Resolved | Medium | Design section 10, line 229; depends on S1**
+
+**Decision:** traces are converted by the official `otlptrace` exporter with an Apitally `Client` that marshals `TracesData` to the spool; logs and metrics keep Apitally's own encoders. Applied to design sections 2 and 10.
 
 Section 10 says "The OTel exporters' SDK-to-protobuf conversions are internal, so Apitally owns a conversion matching them." For traces this is wrong. `otlptrace.NewUnstarted(client)` returns an exporter whose `ExportSpans` runs the official conversion and hands `[]*tracepb.ResourceSpans` to the public `otlptrace.Client` interface (`Start`, `Stop`, `UploadTraces`). A five-line client that marshals `TracesData` and appends it to the spool reuses the official conversion exactly, which is what shared design section 10 asks for ("Reuse the official exporter's conversion ... where it is public"). That saves the ~440-line conversion and its parity tests. The export copy works unchanged because the exporter reads `Attributes()` and `Resource()` through the interface.
 
@@ -132,7 +132,9 @@ Section 10 says "The OTel exporters' SDK-to-protobuf conversions are internal, s
 
 ### S6. Private-provider mode must not put Apitally's span into the request context
 
-**Open | Medium | Design sections 2, 5 and 8, lines 56, 104, 158**
+**Resolved | Medium | Design sections 2, 5 and 8, lines 56, 104, 158**
+
+**Decision:** in private-provider mode, Apitally's span is kept only in Apitally's request state and not put into the request context. Confirmed by scenario 4 of [the request-root designation POC](../pocs/request-root-designation/README.md). Applied to design sections 8 and 15.
 
 In private-provider mode the global provider is a foreign implementation, for example a vendor OTel bridge that records and exports. Section 8 puts Apitally's span into the request context "so handler spans nest under it". The user's handler spans, created through the foreign global, then take Apitally's private span as their parent. The foreign backend never receives that span, so every existing trace gains a dangling parent. This contradicts section 5: "Foreign spans remain outside Apitally's pipeline; their providers and exports are unchanged."
 
@@ -144,7 +146,9 @@ In private-provider mode the global provider is a foreign implementation, for ex
 
 ### S7. Fiber: also store request state in `Locals`, so the natural context works
 
-**Open | Medium | Design sections 8 and 13, lines 158, 267, 276**
+**Resolved | Medium | Design sections 8 and 13, lines 158, 267, 276**
+
+**Decision:** extended to Gin, whose `*gin.Context.Value` reads only string keys from `c.Keys` unless `ContextWithFallback` is enabled (verified on Gin v1.9.1 and v1.12.0). The Gin and Fiber middleware also store the request-state pointer under a namespaced string key in `c.Keys` (Gin) or `Locals` (Fiber v2/v3); lookup tries the private key, then the string key. Applied to design section 13.
 
 Fiber v3's `Ctx` implements `context.Context`, and `Ctx.Value` reads fasthttp user values (Fiber v3.5.0 `ctx.go:661`), not the user context where section 13 stores request state. Fiber v2's `c.Context()` is `*fasthttp.RequestCtx`, whose `Value` also reads user values (fasthttp v1.51.0 `server.go:2753`). So `slog.InfoContext(c, ...)` on v3, `slog.InfoContext(c.Context(), ...)` on v2, and service code calling the root `apitally.SetConsumer(ctx, ...)` with either all compile and silently do nothing. [The .NET consistency review](design-review-2.md) lists the v2 case as a pitfall to document; it can be removed instead.
 
@@ -156,7 +160,9 @@ Fiber v3's `Ctx` implements `context.Context`, and `Ctx.Value` reads fasthttp us
 
 ### S8. `Init` after routes fails silently on Gin and Fiber
 
-**Open | Medium | Design sections 4 and 13, lines 92, 253**
+**Resolved | Medium | Design sections 4 and 13, lines 92, 253**
+
+**Decision:** on Gin and Fiber, `Init` logs an error when routes are already registered, naming the remedy, and keeps instrumenting. Applied to design section 8.
 
 Putting `apitally.Init(r, cfg)` just before `r.Run()` is the most likely Gin mistake, and on Gin and Fiber it leaves every existing route unmonitored without a diagnostic: Gin copies the handler chain into each route at registration (v1.12.0 `routergroup.go:241`), and Fiber applies `Use` only to later routes. Chi panics in this situation and Echo applies middleware to all routes regardless of order, so only Gin and Fiber fail silently. Shared design: "Unsupported setup forms report a clear error identifying the supported path." JavaScript already warns for this on Hono and Elysia (`apitally-js/src/hono/middleware.ts:50`, `elysia/middleware.ts:71`).
 
@@ -166,7 +172,9 @@ Putting `apitally.Init(r, cfg)` just before `r.Run()` is the most likely Gin mis
 
 ### S9. Automatic `slog.SetDefault` wrapping: consider explicit `NewSlogHandler` only
 
-**Open | Medium | Reopens R1 and C3 | Design sections 9 and 15, lines 210-215, 318**
+**Resolved | Medium | Reopens R1 and C3 | Design sections 9 and 15, lines 210-215, 318**
+
+**Decision:** explicit `NewSlogHandler` only; Apitally never calls `slog.SetDefault`. Activation warns once when `CaptureLogs` is true and no Apitally handler has been created, naming `NewSlogHandler`. Quickstart documentation shows the handler next to `Init`. Supersedes the automatic-wrapping parts of R1 and C3; recorded as a deviation from the shared preference for capture without logging changes. Applied to design sections 9, 15 and 17.
 
 Two reviewers independently flagged that a library calling `slog.SetDefault` on the application's behalf would raise eyebrows with Go developers. The rule now needs reflect-based recognition of the standard library `defaultHandler` with a Go-version test matrix, detection of derived and existing Apitally handlers, a non-atomic `SetDefault` followed by restoring the `log` writer and flags, the C3 warning, and documentation for three classes of user. What is new since R1 and C3:
 
@@ -180,7 +188,9 @@ Two reviewers independently flagged that a library calling `slog.SetDefault` on 
 
 ### S10. The root module's `internal` packages are an unversioned API between modules
 
-**Open | Medium-Low | Design section 1, line 24**
+**Resolved | Medium-Low | Design section 1, line 24**
+
+**Decision:** keep v0's structure and lockstep releases, with no additive-only rule. The cause of the new exposure is removed instead: each request helper has a single `context.Context` form, re-exported by every framework package (`apitally.SetConsumer(c, ...)` on Gin and Fiber v3, the request context on Echo, Chi and Fiber v2), so users import only their framework package and root stays an indirect requirement, which dependency bots generally leave alone. v0 has the same exposure (old `gin` v0.6.0-v0.9.0 fail to compile against root v0.11.1) but only through a deliberate root-only upgrade. Applied to design sections 1, 13 and 15.
 
 Framework modules import the root module's `internal/...`, which in v1 holds the whole pipeline. Go's minimal version selection pairs a framework module with whatever root version the build selects, and v1 tells users to require the root module directly for service-code helpers (section 13), so Dependabot or Renovate will bump the two independently. A non-additive change to root `internal` then breaks the user's build inside Apitally code. Releasing all modules in lockstep (v0's `publish.yaml`) does not prevent this; it only controls what is published. OTel Go generates private copies of shared internals per module; aws-sdk-go-v2 imports root `internal` under an additive-only rule.
 
@@ -190,7 +200,9 @@ Framework modules import the root module's `internal/...`, which in v1 holds the
 
 ### S11. Forwarding `ReadFrom` drops body capture for every `io.Copy`, not just file sends
 
-**Open | Medium-Low | Design section 7, line 136**
+**Resolved | Medium-Low | Design section 7, line 136**
+
+**Decision:** forward `ReadFrom` only when the response is not being body-captured; otherwise copy through the capturing `Write`. Low likelihood (Chi, response capture on, allowlisted type, `io.Copy` from a source without `WriteTo`); `httputil.ReverseProxy` and `json.Encoder` were never affected. Applied to design section 7.
 
 `io.Copy(w, r)` calls `w.ReadFrom(r)` whenever `r` lacks `WriteTo`. That covers upstream `http.Response` bodies, S3 objects and decompression readers. On Chi, an `application/json` proxy written with `io.Copy` silently loses capture: the wrapper's `Write` is never called. .NET's `SendFileAsync` is file-only; Go's `ReadFrom` is not, so "as .NET does for native file sends" is not what the rule achieves.
 
@@ -202,7 +214,9 @@ Framework modules import the root module's `internal/...`, which in v1 holds the
 
 ### S12. Inactive-middleware behavior is not specified
 
-**Open | Low | Design sections 4 and 8, lines 86, 172**
+**Resolved | Low | Design sections 4 and 8, lines 86, 172**
+
+**Decision:** framework-visible behavior is identical whether or not Apitally is active; only telemetry is gated. Python, JavaScript, .NET and Go v0 never change the framework's error flow, so their active state is already invisible to the application; Go v1's Echo/Fiber dispatch-and-return-nil makes the rule necessary. Applied to design section 4.
 
 Every user's `go test` run (`testing.Testing()`) and every local run without a token goes through the inactive path. If that path is a plain pass-through, Echo and Fiber return handler errors to outer middleware in tests and development but dispatch them and return nil in production. That control-flow difference is invisible until deployment.
 
@@ -212,7 +226,9 @@ Every user's `go test` run (`testing.Testing()`) and every local run without a t
 
 ### S13. `Init(app, nil)` and configuration copying are undefined
 
-**Open | Low | Design sections 3 and 13, lines 72-80, 253**
+**Resolved | Low | Design sections 3 and 13, lines 72-80, 253**
+
+**Decision:** a nil `cfg` is equivalent to `NewConfig()`; `Init` copies the configuration, including slices, so later changes have no effect. Matches Python, JavaScript and .NET (options optional, resolved at setup); v0 panicked on nil. Applied to design section 3.
 
 The standard library sets the expectation that a nil options pointer means defaults (`slog.NewJSONHandler(w, nil)`). With the token in `APITALLY_WRITE_TOKEN`, `apitally.Init(r, nil)` is the natural env-only call, and all three reference SDKs allow setup without options. Activation is deferred to the first request, so whether `Init` keeps the caller's pointer decides whether a later `cfg.SampleRate = ...` silently applies or races. The shared design says configuration is immutable from setup.
 
@@ -222,7 +238,9 @@ The standard library sets the expectation that a nil options pointer means defau
 
 ### S14. Re-export with wrapper functions, and pass caller skip explicitly
 
-**Open | Low | Design sections 3, 8 and 13, lines 72, 184, 263, 284**
+**Resolved | Low | Design sections 3, 8 and 13, lines 72, 184, 263, 284**
+
+**Decision:** framework packages re-export functions as documented wrapper functions and types as aliases; `StartSpan` and `CaptureError` take an explicit internal frame-skip count, guarded by one test per framework. Applied to design sections 3 and 13.
 
 `var NewConfig = apitally.NewConfig` shows up on pkg.go.dev under "Variables" with no signature, in the package most users read first, and user code can reassign it. Thin wrapper functions are the normal Go re-export idiom. Any wrapper, including the framework-context `CaptureError(c, err)` wrappers the design already requires, adds a stack frame, so a plain `runtime.Caller(1)` in the root implementation records the wrapper's location instead of the user's for `StartSpan` and `CaptureError`.
 
@@ -232,7 +250,9 @@ The standard library sets the expectation that a nil options pointer means defau
 
 ### S15. "Omit catch-all method registrations" is only implementable on Echo v5
 
-**Open | Low | Design section 9, line 204**
+**Resolved | Low | Design section 9, line 204**
+
+**Decision:** omit catch-alls only on Echo v5 via `RouteAny`; elsewhere report per-method entries minus `HEAD` and `OPTIONS`, as v0 did, as a recorded deviation. A heuristic based on the full catch-all method set (every framework's set includes `CONNECT` and `TRACE`) was considered and not adopted. Echo v5's listing corrected to `e.Router().Routes()`. Applied to design section 9.
 
 Gin `Any`, Fiber `All` and Echo v4 `Any` register one route per method, and `chi.Walk` explicitly skips the `"*"` method and emits each method separately (chi v5.1.0 `tree.go:871-872`). Only Echo v5 has a marker (`RouteAny = "echo_route_any"`). Anything else needs a heuristic, and a wrongly omitted endpoint is marked removed by the server. Also, Echo v5 has no `Echo.Routes`; the listing is `e.Router().Routes()`, as v0 uses.
 
@@ -246,7 +266,7 @@ The main reviewer re-verified, independently of the reviewers:
 
 - **S1:** reproduced the init panic with slim v1.11.0 plus `otlptracehttp` v1.46.0 on Go 1.25.8; confirmed a canonical-data-only build has no gRPC packages or `go.mod` entries; confirmed module `go` directives.
 - **S2:** read `SetBodyStream`, `ResetBody` and `closeBodyStream` in fasthttp v1.51.0 and v1.69.0 (close before install; no other public setter); `ReadCloserWithError` absent in v1.52.0 and present in v1.53.0; Fiber v2.52.15 requires fasthttp v1.51.0; user values are reset after `writeResponse` and flush (v1.51.0 `server.go:2412-2467`) and `io.Closer` values are closed on reset (`userdata.go:77-78`). The reviewer's empirical timing runs across four Fiber versions were not repeated.
-- **S3:** read R11/R12 rationale and shared design sections 5-6 and 8; synchronous `OnEnd` in `End` is OTel SDK behavior already relied on by [the first review](design-review.md).
+- **S3:** read R11/R12 rationale and shared design sections 5-6 and 8; synchronous `OnEnd` in `End` is OTel SDK behavior already relied on by [the first review](design-review.md). The decided rules were then validated by a separate POC (see S3), whose tests the main reviewer re-ran under `-race`.
 - **S4:** `slog.Record` method set in Go 1.25.8.
 - **S5:** built a working `otlptrace.NewUnstarted` exporter with a custom `Client` encoding `TracesData`.
 - **S7:** Fiber v3.5.0 `Ctx.Value` and fasthttp v1.51.0-v1.53.0 `RequestCtx.Value`.
@@ -260,7 +280,7 @@ S6, S8, S11 and S14 rely on reviewer programs whose mechanisms follow directly f
 | --- | --- | --- |
 | Config/logs 1 | Slim proto registration conflict | Confirmed, S1. |
 | Transport 1, 2 | Fiber stream wrapper install; `CloseWithError` floor | Confirmed, merged into S2. |
-| Tracing 1, 2 | Always create span; middleware-only root designation | Confirmed, merged into S3. |
+| Tracing 1, 2 | Always create span; middleware-only root designation | Merged into S3; middleware-only designation accepted, always-create rejected. |
 | Config/logs 3 | `MaskLogRecord` on `slog.Record` | Confirmed, S4. |
 | Config/logs 2 | Public `otlptrace` conversion | Confirmed, S5. |
 | Tracing 3 | Private-mode span in request context | Confirmed, S6. |
