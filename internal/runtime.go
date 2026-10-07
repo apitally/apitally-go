@@ -7,16 +7,22 @@ import (
 	"testing"
 	"time"
 
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 
 	root "github.com/apitally/apitally-go"
 )
+
+const batchExportTimeout = 30 * time.Second
 
 var (
 	registrationMu sync.Mutex
 	currentRuntime atomic.Pointer[sdkRuntime]
 	// Activation is suppressed in test binaries unless a test calls SetUpTest.
 	isActivationAllowedInTests atomic.Bool
+	instrumentedApps           sync.Map
 )
 
 // sdkRuntime is the process-global Apitally runtime. The first registered
@@ -31,11 +37,23 @@ type sdkRuntime struct {
 	activateOnce sync.Once
 	active       atomic.Bool
 
-	resource *resourcepb.Resource
-	spool    *spool
-	client   *exportClient
-	logs     *logBatcher
-	metrics  *metrics
+	resource          *resource.Resource
+	encodedResource   *resourcepb.Resource
+	spool             *spool
+	client            *exportClient
+	logs              *logBatcher
+	metrics           *metrics
+	redaction         *redaction
+	registry          *requestRegistry
+	spanProcessor     *spanProcessor
+	batchProcessor    sdktrace.SpanProcessor
+	provider          *sdktrace.TracerProvider
+	ownsProvider      bool
+	isProviderPrivate bool
+	tracer            trace.Tracer
+
+	exportResourcesMu sync.Mutex
+	exportResources   map[*resource.Resource]*resource.Resource
 
 	cycleMu        sync.Mutex
 	exportInterval time.Duration
@@ -64,6 +82,14 @@ func Register(cfg *root.Config, framework FrameworkInfo, listRoutes func() []Rou
 	r.routeListersMu.Lock()
 	r.routeListers = append(r.routeListers, listRoutes)
 	r.routeListersMu.Unlock()
+}
+
+// InstallOnce calls install unless it was already called for app, so
+// initializing an app twice does not stack middleware.
+func InstallOnce(app any, install func()) {
+	if _, isInstalled := instrumentedApps.LoadOrStore(app, true); !isInstalled {
+		install()
+	}
 }
 
 // Activate starts Apitally once per process. Concurrent callers wait until
@@ -98,6 +124,7 @@ func SetUpTest(t testing.TB) {
 			_ = r.shutdown(ctx)
 			cancel()
 		}
+		restoreGlobalsForTest()
 		warnedKeys.Clear()
 		isActivationAllowedInTests.Store(false)
 	})
@@ -108,11 +135,23 @@ func (r *sdkRuntime) activate() {
 		return
 	}
 	defer recoverAndLogPanic("activation")
-	r.resource = encodeResource(newResource(r.settings.config.Env))
+	r.resource = newResource(r.settings.config.Env)
+	r.encodedResource = encodeResource(r.resource)
+	r.exportResources = map[*resource.Resource]*resource.Resource{}
 	r.spool = newSpool()
 	r.client = newExportClient(r.settings)
-	r.logs = newLogBatcher(r.spool, r.resource)
-	r.metrics = newMetrics(r.spool, r.resource)
+	r.logs = newLogBatcher(r.spool, r.encodedResource)
+	r.metrics = newMetrics(r.spool, r.encodedResource)
+	r.redaction = newRedaction(r.settings)
+	r.registry = newRequestRegistry()
+	r.spanProcessor = &spanProcessor{registry: r.registry}
+	r.batchProcessor = sdktrace.NewBatchSpanProcessor(newSpanExporter(r.redaction, r.spool),
+		sdktrace.WithMaxQueueSize(batchQueueSize),
+		sdktrace.WithMaxExportBatchSize(batchMaxSize),
+		sdktrace.WithBatchTimeout(batchDelay),
+		sdktrace.WithExportTimeout(batchExportTimeout),
+	)
+	r.setUpTracerProvider()
 	r.logs.emitEvent(startupEventName, startupEventBody(r.settings, r.framework, r.listRoutes()))
 	ctx, cancel := context.WithCancel(context.Background())
 	r.exportInterval, r.stopExportLoop, r.exportLoopDone = defaultExportInterval, cancel, make(chan struct{})
@@ -130,6 +169,9 @@ func (r *sdkRuntime) shutdown(ctx context.Context) error {
 	}
 	r.cycleMu.Lock()
 	defer r.cycleMu.Unlock()
+	r.registry.cutOff()
+	r.tearDownTracerProvider(ctx)
+	_ = r.batchProcessor.Shutdown(ctx)
 	r.logs.shutdown(ctx)
 	r.metrics.collect()
 	r.spool.closeCurrentFiles()

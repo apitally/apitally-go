@@ -18,14 +18,18 @@ import (
 
 var testFramework = FrameworkInfo{Name: "nethttp", ModulePath: "std", ScopeName: "github.com/apitally/apitally-go/internal"}
 
-// startRuntimeForTest registers cfg and activates the runtime, exporting to
-// server through its in-process transport, so tests can run in synctest
-// bubbles.
-func startRuntimeForTest(t *testing.T, server *testutils.OTLPServer, cfg *root.Config, routes ...Route) {
+// registerForTest registers cfg, exporting to server through its in-process
+// transport, so tests can run in synctest bubbles.
+func registerForTest(t *testing.T, server *testutils.OTLPServer, cfg *root.Config, routes ...Route) {
 	t.Helper()
 	SetUpTest(t)
 	setExportTransportForTest(t, server.Transport())
 	Register(cfg, testFramework, func() []Route { return routes })
+}
+
+func startRuntimeForTest(t *testing.T, server *testutils.OTLPServer, cfg *root.Config, routes ...Route) {
+	t.Helper()
+	registerForTest(t, server, cfg, routes...)
 	Activate()
 }
 

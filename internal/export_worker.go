@@ -45,6 +45,7 @@ func (r *sdkRuntime) runExportCycle(ctx context.Context) {
 
 func (r *sdkRuntime) flushIntake(ctx context.Context) {
 	r.logs.flush(ctx)
+	_ = r.batchProcessor.ForceFlush(ctx)
 	r.metrics.collect()
 }
 

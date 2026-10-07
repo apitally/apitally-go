@@ -1,4 +1,4 @@
-MODULES := .
+MODULES := . chi-v5
 
 .PHONY: check test
 

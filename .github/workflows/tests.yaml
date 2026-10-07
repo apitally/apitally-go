@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        module: ["."]
+        module: [".", "chi-v5"]
         setup:
           - go-version: "1.25"
             dependencies: floor

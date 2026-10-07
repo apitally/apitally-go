@@ -105,6 +105,15 @@ func withoutCallbacks(c root.Config) root.Config {
 	return c
 }
 
+func matchesAny(patterns []*regexp.Regexp, value string) bool {
+	for _, re := range patterns {
+		if re.MatchString(value) {
+			return true
+		}
+	}
+	return false
+}
+
 func envValue(name string) string {
 	return strings.TrimSpace(os.Getenv(name))
 }
