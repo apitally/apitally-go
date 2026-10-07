@@ -279,7 +279,7 @@ apitally.Init(r, cfg)
 r.Run(":8080")
 ```
 
-**Confirmed package roles:** the root package declares only the public types shared by all frameworks (`Config`, `Consumer`, `LogRecord`) and `NewConfig`. It imports nothing from the SDK, so the `internal` package can import it for these types. Each framework package aliases the types and declares `NewConfig`, `Shutdown`, `NewSlogHandler`, `StartSpan` and the request helpers below as documented wrapper functions that call `internal` directly, never as function variables, so pkg.go.dev shows their signatures and docs and users cannot reassign them. The root package holds no functions besides `NewConfig`: users never import it, and functions there would make root and `internal` import each other. Caller-sensitive functions (`StartSpan`, `CaptureError`) pass a fixed frame-skip count to `internal`, so the recorded frame is the user's; one test per framework asserts the recorded file. Users import only their framework package, in handlers and in service code, as in v0; documentation never imports the root package, which stays an indirect requirement in the application's `go.mod`.
+**Confirmed package roles:** the root package declares only the public types shared by all frameworks (`Config`, `Consumer`, `LogRecord`) and `NewConfig`. It imports nothing from the SDK, so the `internal` package can import it for these types. Each framework package aliases the types and declares `NewConfig`, `Shutdown`, `NewSlogHandler` and the request helpers below as documented wrapper functions that call `internal` directly, never as function variables, so pkg.go.dev shows their signatures and docs and users cannot reassign them. The root package holds no functions besides `NewConfig`: users never import it, and functions there would make root and `internal` import each other. `CaptureError` records its call site's stack, so it passes a fixed frame-skip count to `internal`; one test per framework asserts the recorded file. Users import only their framework package, in handlers and in service code, as in v0; documentation never imports the root package, which stays an indirect requirement in the application's `go.mod`.
 
 ### Request helpers
 
@@ -310,12 +310,14 @@ Initialization installs the request-state holder at Apitally's observation bound
 
 ### Manual tracing
 
-**Confirmed:** `StartSpan(ctx, name string, opts ...trace.SpanStartOption) (context.Context, trace.Span)` in each framework package. It creates an INTERNAL span under tracer scope `apitally.otel` from the global tracer provider and adds the caller's `code.function.name`, `code.file.path` and `code.line.number` (`runtime.Caller`). It returns native OTel types; `defer span.End()` is Go's block form. There is no function wrapper: Go has no decorators, and closure-based wrappers are unusual Go. Outside a monitored request the span is not recorded by Apitally's fallback sampler.
+**Confirmed adaptation:** no Apitally manual-tracing API. Documentation shows the OTel API directly, with the context that holds the request span: `c.Request.Context()` on Gin, `c.Request().Context()` on Echo, `c.Context()` on Fiber v3, `c.UserContext()` on Fiber v2 and `r.Context()` on Chi. Gin's and Fiber's own `c` do not work here (request helpers above).
 
 ```go
-ctx, span := apitally.StartSpan(ctx, "search_books")
+ctx, span := otel.Tracer("bookstore").Start(ctx, "search_books")
 defer span.End()
 ```
+
+In Go this is already one call, and an Apitally wrapper would still return OTel's `trace.Span`, whose attributes need the OTel `attribute` package, so it would not spare users the OTel API, which is the purpose of the shared manual-tracing surface. Apitally registers its provider globally when none is set (section 2), so `otel.Tracer` works without setup, including tracers obtained before activation. Go has no decorators, so the shared function wrapper has no idiomatic form either. This applies the shared rule that ecosystems where an instrumentation is already a one-liner skip the wrappers, and keeps all application tracing code portable OTel.
 
 No contrib setup wrappers: Go instrumentations are already one-liners (`otelhttp.NewTransport`, `otelsql.Open`, `redisotel.InstrumentTracing`); documentation shows them.
 
@@ -350,7 +352,7 @@ Wire attributes, scope names, default redaction and exclusion patterns, the samp
 | Transport and completion | On Chi, Echo and Gin, observation ends at Apitally's handler-chain completion or unwind; on Fiber, observation and duration extend through fasthttp's response write or abort, signalled by a user-value `io.Closer`, with copied request state and coordinated span/request release. Fiber streams of unknown length are counted and captured through a wrapper installed by one fail-safe `unsafe` field write, since fasthttp has no public way to replace a stream; Fiber streams with a known length are not wrapped and omit body capture. Eligible streamed response payloads follow the same bounded capture and privacy rules as buffered responses. Zero-copy file sends on Fiber are preserved and omit body capture, as in .NET; on Chi, `sendfile` is preserved for responses that are not body-captured. Outer recovery responses may have missing headers, bodies and final sizes, an assumed status and duration excluding later recovery work. Gin preserves `gin.Default()` and `r.Run()`; responses bypassing middleware (including automatic redirects) and final engine writes (including default 404/405 payloads) are not fully observed. |
 | Brotli | Not decoded (no standard library decoder); `br` bodies are not captured. |
 | Process gauges | `gopsutil/v4`. |
-| Manual tracing | `StartSpan(ctx, name)` returning native OTel types; no function wrapper, no contrib wrappers. |
+| Manual tracing | None: documentation shows `otel.Tracer(...).Start` with the request context; no contrib wrappers. |
 | Startup paths | Catch-all registrations are reported once per method, except on Echo v5, which marks them with `RouteAny`. |
 | OpenAPI | Omitted from the startup event. |
 | Consumer attributes | The first 10 valid entries are taken in lexicographic key order, because Go map iteration order is random. |
