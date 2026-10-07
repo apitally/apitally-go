@@ -1,18 +1,21 @@
-define go-module-check
-	cd $(1) && go build -o /dev/null ./...
-	cd $(1) && go vet ./...
-	cd $(1) && gofmt -l .
-	cd $(1) && go mod verify && go mod tidy -v
-endef
+MODULES := .
 
-define go-module-test
-	cd $(1) && go test -p 1 -v -race -coverprofile=coverage.out ./...
-endef
+.PHONY: check test
 
-MODULES := chi-v5 echo-v4 echo-v5 fiber-v2 fiber-v3 gin
+check:
+	@for m in $(MODULES); do \
+		echo "Checking $$m"; \
+		(cd $$m \
+			&& go build ./... \
+			&& go vet ./... \
+			&& unformatted=$$(gofmt -l $$(go list -f '{{.Dir}}/*.go' ./...)) \
+			&& { test -z "$$unformatted" || { echo "Not gofmt-formatted: $$unformatted"; false; }; } \
+			&& go mod verify \
+			&& go mod tidy -diff) || exit 1; \
+	done
 
-check: $(addprefix check-,$(MODULES))
-test:  $(addprefix test-,$(MODULES))
-
-$(foreach m,$(MODULES),$(eval check-$(m): ; $(call go-module-check,$(m))))
-$(foreach m,$(MODULES),$(eval test-$(m):  ; $(call go-module-test,$(m))))
+test:
+	@for m in $(MODULES); do \
+		echo "Testing $$m"; \
+		(cd $$m && go test -race ./...) || exit 1; \
+	done
