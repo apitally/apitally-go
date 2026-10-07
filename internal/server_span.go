@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -63,7 +62,7 @@ func requestAttributes(info *RequestInfo) []attribute.KeyValue {
 	attrs := []attribute.KeyValue{
 		attribute.String("http.request.method", info.Method),
 		attribute.String("url.scheme", info.Scheme),
-		attribute.String("url.path", toValidUTF8(info.Path)),
+		attribute.String("url.path", info.Path),
 	}
 	host, port := splitHostPort(info.Host)
 	if host != "" {
@@ -73,10 +72,10 @@ func requestAttributes(info *RequestInfo) []attribute.KeyValue {
 		attrs = append(attrs, attribute.Int("server.port", port))
 	}
 	if info.Query != "" {
-		attrs = append(attrs, attribute.String("url.query", toValidUTF8(info.Query)))
+		attrs = append(attrs, attribute.String("url.query", info.Query))
 	}
 	if userAgent := info.Header.Get("User-Agent"); userAgent != "" {
-		attrs = append(attrs, attribute.String("user_agent.original", toValidUTF8(userAgent)))
+		attrs = append(attrs, attribute.String("user_agent.original", userAgent))
 	}
 	return attrs
 }
@@ -131,13 +130,4 @@ func splitHostPort(address string) (string, int) {
 	}
 	port, _ := strconv.Atoi(portText)
 	return host, port
-}
-
-// toValidUTF8 replaces invalid UTF-8, which would make the whole export
-// unparseable at ingest.
-func toValidUTF8(s string) string {
-	if utf8.ValidString(s) {
-		return s
-	}
-	return strings.ToValidUTF8(s, "\uFFFD")
 }

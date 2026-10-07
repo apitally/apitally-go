@@ -64,10 +64,15 @@ func newSpool() *spool {
 	return s
 }
 
-// appendMessage encodes m and appends it. Encoding fails only for invalid
-// UTF-8 in string fields, which would make the whole export unparseable.
+// appendMessage encodes m and appends it. Request data and application
+// telemetry can contain invalid UTF-8, which makes encoding fail, so it is
+// replaced before a second attempt.
 func (s *spool) appendMessage(signal string, m proto.Message) {
 	payload, err := proto.Marshal(m)
+	if err != nil {
+		replaceInvalidUTF8(m.ProtoReflect())
+		payload, err = proto.Marshal(m)
+	}
 	if err != nil {
 		warnOnce("encode-"+signal, "Apitally could not encode "+signal+" and dropped them", "error", err)
 		return

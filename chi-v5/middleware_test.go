@@ -271,7 +271,7 @@ func TestUnmatchedRequestHasNoRouteAndNoHistogramPoint(t *testing.T) {
 	server := setUp(t)
 	appURL := serve(t, newRouter(nil))
 
-	resp := testutils.Get(t, appURL+"/missing")
+	resp := testutils.Get(t, appURL+"/api/v1/missing")
 	shutDown(t)
 
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)

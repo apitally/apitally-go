@@ -98,6 +98,11 @@ func BeginRequest(ctx context.Context, info RequestInfo) (state *RequestState, r
 			state, requestCtx = nil, ctx
 		}
 	}()
+	// Fiber reports the X-Forwarded-Proto value of untrusted clients, and the
+	// scheme is part of the request metric combinations.
+	if info.Scheme != "https" {
+		info.Scheme = "http"
+	}
 	state = &RequestState{runtime: r, info: info, startTime: time.Now()}
 	attrs := requestAttributes(&info)
 	ctx, state.span, state.isSpanCreated = r.startServerSpan(ctx, &info, attrs)
@@ -105,7 +110,7 @@ func BeginRequest(ctx context.Context, info RequestInfo) (state *RequestState, r
 		state.requestAttributes = attrs
 	}
 	if live, ok := state.span.(sdktrace.ReadOnlySpan); ok && state.span.IsRecording() && !r.isExcluded(&info) &&
-		r.shouldKeepAtRequestStage(&exportSpan{ReadOnlySpan: live, attributes: mergeAttributes(live.Attributes(), attrs)}) {
+		r.shouldKeepAtRequestStage(newExportSpanCopy(live, mergeAttributes(live.Attributes(), attrs))) {
 		state.isMonitored = r.registry.register(state)
 	}
 	return state, context.WithValue(ctx, requestStateKey{}, state)
@@ -125,7 +130,7 @@ func (s *RequestState) FinishObservation(result TransportResult) {
 	s.mu.Unlock()
 	attrs := transportAttributes(&result)
 	if consumer != nil {
-		attrs = append(attrs, attribute.String("apitally.consumer.identifier", toValidUTF8(consumer.identifier)))
+		attrs = append(attrs, attribute.String("apitally.consumer.identifier", consumer.identifier))
 	}
 	if !isWebSocketUpgrade(s.info.Header) {
 		s.recordRequestData(&result, end, consumer)
@@ -179,8 +184,7 @@ func (s *RequestState) recordRequestData(result *TransportResult, end time.Time,
 	s.mu.Lock()
 	captured, channelError, details := s.capturedError, s.channelError, s.validationDetails
 	s.mu.Unlock()
-	path := truncateString(toValidUTF8(result.Route), maxErrorPath)
-	consumerIdentifier = toValidUTF8(consumerIdentifier)
+	path := truncateString(result.Route, maxErrorPath)
 	if result.StatusCode == http.StatusBadRequest || result.StatusCode == http.StatusUnprocessableEntity {
 		details = append(slices.Clone(details), validationDetails(channelError)...)
 	}

@@ -48,6 +48,9 @@ func newApp(cfg *apitally.Config, config ...fiber.Config) *fiber.App {
 	app := fiber.New(config...)
 	app.Use(recover.New())
 	apitally.Init(app, cfg)
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("bookstore")
+	})
 	app.Get("/items/:id", func(c fiber.Ctx) error {
 		slog.InfoContext(c, "fetching item", "id", c.Params("id"))
 		return c.SendString("item " + c.Params("id"))
@@ -221,6 +224,7 @@ func TestStartupEventPathsMatchRoutes(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(records[0].Body.GetStringValue()), &body))
 	assert.Equal(t, "fiber", body.Framework)
 	assert.ElementsMatch(t, []map[string]string{
+		{"method": "GET", "path": "/"},
 		{"method": "GET", "path": "/items/:id"},
 		{"method": "POST", "path": "/items"},
 		{"method": "GET", "path": "/stream"},
@@ -275,16 +279,20 @@ func TestUnmatchedRequestHasNoRouteAndNoHistogramPoint(t *testing.T) {
 	server := setUp(t)
 	app := newApp(nil)
 
-	resp := send(t, app, http.MethodGet, "/api/v1/missing", nil)
+	missing := send(t, app, http.MethodGet, "/missing", nil)
+	missingInGroup := send(t, app, http.MethodGet, "/api/v1/missing", nil)
 	shutDown(t)
 
-	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+	assert.Equal(t, http.StatusNotFound, missing.StatusCode)
+	assert.Equal(t, http.StatusNotFound, missingInGroup.StatusCode)
 	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	assert.Equal(t, "GET", spans[0].Name)
-	attrs := testutils.Attributes(spans[0].Attributes)
-	assert.NotContains(t, attrs, "http.route")
-	assert.Equal(t, int64(404), attrs["http.response.status_code"])
+	require.Len(t, spans, 2)
+	for _, span := range spans {
+		assert.Equal(t, "GET", span.Name)
+		attrs := testutils.Attributes(span.Attributes)
+		assert.NotContains(t, attrs, "http.route")
+		assert.Equal(t, int64(404), attrs["http.response.status_code"])
+	}
 	assert.Empty(t, testutils.HistogramPoints(server.Metrics(t), "http.server.request.duration"))
 }
 

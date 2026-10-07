@@ -133,19 +133,19 @@ func (c *requestConsumer) canonicalPayload() string {
 
 // consumerUpdateEventBody encodes a deleted attribute as null.
 func consumerUpdateEventBody(c *requestConsumer) attribute.Value {
-	body := []attribute.KeyValue{attribute.String("identifier", toValidUTF8(c.identifier))}
+	body := []attribute.KeyValue{attribute.String("identifier", c.identifier)}
 	if c.name != "" {
-		body = append(body, attribute.String("name", toValidUTF8(c.name)))
+		body = append(body, attribute.String("name", c.name))
 	}
 	if c.group != "" {
-		body = append(body, attribute.String("group", toValidUTF8(c.group)))
+		body = append(body, attribute.String("group", c.group))
 	}
 	if len(c.attributes) > 0 {
 		attrs := make([]attribute.KeyValue, len(c.attributes))
 		for i, a := range c.attributes {
-			attrs[i] = attribute.KeyValue{Key: attribute.Key(toValidUTF8(a.key))}
+			attrs[i] = attribute.KeyValue{Key: attribute.Key(a.key)}
 			if a.value != "" {
-				attrs[i].Value = attribute.StringValue(toValidUTF8(a.value))
+				attrs[i].Value = attribute.StringValue(a.value)
 			}
 		}
 		body = append(body, attribute.Map("attributes", attrs...))

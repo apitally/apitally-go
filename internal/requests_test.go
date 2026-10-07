@@ -148,8 +148,10 @@ func TestExcludedRequestsAreNotExportedOrSampled(t *testing.T) {
 	cfg := root.NewConfig()
 	cfg.ExcludePaths = []string{"^/internal/"}
 	callbackCalls := 0
-	cfg.SampleOnRequest = func(sdktrace.ReadOnlySpan) (float64, bool) {
+	var callbackSpanKind trace.SpanKind
+	cfg.SampleOnRequest = func(span sdktrace.ReadOnlySpan) (float64, bool) {
 		callbackCalls++
+		callbackSpanKind = span.SpanKind()
 		return 1, true
 	}
 	registerForTest(t, server, cfg)
@@ -169,6 +171,7 @@ func TestExcludedRequestsAreNotExportedOrSampled(t *testing.T) {
 	require.Len(t, spans, 1)
 	assert.Equal(t, "/items", testutils.Attributes(spans[0].Attributes)["url.path"])
 	assert.Equal(t, 1, callbackCalls)
+	assert.Equal(t, trace.SpanKindServer, callbackSpanKind)
 }
 
 func findSpan(t *testing.T, spans []testutils.Span, name string) testutils.Span {

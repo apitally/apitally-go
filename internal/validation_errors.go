@@ -73,9 +73,9 @@ func fieldErrorDetails(err error) []validationDetail {
 			return nil
 		}
 		details = append(details, validationDetail{
-			field:    truncateString(toValidUTF8(namespaceWithoutStruct(fe.Namespace())), maxValidationField),
-			message:  truncateString(toValidUTF8(fe.Error()), maxValidationMessage),
-			typeName: truncateString(toValidUTF8(fe.Tag()), maxValidationType),
+			field:    truncateString(namespaceWithoutStruct(fe.Namespace()), maxValidationField),
+			message:  truncateString(fe.Error(), maxValidationMessage),
+			typeName: truncateString(fe.Tag(), maxValidationType),
 		})
 	}
 	return details

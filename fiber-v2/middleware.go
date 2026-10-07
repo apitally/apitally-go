@@ -46,13 +46,23 @@ func Init(app *fiber.App, cfg *Config) {
 	})
 }
 
+// routeKey identifies a route by its first handler, whose slice element the
+// copies GetRoutes returns share with the routes Fiber matches, because a
+// middleware route and a route can have the same method and path.
+type routeKey struct {
+	method  string
+	handler *fiber.Handler
+}
+
 func newMiddleware(app *fiber.App) fiber.Handler {
-	// Routes are registered before the first request; middleware routes are
-	// not routes.
-	routes := sync.OnceValue(func() map[internal.Route]bool {
-		routes := map[internal.Route]bool{}
+	// Routes are registered before the first request. After the handler chain,
+	// Fiber v2 reports the last matched route, which can be a middleware route.
+	routes := sync.OnceValue(func() map[routeKey]string {
+		routes := map[routeKey]string{}
 		for _, route := range app.GetRoutes(true) {
-			routes[internal.Route{Method: route.Method, Path: route.Path}] = true
+			if len(route.Handlers) > 0 {
+				routes[routeKey{route.Method, &route.Handlers[0]}] = route.Path
+			}
 		}
 		return routes
 	})
@@ -69,14 +79,13 @@ func newMiddleware(app *fiber.App) fiber.Handler {
 			if o.State != nil {
 				// Fiber reuses the context after the middleware returns, so the
 				// response data is copied now.
-				route := c.Route()
 				result := internal.TransportResult{
 					StatusCode:     c.Response().StatusCode(),
 					ClientAddress:  strings.Clone(c.IP()),
 					ResponseHeader: internal.HeaderFromValues(c.GetRespHeaders()),
 				}
-				if routes()[internal.Route{Method: route.Method, Path: route.Path}] {
-					result.Route = strings.Clone(route.Path)
+				if route := c.Route(); len(route.Handlers) > 0 {
+					result.Route = routes()[routeKey{route.Method, &route.Handlers[0]}]
 				}
 				o.FinishHandler(result, c.Request(), c.Response(), p)
 			}

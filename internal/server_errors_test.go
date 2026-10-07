@@ -115,6 +115,28 @@ func TestCapturedErrorCountsAsServerErrorOnlyWithStatus500(t *testing.T) {
 	assert.Equal(t, []any{map[string]any{"count": int64(2)}}, body["counts"])
 }
 
+type nilPointerError struct{ message string }
+
+func (e *nilPointerError) Error() string { return e.message }
+
+func TestErrorWhoseErrorMethodPanicsIsNotCaptured(t *testing.T) {
+	server := testutils.NewOTLPServer(t)
+	registerForTest(t, server, nil)
+	appURL := startTestApp(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var err *nilPointerError
+		RequestStateFromContext(r.Context()).CaptureError(err)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+
+	resp := testutils.Get(t, appURL+"/items")
+	require.NoError(t, Shutdown(context.Background()))
+
+	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	spans := server.Spans(t)
+	require.Len(t, spans, 1)
+	assert.Empty(t, spans[0].Events)
+}
+
 func TestErrorGroupsKeepAtMost100ErrorsWithCountsPerConsumer(t *testing.T) {
 	var groups errorGroups[string]
 	groups.add("first", "acme")

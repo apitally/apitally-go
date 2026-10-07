@@ -89,7 +89,7 @@ func (red *redaction) headerAttributes(prefix string, header http.Header) []attr
 	for _, name := range names {
 		values := make([]string, len(header[name]))
 		for i, value := range header[name] {
-			values[i] = red.redactHeaderValue(name, toValidUTF8(value))
+			values[i] = red.redactHeaderValue(name, value)
 		}
 		if red.isHeaderRedacted(name) {
 			values = []string{redactedValue}
@@ -111,8 +111,8 @@ func (red *redaction) redactHeaderValue(name, value string) string {
 
 // redactSpanAttributes redacts query-bearing attributes and captured header
 // attributes of stable and legacy semantic conventions, including those set
-// by the application's instrumentation, and replaces invalid UTF-8. It
-// returns attrs itself when nothing changes.
+// by the application's instrumentation. It returns attrs itself when nothing
+// changes.
 func (red *redaction) redactSpanAttributes(attrs []attribute.KeyValue) []attribute.KeyValue {
 	out := attrs
 	for i, kv := range attrs {
@@ -137,7 +137,7 @@ func (red *redaction) redactSpanAttribute(kv attribute.KeyValue) (attribute.Valu
 	switch kv.Value.Type() {
 	case attribute.STRING:
 		original := kv.Value.AsString()
-		value := toValidUTF8(original)
+		value := original
 		switch {
 		case isHeader && red.isHeaderRedacted(header):
 			value = redactedValue
@@ -157,9 +157,9 @@ func (red *redaction) redactSpanAttribute(kv attribute.KeyValue) (attribute.Valu
 		values := make([]string, len(original))
 		isChanged := false
 		for i, item := range original {
-			values[i] = toValidUTF8(item)
+			values[i] = item
 			if isHeader {
-				values[i] = red.redactHeaderValue(header, values[i])
+				values[i] = red.redactHeaderValue(header, item)
 			}
 			isChanged = isChanged || values[i] != item
 		}

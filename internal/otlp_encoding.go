@@ -2,6 +2,7 @@ package internal
 
 import (
 	"strconv"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -10,6 +11,7 @@ import (
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
 	metricspb "go.opentelemetry.io/proto/otlp/metrics/v1"
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 const (
@@ -45,8 +47,8 @@ func encodeLogRecord(r *logRecord) *logspb.LogRecord {
 	}
 	attrs := []attribute.KeyValue{
 		attribute.String("apitally.request.server_span_id", r.serverSpanID.String()),
-		attribute.String("code.function.name", toValidUTF8(r.codeFunction)),
-		attribute.String("code.file.path", toValidUTF8(r.codeFile)),
+		attribute.String("code.function.name", r.codeFunction),
+		attribute.String("code.file.path", r.codeFile),
 		attribute.Int("code.line.number", r.codeLine),
 	}
 	return &logspb.LogRecord{
@@ -181,6 +183,30 @@ func encodeArray[T any](items []T, toValue func(T) attribute.Value) *commonpb.An
 		values[i] = encodeValue(toValue(item))
 	}
 	return &commonpb.AnyValue_ArrayValue{ArrayValue: &commonpb.ArrayValue{Values: values}}
+}
+
+// replaceInvalidUTF8 replaces invalid UTF-8 in every string field of m and
+// its nested messages, which OTLP requires to be valid UTF-8.
+func replaceInvalidUTF8(m protoreflect.Message) {
+	m.Range(func(field protoreflect.FieldDescriptor, value protoreflect.Value) bool {
+		switch {
+		case field.IsList():
+			list := value.List()
+			for i := range list.Len() {
+				switch field.Kind() {
+				case protoreflect.MessageKind:
+					replaceInvalidUTF8(list.Get(i).Message())
+				case protoreflect.StringKind:
+					list.Set(i, protoreflect.ValueOfString(strings.ToValidUTF8(list.Get(i).String(), "\uFFFD")))
+				}
+			}
+		case field.Kind() == protoreflect.MessageKind:
+			replaceInvalidUTF8(value.Message())
+		case field.Kind() == protoreflect.StringKind:
+			m.Set(field, protoreflect.ValueOfString(strings.ToValidUTF8(value.String(), "\uFFFD")))
+		}
+		return true
+	})
 }
 
 func unixNano(t time.Time) uint64 {

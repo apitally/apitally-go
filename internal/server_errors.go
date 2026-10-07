@@ -63,12 +63,15 @@ func (s *RequestState) CapturePanic(recovered any) {
 // SERVER span's exception event. Cancellations are not errors of the
 // application.
 func (s *RequestState) captureError(value any, stacktrace string) {
+	// Error and String methods of application types can panic, for example on
+	// a typed nil error.
+	defer recoverAndLogPanic("error capture")
 	if err, ok := value.(error); ok && errors.Is(err, context.Canceled) {
 		return
 	}
 	captured := &capturedError{
 		typeName:   truncateString(exceptionTypeName(value), maxExceptionType),
-		message:    truncateString(toValidUTF8(strings.TrimSpace(exceptionMessage(value))), maxExceptionMessage),
+		message:    truncateString(strings.TrimSpace(exceptionMessage(value)), maxExceptionMessage),
 		stacktrace: stacktrace,
 	}
 	s.mu.Lock()
@@ -137,7 +140,7 @@ func callerStack() string {
 			break
 		}
 	}
-	return toValidUTF8(b.String())
+	return b.String()
 }
 
 // isSDKFunction reports whether function belongs to one of Apitally's

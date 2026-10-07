@@ -3,6 +3,7 @@ package apitally
 
 import (
 	"net/http"
+	"sync"
 
 	"github.com/go-chi/chi/v5"
 
@@ -21,14 +22,31 @@ var framework = internal.FrameworkInfo{
 // no effect. Calling Init again for the same router does nothing.
 func Init(r chi.Router, cfg *Config) {
 	internal.Register(cfg, framework, func() []internal.Route { return listRoutes(r) })
-	internal.InstallOnce(r, func() { r.Use(internal.NetHTTPMiddleware(routePattern)) })
+	internal.InstallOnce(r, func() { r.Use(internal.NetHTTPMiddleware(newRoutePattern(r))) })
 }
 
-func routePattern(r *http.Request) string {
-	if rctx := chi.RouteContext(r.Context()); rctx != nil {
-		return rctx.RoutePattern()
+// newRoutePattern returns the matched route template of a request, or "".
+// For an unmatched request below a mounted router, Chi reports the mount
+// pattern, such as "/api/*", which is not a route.
+func newRoutePattern(router chi.Router) func(*http.Request) string {
+	// Routes are registered before the first request.
+	routes := sync.OnceValue(func() map[internal.Route]bool {
+		routes := map[internal.Route]bool{}
+		for _, route := range listRoutes(router) {
+			routes[route] = true
+		}
+		return routes
+	})
+	return func(r *http.Request) string {
+		rctx := chi.RouteContext(r.Context())
+		if rctx == nil {
+			return ""
+		}
+		if pattern := rctx.RoutePattern(); routes()[internal.Route{Method: r.Method, Path: pattern}] {
+			return pattern
+		}
+		return ""
 	}
-	return ""
 }
 
 func listRoutes(r chi.Router) []internal.Route {

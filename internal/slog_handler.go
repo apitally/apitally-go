@@ -120,7 +120,7 @@ func (h *slogHandler) capture(ctx context.Context, record slog.Record) {
 	if captured.Record.Message == "" {
 		return
 	}
-	captured.Record.Message = truncateString(toValidUTF8(captured.Record.Message), maxLogTextLength)
+	captured.Record.Message = truncateString(captured.Record.Message, maxLogTextLength)
 	state.logEmitted(captured)
 }
 
@@ -262,7 +262,7 @@ func ownedAnyValue(value any, depth int) slog.Value {
 func slogAttributes(attrs []slog.Attr) []attribute.KeyValue {
 	out := make([]attribute.KeyValue, 0, len(attrs))
 	for _, a := range attrs {
-		out = append(out, attribute.KeyValue{Key: attribute.Key(toValidUTF8(a.Key)), Value: slogAttributeValue(ownedSlogValue(a.Value, 0))})
+		out = append(out, attribute.KeyValue{Key: attribute.Key(a.Key), Value: slogAttributeValue(ownedSlogValue(a.Value, 0))})
 	}
 	return out
 }
@@ -270,7 +270,7 @@ func slogAttributes(attrs []slog.Attr) []attribute.KeyValue {
 func slogAttributeValue(v slog.Value) attribute.Value {
 	switch v.Kind() {
 	case slog.KindString:
-		return attribute.StringValue(truncateString(toValidUTF8(v.String()), maxLogTextLength))
+		return attribute.StringValue(truncateString(v.String(), maxLogTextLength))
 	case slog.KindInt64:
 		return attribute.Int64Value(v.Int64())
 	case slog.KindUint64:
