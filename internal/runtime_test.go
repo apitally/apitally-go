@@ -3,6 +3,8 @@ package internal
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"runtime"
 	"testing"
 	"testing/synctest"
@@ -19,10 +21,12 @@ import (
 var testFramework = FrameworkInfo{Name: "nethttp", ModulePath: "std", ScopeName: "github.com/apitally/apitally-go/internal"}
 
 // registerForTest registers cfg, exporting to server through its in-process
-// transport, so tests can run in synctest bubbles.
+// transport, so tests can run in synctest bubbles. The slog default handler
+// captures logs and discards the application's output.
 func registerForTest(t *testing.T, server *testutils.OTLPServer, cfg *root.Config, routes ...Route) {
 	t.Helper()
 	SetUpTest(t)
+	testutils.SetSlogDefault(t, NewSlogHandler(slog.NewTextHandler(io.Discard, nil)))
 	setExportTransportForTest(t, server.Transport())
 	Register(cfg, testFramework, func() []Route { return routes })
 }

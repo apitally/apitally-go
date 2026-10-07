@@ -79,6 +79,7 @@ type RequestState struct {
 	// channelError is the first error from the framework's error channel.
 	channelError      error
 	validationDetails []validationDetail
+	logs              []*logRecord
 }
 
 type requestStateKey struct{}
@@ -221,8 +222,8 @@ func (s *RequestState) claimReleaseLocked() bool {
 	return true
 }
 
-// release exports the request's descendants and then its SERVER span, unless
-// response sampling drops the request.
+// release exports the request's descendants, its SERVER span and then its
+// logs, unless response sampling drops the request.
 func (s *RequestState) release() {
 	r := s.runtime
 	r.registry.remove(s)
@@ -238,6 +239,9 @@ func (s *RequestState) release() {
 		r.batchProcessor.OnEnd(r.newExportSpan(s, span))
 	}
 	r.batchProcessor.OnEnd(root)
+	for _, record := range s.logs {
+		r.logs.add(record)
+	}
 }
 
 // shouldCaptureRequestBody decides from the request headers alone.

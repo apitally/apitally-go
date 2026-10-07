@@ -88,8 +88,8 @@ func TestApplicationPropagatorIsKept(t *testing.T) {
 
 func TestForeignTracerProviderGetsPrivateProviderWithoutDescendants(t *testing.T) {
 	server := testutils.NewOTLPServer(t)
-	logs := testutils.RecordSlog(t)
 	registerForTest(t, server, nil)
+	logs := testutils.RecordSlog(t)
 	otel.SetTracerProvider(noop.NewTracerProvider())
 	isRequestSpanInContext := true
 	mux := http.NewServeMux()

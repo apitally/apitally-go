@@ -40,11 +40,25 @@ func encodeLogs(res *resourcepb.Resource, records []*logRecord) *logspb.LogsData
 
 func encodeLogRecord(r *logRecord) *logspb.LogRecord {
 	timestamp := unixNano(r.Record.Time)
+	if r.eventName != "" {
+		return &logspb.LogRecord{TimeUnixNano: timestamp, ObservedTimeUnixNano: timestamp, EventName: r.eventName, Body: encodeValue(r.eventBody)}
+	}
+	attrs := []attribute.KeyValue{
+		attribute.String("apitally.request.server_span_id", r.serverSpanID.String()),
+		attribute.String("code.function.name", toValidUTF8(r.codeFunction)),
+		attribute.String("code.file.path", toValidUTF8(r.codeFile)),
+		attribute.Int("code.line.number", r.codeLine),
+	}
 	return &logspb.LogRecord{
 		TimeUnixNano:         timestamp,
 		ObservedTimeUnixNano: timestamp,
-		EventName:            r.eventName,
-		Body:                 encodeValue(r.eventBody),
+		SeverityNumber:       logspb.SeverityNumber(slogSeverityNumber(r.Record.Level)),
+		SeverityText:         r.Record.Level.String(),
+		Body:                 &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: r.Record.Message}},
+		Attributes:           encodeAttributes(append(attrs, slogAttributes(r.Record.Attrs)...)),
+		TraceId:              r.traceID[:],
+		SpanId:               r.spanID[:],
+		Flags:                uint32(r.traceFlags),
 	}
 }
 

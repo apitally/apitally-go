@@ -83,8 +83,8 @@ func TestNestedMonitoredRequestIsExportedAsSeparateRequest(t *testing.T) {
 
 func TestStackedServerSpanInsideRequestIsExportedAsInternalWithWarning(t *testing.T) {
 	server := testutils.NewOTLPServer(t)
-	logs := testutils.RecordSlog(t)
 	registerForTest(t, server, nil)
+	logs := testutils.RecordSlog(t)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /items", func(w http.ResponseWriter, r *http.Request) {
 		for range 2 {

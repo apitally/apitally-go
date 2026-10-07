@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -32,6 +33,7 @@ import (
 func setUp(t *testing.T) *testutils.OTLPServer {
 	server := testutils.NewOTLPServer(t)
 	internal.SetUpTest(t)
+	testutils.SetSlogDefault(t, apitally.NewSlogHandler(slog.NewTextHandler(io.Discard, nil)))
 	return server
 }
 
@@ -48,6 +50,7 @@ func newRouter(cfg *apitally.Config, middlewares ...func(http.Handler) http.Hand
 	apitally.Init(r, cfg)
 	r.Use(middlewares...)
 	r.Get("/items/{id}", func(w http.ResponseWriter, r *http.Request) {
+		slog.InfoContext(r.Context(), "fetching item", "id", chi.URLParam(r, "id"))
 		_, _ = w.Write([]byte("item " + chi.URLParam(r, "id")))
 	})
 	r.Post("/items", func(w http.ResponseWriter, r *http.Request) {
@@ -143,6 +146,36 @@ func TestClientAddressUsesFrameworkResolvedClientIP(t *testing.T) {
 	assert.Equal(t, "203.0.113.7", testutils.Attributes(spans[0].Attributes)["client.address"])
 }
 
+func TestHistogramAttributesAndLogCorrelation(t *testing.T) {
+	server := setUp(t)
+	appURL := serve(t, newRouter(nil))
+
+	testutils.Get(t, appURL+"/items/42")
+	shutDown(t)
+
+	spans := server.Spans(t)
+	require.Len(t, spans, 1)
+	points := testutils.HistogramPoints(server.Metrics(t), "http.server.request.duration")
+	require.Len(t, points, 1)
+	assert.Equal(t, uint64(1), points[0].Count)
+	assert.Equal(t, map[string]any{
+		"http.request.method":       "GET",
+		"http.route":                "/items/{id}",
+		"http.response.status_code": int64(200),
+		"url.scheme":                "http",
+	}, testutils.Attributes(points[0].Attributes))
+	var logs []testutils.LogRecord
+	for _, record := range server.LogRecords(t) {
+		if record.Scope == "slog" {
+			logs = append(logs, record)
+		}
+	}
+	require.Len(t, logs, 1)
+	assert.Equal(t, "fetching item", logs[0].Body.GetStringValue())
+	assert.Equal(t, spans[0].TraceId, logs[0].TraceId)
+	assert.Equal(t, trace.SpanID(spans[0].SpanId).String(), testutils.Attributes(logs[0].Attributes)["apitally.request.server_span_id"])
+}
+
 func TestRouteIncludesGroupPrefix(t *testing.T) {
 	server := setUp(t)
 	appURL := serve(t, newRouter(nil))
@@ -164,9 +197,7 @@ func TestFirstRequestActivatesAndIsRecorded(t *testing.T) {
 	shutDown(t)
 
 	assert.Len(t, server.Spans(t), 1)
-	records := server.LogRecords(t)
-	require.Len(t, records, 1)
-	assert.Equal(t, "apitally.app.startup", records[0].EventName)
+	assert.Len(t, server.Events(t, "apitally.app.startup"), 1)
 }
 
 func TestStartupEventPathsMatchRoutes(t *testing.T) {
@@ -176,7 +207,7 @@ func TestStartupEventPathsMatchRoutes(t *testing.T) {
 	testutils.Get(t, appURL+"/items/1")
 	shutDown(t)
 
-	records := server.LogRecords(t)
+	records := server.Events(t, "apitally.app.startup")
 	require.Len(t, records, 1)
 	var body struct {
 		Framework string              `json:"framework"`
@@ -268,13 +299,9 @@ func TestSetConsumerReachesSpanAndHistogram(t *testing.T) {
 	points := testutils.HistogramPoints(server.Metrics(t), "http.server.request.duration")
 	require.Len(t, points, 1)
 	assert.Equal(t, "acme", testutils.Attributes(points[0].Attributes)["apitally.consumer.identifier"])
-	var consumerUpdates []any
-	for _, record := range server.LogRecords(t) {
-		if record.EventName == "apitally.consumer.update" {
-			consumerUpdates = append(consumerUpdates, testutils.Value(record.Body))
-		}
-	}
-	assert.Equal(t, []any{map[string]any{"identifier": "acme", "name": "Acme Corp"}}, consumerUpdates)
+	updates := server.Events(t, "apitally.consumer.update")
+	require.Len(t, updates, 1)
+	assert.Equal(t, map[string]any{"identifier": "acme", "name": "Acme Corp"}, testutils.Value(updates[0].Body))
 }
 
 func TestUnhandledPanicRecordedOnServerSpan(t *testing.T) {
@@ -304,10 +331,8 @@ func TestValidationErrorReported(t *testing.T) {
 	shutDown(t)
 
 	var events []any
-	for _, record := range server.LogRecords(t) {
-		if record.EventName == "apitally.request.validation_error" {
-			events = append(events, testutils.Value(record.Body))
-		}
+	for _, record := range server.Events(t, "apitally.request.validation_error") {
+		events = append(events, testutils.Value(record.Body))
 	}
 	event := func(field, tag, message string) map[string]any {
 		return map[string]any{

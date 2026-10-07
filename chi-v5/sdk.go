@@ -2,6 +2,7 @@ package apitally
 
 import (
 	"context"
+	"log/slog"
 
 	"go.opentelemetry.io/otel/attribute"
 
@@ -30,6 +31,19 @@ func NewConfig() *Config {
 // Without it, telemetry from up to the last export interval is lost at exit.
 func Shutdown(ctx context.Context) error {
 	return internal.Shutdown(ctx)
+}
+
+// NewSlogHandler returns a slog.Handler that captures the records logged with
+// a request's context for Apitally and passes every record to next
+// unchanged, for example:
+//
+//	slog.SetDefault(slog.New(apitally.NewSlogHandler(slog.NewJSONHandler(os.Stdout, nil))))
+//
+// Pass the request context when logging, such as with slog.InfoContext, to
+// link records to the request. next must not be the handler of the default
+// logger created by the slog package itself.
+func NewSlogHandler(next slog.Handler) slog.Handler {
+	return internal.NewSlogHandler(next)
 }
 
 // SetConsumer identifies the API consumer making the request, for example

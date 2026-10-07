@@ -45,7 +45,7 @@ func TestConsumerUpdateIsEmittedWhenPayloadChanges(t *testing.T) {
 	}
 	require.NoError(t, Shutdown(context.Background()))
 
-	records := findLogRecords(server.LogRecords(t), consumerUpdateEventName)
+	records := server.Events(t, consumerUpdateEventName)
 	require.Len(t, records, 2)
 	assert.Equal(t, "apitally", records[0].Scope)
 	assert.Equal(t, map[string]any{

@@ -48,11 +48,11 @@ func TestSampleOnRequestFailsOpenAndAbstentionFallsBackToSampleRate(t *testing.T
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server := testutils.NewOTLPServer(t)
-			testutils.RecordSlog(t)
 			cfg := root.NewConfig()
 			cfg.SampleRate = 0
 			cfg.SampleOnRequest = tc.callback
 			registerForTest(t, server, cfg)
+			testutils.RecordSlog(t)
 			appURL := startTestApp(t, http.HandlerFunc(writeOK))
 
 			testutils.Get(t, appURL+"/items")

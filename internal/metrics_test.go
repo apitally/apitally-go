@@ -80,8 +80,8 @@ func TestRequestMetricsAreDeltasBetweenCollections(t *testing.T) {
 
 func TestMetricCombinationsAreCappedPerIntervalAndSplitIntoRequests(t *testing.T) {
 	server := testutils.NewOTLPServer(t)
-	logs := testutils.RecordSlog(t)
 	startRuntimeForTest(t, server, nil)
+	logs := testutils.RecordSlog(t)
 	m := currentRuntime.Load().metrics
 
 	for i := range maxMetricCombinations + 1 {

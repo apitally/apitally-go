@@ -74,7 +74,6 @@ func TestMaskCallbacksReplaceBodiesAndFailClosed(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server := testutils.NewOTLPServer(t)
-			testutils.RecordSlog(t)
 			var maskedSpanAttributes []attribute.KeyValue
 			cfg := root.NewConfig()
 			cfg.CaptureRequestBody = true
@@ -83,6 +82,7 @@ func TestMaskCallbacksReplaceBodiesAndFailClosed(t *testing.T) {
 				return tc.mask(span, body)
 			}
 			registerForTest(t, server, cfg)
+			testutils.RecordSlog(t)
 			appURL := startTestApp(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "text/plain")
 				_, _ = r.Body.Read(make([]byte, 1024))

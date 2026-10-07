@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 
 	root "github.com/apitally/apitally-go"
@@ -20,9 +21,16 @@ const (
 // logRecord is a captured application log record or an SDK event, which has
 // an event name and body and no request linkage.
 type logRecord struct {
-	Record    root.LogRecord
-	eventName string
-	eventBody attribute.Value
+	Record       root.LogRecord
+	eventName    string
+	eventBody    attribute.Value
+	traceID      trace.TraceID
+	spanID       trace.SpanID
+	traceFlags   trace.TraceFlags
+	serverSpanID trace.SpanID
+	codeFunction string
+	codeFile     string
+	codeLine     int
 }
 
 func (r *logRecord) scopeName() string {

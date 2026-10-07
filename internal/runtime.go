@@ -130,6 +130,7 @@ func SetUpTest(t testing.TB) {
 		}
 		restoreGlobalsForTest()
 		warnedKeys.Clear()
+		isSlogHandlerCreated.Store(false)
 		isActivationAllowedInTests.Store(false)
 	})
 }
@@ -158,6 +159,9 @@ func (r *sdkRuntime) activate() {
 	)
 	r.setUpTracerProvider()
 	r.logs.emitEvent(startupEventName, startupEventBody(r.settings, r.framework, r.listRoutes()))
+	if r.settings.config.CaptureLogs && !isSlogHandlerCreated.Load() {
+		logWarn("Apitally does not capture application logs, because no handler was created with NewSlogHandler. Wrap your slog handler with NewSlogHandler, or set Config.CaptureLogs to false.")
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	r.exportInterval, r.stopExportLoop, r.exportLoopDone = defaultExportInterval, cancel, make(chan struct{})
 	go r.logs.run()

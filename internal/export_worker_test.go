@@ -48,9 +48,9 @@ func TestRetryableFailureEndsCycleAndRejectedFileIsDropped(t *testing.T) {
 	} {
 		t.Run(http.StatusText(tc.status), func(t *testing.T) {
 			server := testutils.NewOTLPServer(t)
-			logs := testutils.RecordSlog(t)
 			synctest.Test(t, func(t *testing.T) {
 				startRuntimeForTest(t, server, nil)
+				logs := testutils.RecordSlog(t)
 				server.SetResponse(tc.status, 0)
 
 				time.Sleep(initialExportDelay + time.Second)

@@ -169,6 +169,17 @@ func (s *OTLPServer) LogRecords(t testing.TB) []LogRecord {
 	return records
 }
 
+// Events returns the SDK event log records with the given event name.
+func (s *OTLPServer) Events(t testing.TB, eventName string) []LogRecord {
+	var events []LogRecord
+	for _, record := range s.LogRecords(t) {
+		if record.EventName == eventName {
+			events = append(events, record)
+		}
+	}
+	return events
+}
+
 // Metrics decodes all metrics received in successful requests.
 func (s *OTLPServer) Metrics(t testing.TB) []Metric {
 	var metrics []Metric

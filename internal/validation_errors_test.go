@@ -50,7 +50,7 @@ func TestValidationErrorsAreReportedFromErrorChannelAndExplicitCapture(t *testin
 	require.NoError(t, Shutdown(context.Background()))
 
 	var bodies []any
-	for _, record := range findLogRecords(server.LogRecords(t), validationErrorEventName) {
+	for _, record := range server.Events(t, validationErrorEventName) {
 		bodies = append(bodies, testutils.Value(record.Body))
 	}
 	event := func(path, field, tag string, count int64) map[string]any {

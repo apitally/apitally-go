@@ -16,11 +16,17 @@ type SlogRecorder struct {
 // RecordSlog installs a SlogRecorder as the slog default handler until the
 // test ends.
 func RecordSlog(t testing.TB) *SlogRecorder {
-	previous := slog.Default()
 	recorder := &SlogRecorder{}
-	slog.SetDefault(slog.New(recorder))
-	t.Cleanup(func() { slog.SetDefault(previous) })
+	SetSlogDefault(t, recorder)
 	return recorder
+}
+
+// SetSlogDefault installs handler as the slog default handler until the test
+// ends.
+func SetSlogDefault(t testing.TB, handler slog.Handler) {
+	previous := slog.Default()
+	slog.SetDefault(slog.New(handler))
+	t.Cleanup(func() { slog.SetDefault(previous) })
 }
 
 // Messages returns the messages of the recorded records at the given level.

@@ -50,7 +50,7 @@ func TestPanicIsRecordedAsExceptionEventAndServerErrorEvent(t *testing.T) {
 	assert.Equal(t, "loading config: open app.yaml: file does not exist", event["exception.message"])
 	assert.Contains(t, event["exception.stacktrace"], "net/http.HandlerFunc.ServeHTTP\n\t")
 	assert.NotContains(t, event["exception.stacktrace"], "runtime.gopanic")
-	records := findLogRecords(server.LogRecords(t), serverErrorEventName)
+	records := server.Events(t, serverErrorEventName)
 	require.Len(t, records, 1)
 	assert.Equal(t, map[string]any{
 		"method":     "GET",
@@ -81,7 +81,7 @@ func TestOnlyFirstCapturedErrorIsKept(t *testing.T) {
 	require.Len(t, spans, 1)
 	require.Len(t, spans[0].Events, 1)
 	assert.Equal(t, "first", testutils.Attributes(spans[0].Events[0].Attributes)["exception.message"])
-	records := findLogRecords(server.LogRecords(t), serverErrorEventName)
+	records := server.Events(t, serverErrorEventName)
 	require.Len(t, records, 1)
 	assert.Equal(t, "first", testutils.Value(records[0].Body).(map[string]any)["message"])
 }
@@ -108,7 +108,7 @@ func TestCapturedErrorCountsAsServerErrorOnlyWithStatus500(t *testing.T) {
 	}
 	require.NoError(t, Shutdown(context.Background()))
 
-	records := findLogRecords(server.LogRecords(t), serverErrorEventName)
+	records := server.Events(t, serverErrorEventName)
 	require.Len(t, records, 1)
 	body := testutils.Value(records[0].Body).(map[string]any)
 	assert.Equal(t, "/failed", body["path"])
@@ -148,14 +148,4 @@ func httptestServer(t *testing.T, handler http.Handler) string {
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 	return server.URL
-}
-
-func findLogRecords(records []testutils.LogRecord, eventName string) []testutils.LogRecord {
-	var found []testutils.LogRecord
-	for _, record := range records {
-		if record.EventName == eventName {
-			found = append(found, record)
-		}
-	}
-	return found
 }
