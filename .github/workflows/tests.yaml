@@ -8,11 +8,13 @@ on:
       - .gitignore
       - LICENSE
       - README.md
+      - MIGRATION.md
   pull_request:
     paths-ignore:
       - .gitignore
       - LICENSE
       - README.md
+      - MIGRATION.md
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

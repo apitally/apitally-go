@@ -1,6 +1,6 @@
 ---
 directory: /Users/simon.gurcke/Repos/apitally/apitally-go
-implemented_at: null
+implemented_at: 2026-10-07T21:33:31+10:00
 ---
 
 # Apitally Go v1 implementation plan
