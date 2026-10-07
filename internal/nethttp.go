@@ -18,7 +18,7 @@ func NetHTTPMiddleware(routePattern func(r *http.Request) string) func(http.Hand
 			o := BeginNetHTTP(w, r)
 			defer func() {
 				p := recover()
-				o.Finish(routePattern(o.Request), HostFromAddress(o.Request.RemoteAddr), p)
+				o.Finish(routePattern(o.Request), HostFromAddress(o.Request.RemoteAddr), o.Writer.StatusCode(), p)
 				if p != nil {
 					panic(p)
 				}
@@ -58,11 +58,11 @@ func BeginNetHTTP(w http.ResponseWriter, r *http.Request) *NetHTTPObservation {
 	return o
 }
 
-// Finish completes observation. recovered is the value of a panic unwinding
-// the handler chain, or nil.
-func (o *NetHTTPObservation) Finish(route, clientAddress string, recovered any) {
+// Finish completes observation. status is 0 when the response has not
+// started. recovered is the value of a panic unwinding the handler chain, or
+// nil.
+func (o *NetHTTPObservation) Finish(route, clientAddress string, status int, recovered any) {
 	o.State.CapturePanic(recovered)
-	status := o.Writer.status
 	if status == 0 {
 		// A panic before the response started is assumed to become a 500.
 		status = http.StatusOK
@@ -153,6 +153,25 @@ func (w *ResponseWriter) Write(b []byte) (int, error) {
 	n, err := w.ResponseWriter.Write(b)
 	w.recordWrite(b[:n], err)
 	return n, err
+}
+
+// WriteString supports io.StringWriter, which handlers and frameworks use as
+// an alternate write path.
+func (w *ResponseWriter) WriteString(s string) (int, error) {
+	w.startBody()
+	n, err := io.WriteString(w.ResponseWriter, s)
+	if w.capture != nil {
+		w.capture.write([]byte(s[:n]))
+	}
+	w.size += int64(n)
+	w.hasWriteError = w.hasWriteError || err != nil
+	return n, err
+}
+
+// StatusCode returns the response status, or 0 when the response has not
+// started.
+func (w *ResponseWriter) StatusCode() int {
+	return w.status
 }
 
 // ReadFrom keeps the wrapped writer's io.ReaderFrom, such as sendfile for

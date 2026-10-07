@@ -96,6 +96,12 @@ func InstallOnce(app any, install func()) {
 	}
 }
 
+// LogLateInitError reports that Init was called after routes were registered,
+// on frameworks that apply middleware only to routes registered later.
+func LogLateInitError() {
+	logError("Apitally was initialized after routes were registered, so those routes are not monitored. Call Init before registering routes.")
+}
+
 // Activate starts Apitally once per process. Concurrent callers wait until
 // activation has completed.
 func Activate() {

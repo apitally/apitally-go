@@ -12,7 +12,7 @@ import (
 
 func SetConsumer(ctx context.Context, consumer root.Consumer) {
 	defer recoverAndLogPanic("SetConsumer")
-	if s := requestStateFromContext(ctx); s != nil {
+	if s := RequestStateFromContext(ctx); s != nil {
 		s.mu.Lock()
 		s.consumer = mergeConsumer(s.consumer, consumer)
 		s.mu.Unlock()
@@ -20,7 +20,7 @@ func SetConsumer(ctx context.Context, consumer root.Consumer) {
 }
 
 func SetRequestAttributes(ctx context.Context, attrs ...attribute.KeyValue) {
-	if s := requestStateFromContext(ctx); s != nil {
+	if s := RequestStateFromContext(ctx); s != nil {
 		s.span.SetAttributes(attrs...)
 	}
 }
@@ -28,14 +28,14 @@ func SetRequestAttributes(ctx context.Context, attrs ...attribute.KeyValue) {
 // CaptureError captures err with the caller's stack trace.
 func CaptureError(ctx context.Context, err error) {
 	defer recoverAndLogPanic("CaptureError")
-	if s := requestStateFromContext(ctx); s != nil && err != nil {
+	if s := RequestStateFromContext(ctx); s != nil && err != nil {
 		s.captureError(err, callerStack())
 	}
 }
 
 func CaptureValidationError(ctx context.Context, err error) {
 	defer recoverAndLogPanic("CaptureValidationError")
-	if s := requestStateFromContext(ctx); s != nil {
+	if s := RequestStateFromContext(ctx); s != nil {
 		details := validationDetails(err)
 		s.mu.Lock()
 		s.validationDetails = append(s.validationDetails, details...)

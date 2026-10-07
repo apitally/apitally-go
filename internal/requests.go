@@ -264,8 +264,17 @@ func isWebSocketUpgrade(header http.Header) bool {
 	return strings.Contains(strings.ToLower(header.Get("Upgrade")), "websocket")
 }
 
-func requestStateFromContext(ctx context.Context) *RequestState {
-	state, _ := ctx.Value(requestStateKey{}).(*RequestState)
+// RequestStateKey is the string key under which the Gin and Fiber
+// integrations also store the request state, because their contexts resolve
+// only string keys to their own values.
+const RequestStateKey = "github.com/apitally/apitally-go/request-state"
+
+// RequestStateFromContext returns the state of the request in ctx, or nil.
+func RequestStateFromContext(ctx context.Context) *RequestState {
+	if state, ok := ctx.Value(requestStateKey{}).(*RequestState); ok {
+		return state
+	}
+	state, _ := ctx.Value(RequestStateKey).(*RequestState)
 	return state
 }
 

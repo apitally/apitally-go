@@ -31,14 +31,14 @@ func TestValidationErrorsAreReportedFromErrorChannelAndExplicitCapture(t *testin
 	validationErr := fmt.Errorf("binding: %w", fieldErrors{{"Item.Name", "required"}, {"Item.Price", "gt"}})
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /items", func(w http.ResponseWriter, r *http.Request) {
-		requestStateFromContext(r.Context()).CaptureError(validationErr)
+		RequestStateFromContext(r.Context()).CaptureError(validationErr)
 		w.WriteHeader(http.StatusBadRequest)
 	})
 	mux.HandleFunc("POST /orders", func(w http.ResponseWriter, r *http.Request) {
 		CaptureValidationError(r.Context(), fieldErrors{{"Order.Email", "email"}})
 	})
 	mux.HandleFunc("POST /teapots", func(w http.ResponseWriter, r *http.Request) {
-		requestStateFromContext(r.Context()).CaptureError(validationErr)
+		RequestStateFromContext(r.Context()).CaptureError(validationErr)
 		w.WriteHeader(http.StatusTeapot)
 	})
 	appURL := startTestApp(t, mux)
