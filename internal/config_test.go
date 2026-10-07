@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"log/slog"
 	"math"
 	"testing"
 
@@ -105,4 +106,28 @@ func TestUserPatternsAreCaseInsensitiveAndInvalidPatternsDropped(t *testing.T) {
 	assert.False(t, s.maskHeaders[1].MatchString("exact"))
 	assert.Len(t, s.configErrors, 1)
 	assert.True(t, s.enabled)
+}
+
+func TestLaterRegistrationWithDifferentConfigurationWarnsAndIsIgnored(t *testing.T) {
+	testutils.ClearEnv(t)
+	SetUpTest(t)
+	logs := testutils.RecordSlog(t)
+	newConfig := func() *root.Config {
+		cfg := root.NewConfig()
+		cfg.WriteToken = testWriteToken
+		cfg.MaskHeaders = []string{"x-secret"}
+		cfg.MaskLogRecord = func(*root.LogRecord) bool { return true }
+		return cfg
+	}
+
+	Register(newConfig(), testFramework, nil)
+	Register(newConfig(), testFramework, nil)
+	assert.Empty(t, logs.Messages(slog.LevelWarn))
+
+	different := newConfig()
+	different.SampleRate = 0.5
+	Register(different, testFramework, nil)
+
+	assert.Len(t, logs.Messages(slog.LevelWarn), 1)
+	assert.Equal(t, 1.0, currentRuntime.Load().settings.config.SampleRate)
 }
