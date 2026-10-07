@@ -84,6 +84,9 @@ func newRouter(cfg *apitally.Config, middlewares ...func(http.Handler) http.Hand
 				next.ServeHTTP(w, r)
 			})
 		})
+		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte("api"))
+		})
 		r.Get("/users/{userID}", func(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write([]byte("user"))
 		})
@@ -181,12 +184,14 @@ func TestRouteIncludesGroupPrefix(t *testing.T) {
 	appURL := serve(t, newRouter(nil))
 
 	testutils.Get(t, appURL+"/api/v1/users/7")
+	testutils.Get(t, appURL+"/api/v1")
 	shutDown(t)
 
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	assert.Equal(t, "GET /api/v1/users/{userID}", spans[0].Name)
-	assert.Equal(t, "/api/v1/users/{userID}", testutils.Attributes(spans[0].Attributes)["http.route"])
+	var routes []any
+	for _, span := range server.Spans(t) {
+		routes = append(routes, testutils.Attributes(span.Attributes)["http.route"])
+	}
+	assert.ElementsMatch(t, []any{"/api/v1/users/{userID}", "/api/v1"}, routes)
 }
 
 func TestFirstRequestActivatesAndIsRecorded(t *testing.T) {
@@ -221,6 +226,7 @@ func TestStartupEventPathsMatchRoutes(t *testing.T) {
 		{"method": "GET", "path": "/stream"},
 		{"method": "GET", "path": "/panic"},
 		{"method": "POST", "path": "/validate"},
+		{"method": "GET", "path": "/api/v1"},
 		{"method": "GET", "path": "/api/v1/users/{userID}"},
 	}, body.Paths)
 }

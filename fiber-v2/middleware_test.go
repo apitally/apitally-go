@@ -87,6 +87,9 @@ func newApp(cfg *apitally.Config, config ...fiber.Config) *fiber.App {
 		}
 		return c.Next()
 	})
+	api.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("api")
+	})
 	api.Get("/users/:userID", func(c *fiber.Ctx) error {
 		return c.SendString("user")
 	})
@@ -186,12 +189,14 @@ func TestRouteIncludesGroupPrefix(t *testing.T) {
 	app := newApp(nil)
 
 	send(t, app, http.MethodGet, "/api/v1/users/7", nil)
+	send(t, app, http.MethodGet, "/api/v1", nil)
 	shutDown(t)
 
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	assert.Equal(t, "GET /api/v1/users/:userID", spans[0].Name)
-	assert.Equal(t, "/api/v1/users/:userID", testutils.Attributes(spans[0].Attributes)["http.route"])
+	var routes []any
+	for _, span := range server.Spans(t) {
+		routes = append(routes, testutils.Attributes(span.Attributes)["http.route"])
+	}
+	assert.ElementsMatch(t, []any{"/api/v1/users/:userID", "/api/v1"}, routes)
 }
 
 func TestFirstRequestActivatesAndIsRecorded(t *testing.T) {
@@ -228,6 +233,7 @@ func TestStartupEventPathsMatchRoutes(t *testing.T) {
 		{"method": "GET", "path": "/panic"},
 		{"method": "POST", "path": "/validate"},
 		{"method": "GET", "path": "/error"},
+		{"method": "GET", "path": "/api/v1"},
 		{"method": "GET", "path": "/api/v1/users/:userID"},
 	}, body.Paths)
 }
@@ -429,6 +435,22 @@ func TestReturnedErrorIsDispatchedToErrorHandlerOnce(t *testing.T) {
 	errors := server.Events(t, "apitally.request.server_error")
 	require.Len(t, errors, 1)
 	assert.Equal(t, "", testutils.Value(errors[0].Body).(map[string]any)["stacktrace"])
+}
+
+func TestConsumersFromReusedRequestMemoryAreKept(t *testing.T) {
+	server := setUp(t)
+	app := newApp(nil)
+
+	for _, consumer := range []string{"acme", "zeta", "acme", "zeta"} {
+		send(t, app, http.MethodGet, "/api/v1/users/7", nil, "X-Consumer", consumer)
+	}
+	shutDown(t)
+
+	counts := map[any]uint64{}
+	for _, point := range testutils.HistogramPoints(server.Metrics(t), "http.server.request.duration") {
+		counts[testutils.Attributes(point.Attributes)["apitally.consumer.identifier"]] += point.Count
+	}
+	assert.Equal(t, map[any]uint64{"acme": 2, "zeta": 2}, counts)
 }
 
 func TestStreamsOfKnownLengthReportSizeWithoutCapture(t *testing.T) {

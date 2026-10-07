@@ -71,7 +71,7 @@ func (s *RequestState) captureError(value any, stacktrace string) {
 	}
 	captured := &capturedError{
 		typeName:   truncateString(exceptionTypeName(value), maxExceptionType),
-		message:    truncateString(strings.TrimSpace(exceptionMessage(value)), maxExceptionMessage),
+		message:    strings.Clone(truncateString(strings.TrimSpace(exceptionMessage(value)), maxExceptionMessage)),
 		stacktrace: stacktrace,
 	}
 	s.mu.Lock()

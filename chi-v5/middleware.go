@@ -3,6 +3,7 @@ package apitally
 
 import (
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/go-chi/chi/v5"
@@ -49,9 +50,14 @@ func newRoutePattern(router chi.Router) func(*http.Request) string {
 	}
 }
 
+// listRoutes reports routes as Chi's RoutePattern does, which trims the
+// trailing slash that Walk reports for the root route of a subrouter.
 func listRoutes(r chi.Router) []internal.Route {
 	var routes []internal.Route
 	_ = chi.Walk(r, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		if route != "/" {
+			route = strings.TrimSuffix(strings.TrimSuffix(route, "//"), "/")
+		}
 		routes = append(routes, internal.Route{Method: method, Path: route})
 		return nil
 	})

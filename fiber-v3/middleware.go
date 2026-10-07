@@ -64,7 +64,7 @@ func middleware(c fiber.Ctx) error {
 			}
 			// Without a matched route, only middleware ran.
 			if c.Matched() {
-				result.Route = strings.Clone(c.Route().Path)
+				result.Route = strings.Clone(routePath(c.App(), c.Route().Path))
 			}
 			o.FinishHandler(result, c.Request(), c.Response(), p)
 		}
@@ -99,7 +99,17 @@ func requestInfo(c fiber.Ctx) internal.RequestInfo {
 func listRoutes(app *fiber.App) []internal.Route {
 	var routes []internal.Route
 	for _, route := range app.GetRoutes(true) {
-		routes = append(routes, internal.Route{Method: route.Method, Path: route.Path})
+		routes = append(routes, internal.Route{Method: route.Method, Path: routePath(app, route.Path)})
 	}
 	return routes
+}
+
+// routePath removes the trailing slash of a route registered as a group's
+// root, which matches the request path without it unless StrictRouting is
+// enabled.
+func routePath(app *fiber.App, path string) string {
+	if !app.Config().StrictRouting && len(path) > 1 {
+		return strings.TrimSuffix(path, "/")
+	}
+	return path
 }

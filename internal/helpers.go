@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"strings"
 
 	"go.opentelemetry.io/otel/attribute"
 
@@ -19,9 +20,25 @@ func SetConsumer(ctx context.Context, consumer root.Consumer) {
 	}
 }
 
+// SetRequestAttributes copies string values, because Fiber reuses the memory
+// of request strings.
 func SetRequestAttributes(ctx context.Context, attrs ...attribute.KeyValue) {
 	if s := RequestStateFromContext(ctx); s != nil {
-		s.span.SetAttributes(attrs...)
+		copied := make([]attribute.KeyValue, len(attrs))
+		for i, kv := range attrs {
+			copied[i] = kv
+			switch kv.Value.Type() {
+			case attribute.STRING:
+				copied[i].Value = attribute.StringValue(strings.Clone(kv.Value.AsString()))
+			case attribute.STRINGSLICE:
+				values := kv.Value.AsStringSlice()
+				for j := range values {
+					values[j] = strings.Clone(values[j])
+				}
+				copied[i].Value = attribute.StringSliceValue(values)
+			}
+		}
+		s.span.SetAttributes(copied...)
 	}
 }
 

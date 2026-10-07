@@ -120,7 +120,7 @@ func (h *slogHandler) capture(ctx context.Context, record slog.Record) {
 	if captured.Record.Message == "" {
 		return
 	}
-	captured.Record.Message = truncateString(captured.Record.Message, maxLogTextLength)
+	captured.Record.Message = strings.Clone(truncateString(captured.Record.Message, maxLogTextLength))
 	state.logEmitted(captured)
 }
 
@@ -188,6 +188,7 @@ func (s *RequestState) logEmitted(record *logRecord) {
 // a value the SDK owns, so captured records hold no references to
 // application objects: maps become groups, slices and arrays become new
 // []any of converted items, byte slices are copied and other types become
+// strings. Strings are copied, because Fiber reuses the memory of request
 // strings.
 func ownedSlogAttrs(attrs []slog.Attr) []slog.Attr {
 	return ownedSlogAttrsAtDepth(attrs, 0)
@@ -215,6 +216,8 @@ func ownedSlogValue(v slog.Value, depth int) slog.Value {
 	}
 	v = v.Resolve()
 	switch v.Kind() {
+	case slog.KindString:
+		return slog.StringValue(strings.Clone(v.String()))
 	case slog.KindGroup:
 		return slog.GroupValue(ownedSlogAttrsAtDepth(v.Group(), depth+1)...)
 	case slog.KindAny:

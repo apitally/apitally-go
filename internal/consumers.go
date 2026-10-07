@@ -43,8 +43,9 @@ type consumerAttribute struct {
 // mergeConsumer applies c to the request's consumer. A different identifier
 // starts over; the same identifier keeps the latest non-empty name and group
 // and merges attributes, taken in key order because map order is random.
+// Values are copied, because Fiber reuses the memory of request strings.
 func mergeConsumer(current *requestConsumer, c root.Consumer) *requestConsumer {
-	identifier := truncateString(strings.TrimSpace(c.Identifier), maxConsumerIdentifier)
+	identifier := strings.Clone(truncateString(strings.TrimSpace(c.Identifier), maxConsumerIdentifier))
 	if identifier == "" {
 		return current
 	}
@@ -54,14 +55,14 @@ func mergeConsumer(current *requestConsumer, c root.Consumer) *requestConsumer {
 		merged.attributes = slices.Clone(current.attributes)
 	}
 	if name := truncateString(strings.TrimSpace(c.Name), maxConsumerName); name != "" {
-		merged.name = name
+		merged.name = strings.Clone(name)
 	}
 	if group := truncateString(strings.TrimSpace(c.Group), maxConsumerName); group != "" {
-		merged.group = group
+		merged.group = strings.Clone(group)
 	}
 	attributes := make([]consumerAttribute, 0, len(c.Attributes))
 	for key, value := range c.Attributes {
-		attributes = append(attributes, consumerAttribute{key: strings.TrimSpace(key), value: strings.TrimSpace(value)})
+		attributes = append(attributes, consumerAttribute{key: strings.Clone(strings.TrimSpace(key)), value: strings.Clone(strings.TrimSpace(value))})
 	}
 	slices.SortFunc(attributes, func(a, b consumerAttribute) int { return strings.Compare(a.key, b.key) })
 	for _, a := range attributes {
