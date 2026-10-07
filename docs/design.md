@@ -158,7 +158,7 @@ No other trigger exists. Go has no exit hook (returning from `main` ends all gor
 
 **Confirmed SERVER span creation:** the Apitally middleware creates the SERVER span on all six integrations, as the shared design permits; no stock framework instrumentation is used. Stock Go instrumentation is uneven: `otelgin` and Fiber v3's `gofiber/contrib/v3/otel` are adequate, but contrib `otelecho` was removed in October 2026 in favor of the non-semver `labstack/echo-otel`, `otelfiber/v2` mixes old and stable semconv, `otelchi` uses old semconv, and `otelhttp` reads `http.route` only at span start, omits `url.query`, and derives `client.address` from `X-Forwarded-For` itself. The middleware:
 
-- extracts upstream context with the global propagator, falling back to W3C TraceContext;
+- extracts upstream context with the global propagator, or with W3C TraceContext + Baggage while the global propagator is still unset (section 2), without registering it; an application-set propagator, including an empty one, is used as-is;
 - sets stable HTTP semconv attributes from the framework's own request data (method, route template, scheme, host, path, query, client IP, status, sizes);
 - names the span `{method} {route}`, or `{method}` without a route;
 - puts the span into the request context (`r.Context()`, Fiber's user context) so handler spans nest under it, except in private-provider mode: there the span stays only in Apitally's request state, so spans from the user's foreign provider keep their existing parents and never reference a span their backend does not receive;
