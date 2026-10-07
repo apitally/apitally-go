@@ -5,7 +5,7 @@ The `v1` branch rewrites the SDK as an OpenTelemetry distribution, following the
 ## Checks
 
 - Verify code changes with the Makefile targets, never with hand-picked subsets of them: `make check` (build, `go vet`, `gofmt`, `go mod verify` and `go mod tidy` in every module) and `make test` (`go test -race` in every module). Both cover the root module and every framework module; a change to the root module can break any of them.
-- `make test` runs on the installed Go toolchain and each module's resolved dependency versions. CI also runs Go 1.25, 1.26 and 1.27, and every framework module at its floor and latest framework release.
+- Run both on the Go 1.25 floor toolchain: `GOTOOLCHAIN=go1.25.14 make check test`. With each module's floor dependency versions this matches CI's floor job, and a `go 1.25` directive does not stop code from calling standard library APIs added in later Go releases. CI also runs Go 1.26 and 1.27 with the latest dependencies, and every framework module at its floor and latest framework release.
 - For documentation-only changes, review the diff and run `git diff --check`; reserve the Makefile targets for code, configuration, or test changes.
 
 ## Code style

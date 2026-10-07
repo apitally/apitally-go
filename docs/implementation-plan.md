@@ -13,7 +13,7 @@ Implement [the Go design](design.md) on the `v1` branch: an OpenTelemetry distri
 
 This plan is the implementation authority. Where it departs from design.md (section 2), the plan wins; design.md stays the record of rationale and facts.
 
-The architecture in one paragraph: each framework module's `Init` registers framework middleware that hands request data to one flat `internal` package. That package owns the process-global runtime, provider selection, request registry, sampling, capture, redaction, logs, metrics, OTLP encoding, the spool and the export worker. The root package declares only the public types. Three background goroutines run: the stock span batch processor, the log batcher and the export worker.
+The architecture in one paragraph: each framework module's `Init` registers framework middleware that hands request data to one flat `internal` package. That package owns the process-global runtime, provider selection, request registry, sampling, capture, redaction, logs, metrics, OTLP encoding, the spool and the export worker. The root package declares only the public types and `NewConfig`. Three background goroutines run: the stock span batch processor, the log batcher and the export worker.
 
 ## 2. Decisions made during planning
 
@@ -26,7 +26,7 @@ Decisions 1 and 9 changed design.md, which has been updated to match. The others
 5. **CI matrix:** every module (root plus six frameworks) runs at its declared floors on Go 1.25, and with all dependencies upgraded to their latest releases (`go get -u -t ./...`) on Go 1.26 and on Go 1.27, with `GOTOOLCHAIN=local`. This covers newer OTel releases, which users on Go 1.26+ resolve.
 6. **SDK test harness:** six Go apps in `../sdk-tests`, one per framework module, sharing a Go `core` module, each run at its framework's floor and latest release, plus a Fiber prefork variant.
 7. **Execution:** each stage in section 8 is one commit on `v1`, made when `GOTOOLCHAIN=go1.25.14 make check test` passes. Go 1.27.1 is installed through mise and downloads the 1.25.14 toolchain, so with the floor versions in `go.mod` each stage passes CI's floor job; a `go 1.25` directive does not stop code from calling standard library APIs added in 1.26 or 1.27. Stages run without review stops. Nothing is pushed.
-8. **The SDK version comes from Go's build info.** `debug.ReadBuildInfo()` reports the resolved version of `github.com/apitally/apitally-go` compiled into the binary, `(devel)` inside this repository, or `unknown` when the build embeds no module information (Bazel). There is no version constant: the root module's tag is the GitHub release tag, created before the publish workflow commits, so a constant stamped by the workflow never reaches users (v0 reports `0.0.0` for this reason).
+8. **The SDK version comes from Go's build info.** The SDK reports the version that `debug.ReadBuildInfo()` records for `github.com/apitally/apitally-go`, as the main module or as a dependency, or `unknown` when the build embeds no module information (Bazel). Tests never pin the value. There is no version constant: the root module's tag is the GitHub release tag, created before the publish workflow commits, so a constant stamped by the workflow never reaches users (v0 reports `0.0.0` for this reason).
 9. **No `StartSpan`.** Documentation shows `otel.Tracer(...).Start` with the request context instead (design section 13, updated). A wrapper would still return OTel's `trace.Span`, so it would not spare users the OTel API, and on Gin and Fiber it would fail silently when passed the framework context, exactly like `otel.Tracer`.
 
 ## 3. Repository layout
@@ -98,7 +98,7 @@ Every wrapper carries its own user-facing doc comment and delegates in one call.
 
 ### Inside `internal`
 
-Exported identifiers exist only for framework modules and `internal/testutils`. The central types and calls, used by every framework middleware:
+Exported identifiers exist only for framework modules and their tests. The central types and calls, used by every framework middleware:
 
 - `Register(cfg *root.Config, framework FrameworkInfo, listRoutes func() []Route)`: resolves configuration into the process-global runtime on first call, compares later configurations (design section 3) and records the app's route-listing function for the startup event. `Route` holds method and path. `FrameworkInfo` carries the framework name, module path (instrumentation scope) and framework module path for the version lookup.
 - `Activate()`: the `sync.Once` activation, called by middleware on every request and by Fiber's `OnListen`.
@@ -123,7 +123,7 @@ Behavior is specified in design.md; this section records implementation choices 
 
 **OTLP encoding.** `go.opentelemetry.io/proto/otlp` v1.11.0 data packages only. Logs and metrics are encoded by `otlp_encoding.go`; traces by `otlptrace`. Resource: OTel's standard resource detection plus `service.instance.id` (random UUIDv4 from `crypto/rand`, formatted locally, no uuid dependency), `deployment.environment.name`, `telemetry.distro.name = apitally-go` and `telemetry.distro.version` set to the SDK version (decision 8). Export headers include `User-Agent: apitally-go/<SDK version>`.
 
-**Export worker.** One goroutine, timers created with `time.NewTimer`, so tests can run it inside a `testing/synctest` bubble. Fake time only advances when every goroutine in the bubble is blocked on something synctest controls, and the HTTP client's idle keep-alive connections wait on network reads, which do not count. Timer-driven tests therefore export through the `testutils` in-process `http.RoundTripper`, which calls the stub endpoint's handler directly, installed with the test hook `SetExportTransportForTest(t, transport)`. It runs the cycle from shared design section 10: drain error aggregates, flush the log batcher, `ForceFlush` the span processor, collect metrics, rotate and send. Final drain on `Shutdown` honors the context deadline. Fiber shutdown hooks run one non-terminal cycle with a fixed 5-second deadline.
+**Export worker.** One goroutine, timers created with `time.NewTimer`, so tests can run it inside a `testing/synctest` bubble. Fake time only advances when every goroutine in the bubble is blocked on something synctest controls, and the HTTP client's idle keep-alive connections wait on network reads, which do not count. Timer-driven tests therefore export through the `testutils` in-process `http.RoundTripper`, which calls the stub endpoint's handler directly, installed with the unexported test hook `setExportTransportForTest(t, transport)`; only root tests drive timers. It runs the cycle from shared design section 10: drain error aggregates, flush the log batcher, `ForceFlush` the span processor, collect metrics, rotate and send. Final drain on `Shutdown` honors the context deadline. Fiber shutdown hooks run one non-terminal cycle with a fixed 5-second deadline.
 
 **Panics.** Every SDK goroutine and every user callback invocation runs under a recover that reports through `diagnostics.go` and applies the documented fallback. Application panics observed by middleware are re-panicked unchanged.
 
@@ -166,7 +166,7 @@ Each stage builds on earlier stages only, adds its tests, passes `GOTOOLCHAIN=go
 | 6. Application logs | `slog_handler.go`, request linkage through request state, the request-logger exclusion, per-request log buffering and release, the missing-handler warning at activation, and `NewSlogHandler` in Chi. |
 | 7. Gin and Echo | Create `gin-v1`, `echo-v4` and `echo-v5` with `Init`, middleware, error dispatch, route listing, the full wrapper set, the Gin writer and the late-`Init` diagnostic for Gin. Add the modules to the Makefile and CI. |
 | 8. Fiber | `internal/fasthttp.go`, tested from the Fiber modules. Create `fiber-v2` and `fiber-v3` with completion via the user-value closer, stream observation, `OnListen` activation outside prefork, shutdown-hook flush, error dispatch, route listing, wrappers and the late-`Init` diagnostic. Add the modules to the Makefile and CI. |
-| 9. Release readiness | Add `GoLanguage` to `../sdk-tests/harness/languages.py`, a Go `core` module and the six apps with manifests and floor/latest variants plus a Fiber prefork variant. The apps use `signal.NotifyContext` with `Shutdown`. Run the harness against the local cloud stack when it is available. Leave the sdk-tests changes uncommitted in that repository. Rewrite `README.md` (quickstart, graceful shutdown section, logging, configuration) and add `MIGRATION.md` covering the migration contract in design section 13. Remove the version `sed` from `publish.yaml`. Remove `pocs/`. |
+| 9. Release readiness | Add `GoLanguage` to `../sdk-tests/harness/languages.py`, a Go `core` module and the six apps with manifests and floor/latest variants plus a Fiber prefork variant. The apps use `signal.NotifyContext` with `Shutdown`. Run the harness against the local cloud stack when it is available. Leave the sdk-tests changes uncommitted in that repository. Rewrite `README.md` (quickstart, graceful shutdown section, logging, configuration) and add `MIGRATION.md` covering the migration contract in design section 13. Remove the version `sed` from `publish.yaml`. Keep `pocs/`: design section 17 links to it, so it is removed together with `docs/` when the design documents are retired, outside this plan. |
 
 ## 9. Testing
 
@@ -182,24 +182,25 @@ The rules in `AGENTS.md` apply. This section fixes where tests live and what eac
 - Errors, validation and consumers: first-error guard, recorded-500 rule, exception fields and stack format, validator recognition, aggregate bounds and drains, consumer normalization, attribute ordering, merge and LRU.
 - Logs: request linkage, `MaskLogRecord` edits and drops, value conversion, truncation by rune, request-logger exclusion, SDK diagnostics not captured.
 - Metrics: exponential bucket mapping including exact powers of two, delta collections, capacity, splitting at 1,000 combinations, process gauges.
-- Export: spool rotation, caps, eviction order, memory fallback, retention, orphan cleanup, byte-identical retries, response classification, interval header clamping, send budget, proxy use. Timer-driven tests run in `testing/synctest` bubbles.
+- Export: spool rotation, caps, eviction order, memory fallback, retention, orphan cleanup, byte-identical retries, response classification, interval header clamping, send budget. Timer-driven tests run in `testing/synctest` bubbles.
 
 **Framework modules.** Own integration behavior. Every module runs the canonical scenario set with identical names, in this order, following the Python suite's names where they apply:
 
 1. `TestRequestExportsSingleServerSpanWithStableSemconv`
 2. `TestClientAddressUsesFrameworkResolvedClientIP`
-3. `TestRouteIncludesGroupPrefix`
-4. `TestFirstRequestActivatesAndIsRecorded`
-5. `TestStartupEventPathsMatchRoutes`
-6. `TestRequestAndResponseBodiesCapturedAndRedacted`
-7. `TestStreamingResponseSizeAndBodyCaptured`
-8. `TestUnmatchedRequestHasNoRouteAndNoHistogramPoint`
-9. `TestSetConsumerReachesSpanAndHistogram`
-10. `TestUnhandledPanicRecordedOnServerSpan`
-11. `TestValidationErrorReported`
-12. `TestPreInstrumentedAppAdaptsWithoutDuplicateSpans`
-13. `TestInitTwiceDoesNotStackMiddleware`
-14. `TestDisabledSDKLeavesResponsesUnchanged`
+3. `TestHistogramAttributesAndLogCorrelation` (the handler logs with the context from design section 13's request helpers table)
+4. `TestRouteIncludesGroupPrefix`
+5. `TestFirstRequestActivatesAndIsRecorded`
+6. `TestStartupEventPathsMatchRoutes`
+7. `TestRequestAndResponseBodiesCapturedAndRedacted`
+8. `TestStreamingResponseSizeAndBodyCaptured`
+9. `TestUnmatchedRequestHasNoRouteAndNoHistogramPoint`
+10. `TestSetConsumerReachesSpanAndHistogram`
+11. `TestUnhandledPanicRecordedOnServerSpan`
+12. `TestValidationErrorReported`
+13. `TestPreInstrumentedAppAdaptsWithoutDuplicateSpans`
+14. `TestInitTwiceDoesNotStackMiddleware`
+15. `TestDisabledSDKLeavesResponsesUnchanged`
 
 `chi-v5` adds each scenario in the stage that implements its behavior (stages 3 to 6), keeping this order. The Gin, Echo and Fiber modules add the full set when they are created.
 
