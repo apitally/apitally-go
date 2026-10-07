@@ -4,6 +4,7 @@ Date: 2026-10-06
 Reviewed revision: `91567dc` (`docs/design.md`)
 Compared against: .NET v1 design, last version before removal (`apitally-dotnet` commit `998cca0^`, `docs/design.md`)
 Status: Review complete; 7 findings resolved, 4 rejected.
+Superseded in part: where [the third review](design-review-3.md) reopens a decision (C3 and the log mask callback type), the third review's decision applies.
 
 This review lists user-observable differences between the Go and .NET designs, including performance-relevant differences and developer-experience inconsistencies, and assesses whether each is warranted by what is possible or idiomatic in Go. The shared design (`cloud/docs/sdks/design.md`) decides which side is the outlier where the two SDKs disagree. Findings and recommendations are input for discussion, not requirements. Resolving a finding means recording the user's decision here and applying the agreed documentation changes before moving to the next finding.
 

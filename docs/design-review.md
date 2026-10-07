@@ -3,6 +3,7 @@
 Date: 2026-10-05
 Reviewed revision: `aa1a35f` (`docs/design.md`)
 Status: Review complete; 14 findings resolved, 1 rejected.
+Superseded in part: where [the third review](design-review-3.md) reopens a decision (R1, R11 and R12), the third review's decision applies.
 
 This is a companion review, not an implementation plan. Recommendations remain proposals unless a decision is recorded. Findings, recommendations and acceptance criteria are input for discussion, not requirements; decisions aim for a feasible, simple and elegant design. Approved decisions have been applied to the Go design; findings and line references describe the reviewed revision.
 
