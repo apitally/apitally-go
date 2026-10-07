@@ -3,10 +3,13 @@ package apitally_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -38,7 +41,17 @@ func newRouter(cfg *apitally.Config, middlewares ...func(http.Handler) http.Hand
 		_, _ = w.Write([]byte("item " + chi.URLParam(r, "id")))
 	})
 	r.Post("/items", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"id":1,"token":"abc"}`))
+	})
+	r.Get("/stream", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		for i := range 3 {
+			_, _ = fmt.Fprintf(w, "chunk %d\n", i)
+			w.(http.Flusher).Flush()
+		}
 	})
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/users/{userID}", func(w http.ResponseWriter, r *http.Request) {
@@ -84,6 +97,8 @@ func TestRequestExportsSingleServerSpanWithStableSemconv(t *testing.T) {
 		"http.route":                "/items/{id}",
 		"http.response.status_code": int64(200),
 		"client.address":            "127.0.0.1",
+		"http.request.body.size":    int64(0),
+		"http.response.body.size":   int64(7),
 	}, testutils.Attributes(spans[0].Attributes))
 }
 
@@ -145,8 +160,68 @@ func TestStartupEventPathsMatchRoutes(t *testing.T) {
 	assert.ElementsMatch(t, []map[string]string{
 		{"method": "GET", "path": "/items/{id}"},
 		{"method": "POST", "path": "/items"},
+		{"method": "GET", "path": "/stream"},
 		{"method": "GET", "path": "/api/v1/users/{userID}"},
 	}, body.Paths)
+}
+
+func TestRequestAndResponseBodiesCapturedAndRedacted(t *testing.T) {
+	server := setUp(t)
+	cfg := apitally.NewConfig()
+	cfg.CaptureRequestBody = true
+	cfg.CaptureResponseBody = true
+	appURL := serve(t, newRouter(cfg))
+
+	req, _ := http.NewRequest(http.MethodPost, appURL+"/items", strings.NewReader(`{"name": "x", "password": "secret"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := testutils.Do(t, http.DefaultClient.Do, req)
+	shutDown(t)
+
+	assert.Equal(t, `{"id":1,"token":"abc"}`, resp.Body)
+	spans := server.Spans(t)
+	require.Len(t, spans, 1)
+	attrs := testutils.Attributes(spans[0].Attributes)
+	assert.Equal(t, `{"name":"x","password":"[REDACTED]"}`, attrs["apitally.request.body"])
+	assert.Equal(t, `{"id":1,"token":"[REDACTED]"}`, attrs["apitally.response.body"])
+	assert.Equal(t, int64(35), attrs["http.request.body.size"])
+	assert.Equal(t, int64(22), attrs["http.response.body.size"])
+}
+
+func TestStreamingResponseSizeAndBodyCaptured(t *testing.T) {
+	server := setUp(t)
+	cfg := apitally.NewConfig()
+	cfg.CaptureResponseBody = true
+	appURL := serve(t, newRouter(cfg))
+
+	resp := testutils.Get(t, appURL+"/stream")
+	shutDown(t)
+
+	assert.Equal(t, "chunk 0\nchunk 1\nchunk 2\n", resp.Body)
+	spans := server.Spans(t)
+	require.Len(t, spans, 1)
+	attrs := testutils.Attributes(spans[0].Attributes)
+	assert.Equal(t, "chunk 0\nchunk 1\nchunk 2\n", attrs["apitally.response.body"])
+	assert.Equal(t, int64(24), attrs["http.response.body.size"])
+	points := testutils.HistogramPoints(server.Metrics(t), "http.server.response.body.size")
+	require.Len(t, points, 1)
+	assert.Equal(t, 24.0, points[0].GetSum())
+}
+
+func TestUnmatchedRequestHasNoRouteAndNoHistogramPoint(t *testing.T) {
+	server := setUp(t)
+	appURL := serve(t, newRouter(nil))
+
+	resp := testutils.Get(t, appURL+"/missing")
+	shutDown(t)
+
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+	spans := server.Spans(t)
+	require.Len(t, spans, 1)
+	assert.Equal(t, "GET", spans[0].Name)
+	attrs := testutils.Attributes(spans[0].Attributes)
+	assert.NotContains(t, attrs, "http.route")
+	assert.Equal(t, int64(404), attrs["http.response.status_code"])
+	assert.Empty(t, testutils.HistogramPoints(server.Metrics(t), "http.server.request.duration"))
 }
 
 func TestPreInstrumentedAppAdaptsWithoutDuplicateSpans(t *testing.T) {

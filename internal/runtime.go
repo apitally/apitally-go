@@ -145,7 +145,7 @@ func (r *sdkRuntime) activate() {
 	r.redaction = newRedaction(r.settings)
 	r.registry = newRequestRegistry()
 	r.spanProcessor = &spanProcessor{registry: r.registry}
-	r.batchProcessor = sdktrace.NewBatchSpanProcessor(newSpanExporter(r.redaction, r.spool),
+	r.batchProcessor = sdktrace.NewBatchSpanProcessor(newSpanExporter(r.redaction, r.settings, r.spool),
 		sdktrace.WithMaxQueueSize(batchQueueSize),
 		sdktrace.WithMaxExportBatchSize(batchMaxSize),
 		sdktrace.WithBatchTimeout(batchDelay),

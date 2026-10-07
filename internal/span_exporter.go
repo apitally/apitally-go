@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"slices"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -10,6 +11,8 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
+
+	root "github.com/apitally/apitally-go"
 )
 
 // exportSpan is Apitally's copy of a span. Embedding the original satisfies
@@ -22,6 +25,7 @@ type exportSpan struct {
 	resource   *resource.Resource
 	kind       trace.SpanKind
 	endTime    time.Time
+	payload    *payloadStash
 }
 
 func newExportSpanCopy(span sdktrace.ReadOnlySpan, attrs []attribute.KeyValue) *exportSpan {
@@ -54,6 +58,7 @@ func (r *sdkRuntime) newExportSpan(s *RequestState, span sdktrace.ReadOnlySpan) 
 			c.endTime = s.transportEnd
 		}
 	}
+	c.payload = s.payload
 	return c
 }
 
@@ -81,11 +86,12 @@ func (r *sdkRuntime) exportResource(res *resource.Resource) *resource.Resource {
 // traces spool.
 type spanExporter struct {
 	redaction *redaction
+	config    *root.Config
 	otlp      *otlptrace.Exporter
 }
 
-func newSpanExporter(red *redaction, sp *spool) *spanExporter {
-	return &spanExporter{redaction: red, otlp: otlptrace.NewUnstarted(spoolTraceClient{spool: sp})}
+func newSpanExporter(red *redaction, s *settings, sp *spool) *spanExporter {
+	return &spanExporter{redaction: red, config: &s.config, otlp: otlptrace.NewUnstarted(spoolTraceClient{spool: sp})}
 }
 
 func (e *spanExporter) ExportSpans(ctx context.Context, spans []sdktrace.ReadOnlySpan) error {
@@ -120,7 +126,29 @@ func (e *spanExporter) process(span sdktrace.ReadOnlySpan) (_ sdktrace.ReadOnlyS
 		return nil, false
 	}
 	c.attributes = e.redaction.redactSpanAttributes(c.attributes)
+	if p := c.payload; p != nil {
+		c.payload = nil
+		// Body mask callbacks receive the copy with its headers and without its bodies.
+		c.attributes = slices.Concat(c.attributes,
+			e.redaction.headerAttributes(requestHeaderPrefix, p.requestHeader),
+			e.redaction.headerAttributes(responseHeaderPrefix, p.responseHeader))
+		var bodies []attribute.KeyValue
+		if value, ok := e.processBody(c, p.requestBody, p.requestEncoding, "MaskRequestBody", e.config.MaskRequestBody); ok {
+			bodies = append(bodies, attribute.KeyValue{Key: "apitally.request.body", Value: value})
+		}
+		if value, ok := e.processBody(c, p.responseBody, p.responseEncoding, "MaskResponseBody", e.config.MaskResponseBody); ok {
+			bodies = append(bodies, attribute.KeyValue{Key: "apitally.response.body", Value: value})
+		}
+		c.attributes = append(c.attributes, bodies...)
+	}
 	return c, true
+}
+
+func (e *spanExporter) processBody(span sdktrace.ReadOnlySpan, body []byte, encoding, option string, mask func(sdktrace.ReadOnlySpan, []byte) []byte) (attribute.Value, bool) {
+	if body == nil {
+		return attribute.Value{}, false
+	}
+	return e.redaction.processBody(span, body, encoding, option, mask)
 }
 
 type spoolTraceClient struct {

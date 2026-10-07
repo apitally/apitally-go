@@ -50,6 +50,8 @@ func TestRequestExportsServerSpanWithHandlerSpans(t *testing.T) {
 		"http.route":                "/items/{id}",
 		"http.response.status_code": int64(200),
 		"client.address":            "127.0.0.1",
+		"http.request.body.size":    int64(0),
+		"http.response.body.size":   int64(2),
 	}, testutils.Attributes(rootSpan.Attributes))
 	assert.Equal(t, rootSpan.SpanId, child.ParentSpanId)
 	assert.Equal(t, tracepb.Span_SPAN_KIND_INTERNAL, child.Kind)

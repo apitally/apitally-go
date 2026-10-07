@@ -90,6 +90,12 @@ func transportAttributes(result *TransportResult) []attribute.KeyValue {
 	if result.ClientAddress != "" {
 		attrs = append(attrs, attribute.String("client.address", result.ClientAddress))
 	}
+	if result.RequestBodySize >= 0 {
+		attrs = append(attrs, attribute.Int64("http.request.body.size", result.RequestBodySize))
+	}
+	if result.ResponseBodySize >= 0 {
+		attrs = append(attrs, attribute.Int64("http.response.body.size", result.ResponseBodySize))
+	}
 	return attrs
 }
 

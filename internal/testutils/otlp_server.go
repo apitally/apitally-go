@@ -242,3 +242,15 @@ func decodeRequests[M proto.Message](t testing.TB, s *OTLPServer, signal string,
 type roundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// HistogramPoints returns the data points of the exponential histograms
+// with the given name.
+func HistogramPoints(metrics []Metric, name string) []*metricspb.ExponentialHistogramDataPoint {
+	var points []*metricspb.ExponentialHistogramDataPoint
+	for _, metric := range metrics {
+		if metric.Name == name {
+			points = append(points, metric.GetExponentialHistogram().GetDataPoints()...)
+		}
+	}
+	return points
+}

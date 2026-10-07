@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"strconv"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -64,6 +65,50 @@ func encodeProcessGauges(res *resourcepb.Resource, start, end time.Time, values 
 		gauge("process.memory.usage", "By", &metricspb.NumberDataPoint{Value: &metricspb.NumberDataPoint_AsInt{AsInt: values.memoryUsage}})
 	}
 	gauge("process.uptime", "s", &metricspb.NumberDataPoint{Value: &metricspb.NumberDataPoint_AsDouble{AsDouble: values.uptime}})
+	return encodeMetrics(res, metrics)
+}
+
+func encodeRequestHistograms(res *resourcepb.Resource, start, end time.Time, keys []requestMetricKey, requests map[requestMetricKey]*requestMetricValues) *metricspb.MetricsData {
+	histogram := func(name, unit string) *metricspb.Metric {
+		return &metricspb.Metric{Name: name, Unit: unit, Data: &metricspb.Metric_ExponentialHistogram{ExponentialHistogram: &metricspb.ExponentialHistogram{
+			AggregationTemporality: metricspb.AggregationTemporality_AGGREGATION_TEMPORALITY_DELTA,
+		}}}
+	}
+	duration := histogram("http.server.request.duration", "s")
+	requestBodySize := histogram("http.server.request.body.size", "By")
+	responseBodySize := histogram("http.server.response.body.size", "By")
+	addPoint := func(metric *metricspb.Metric, h *exponentialHistogram, attrs []*commonpb.KeyValue) {
+		if h.count > 0 {
+			point := h.dataPoint()
+			point.StartTimeUnixNano, point.TimeUnixNano, point.Attributes = unixNano(start), unixNano(end), attrs
+			metric.GetExponentialHistogram().DataPoints = append(metric.GetExponentialHistogram().DataPoints, point)
+		}
+	}
+	for _, key := range keys {
+		attrs := []attribute.KeyValue{
+			attribute.String("http.request.method", key.method),
+			attribute.String("http.route", key.route),
+			attribute.Int("http.response.status_code", key.statusCode),
+			attribute.String("url.scheme", key.scheme),
+		}
+		if key.consumer != "" {
+			attrs = append(attrs, attribute.String("apitally.consumer.identifier", key.consumer))
+		}
+		if key.statusCode >= 500 {
+			attrs = append(attrs, attribute.String("error.type", strconv.Itoa(key.statusCode)))
+		}
+		encoded := encodeAttributes(attrs)
+		values := requests[key]
+		addPoint(duration, &values.duration, encoded)
+		addPoint(requestBodySize, &values.requestBodySize, encoded)
+		addPoint(responseBodySize, &values.responseBodySize, encoded)
+	}
+	var metrics []*metricspb.Metric
+	for _, metric := range []*metricspb.Metric{duration, requestBodySize, responseBodySize} {
+		if len(metric.GetExponentialHistogram().DataPoints) > 0 {
+			metrics = append(metrics, metric)
+		}
+	}
 	return encodeMetrics(res, metrics)
 }
 

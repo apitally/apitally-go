@@ -33,18 +33,27 @@ type RequestInfo struct {
 	ContentLength int64
 }
 
-// TransportResult holds the response data observed when the handler chain
-// completes.
+// TransportResult holds the response data observed when transport
+// observation ends.
 type TransportResult struct {
 	Route         string
 	StatusCode    int
 	ClientAddress string
+	// RequestBodySize and ResponseBodySize are -1 when unknown.
+	RequestBodySize  int64
+	ResponseBodySize int64
+	ResponseHeader   http.Header
+	// RequestBody and ResponseBody are complete captured bodies, the
+	// too-large marker, or nil.
+	RequestBody  []byte
+	ResponseBody []byte
 }
 
 // RequestState is the per-request state, stored in the request context.
 type RequestState struct {
 	runtime       *sdkRuntime
 	info          RequestInfo
+	startTime     time.Time
 	span          trace.Span
 	isSpanCreated bool
 	// requestAttributes are Apitally's attributes for a reused span, which
@@ -61,6 +70,7 @@ type RequestState struct {
 	root                sdktrace.ReadOnlySpan
 	transportAttributes []attribute.KeyValue
 	transportEnd        time.Time
+	payload             *payloadStash
 	isObserved          bool
 	isReleased          bool
 }
@@ -81,7 +91,7 @@ func BeginRequest(ctx context.Context, info RequestInfo) (state *RequestState, r
 			state, requestCtx = nil, ctx
 		}
 	}()
-	state = &RequestState{runtime: r, info: info}
+	state = &RequestState{runtime: r, info: info, startTime: time.Now()}
 	attrs := requestAttributes(&info)
 	ctx, state.span, state.isSpanCreated = r.startServerSpan(ctx, &info, attrs)
 	if !state.isSpanCreated {
@@ -103,9 +113,27 @@ func (s *RequestState) FinishObservation(result TransportResult) {
 	defer recoverAndLogPanic("request observation")
 	end := time.Now()
 	attrs := transportAttributes(&result)
+	r := s.runtime
+	// Request metrics are independent of exclusions and sampling.
+	if result.Route != "" && s.info.Method != http.MethodOptions && !isWebSocketUpgrade(s.info.Header) {
+		key := requestMetricKey{method: s.info.Method, route: result.Route, statusCode: result.StatusCode, scheme: s.info.Scheme}
+		r.metrics.recordRequest(key, end.Sub(s.startTime), result.RequestBodySize, result.ResponseBodySize)
+	}
 	if s.isMonitored {
+		payload := &payloadStash{
+			requestBody:      result.RequestBody,
+			responseBody:     result.ResponseBody,
+			requestEncoding:  s.info.Header.Get("Content-Encoding"),
+			responseEncoding: result.ResponseHeader.Get("Content-Encoding"),
+		}
+		if r.settings.config.CaptureRequestHeaders {
+			payload.requestHeader = s.info.Header.Clone()
+		}
+		if r.settings.config.CaptureResponseHeaders {
+			payload.responseHeader = result.ResponseHeader.Clone()
+		}
 		s.mu.Lock()
-		s.transportAttributes, s.transportEnd, s.isObserved = attrs, end, true
+		s.transportAttributes, s.transportEnd, s.payload, s.isObserved = attrs, end, payload, true
 		isReleasable := s.claimReleaseLocked()
 		s.mu.Unlock()
 		if isReleasable {
@@ -164,6 +192,16 @@ func (s *RequestState) release() {
 		r.batchProcessor.OnEnd(r.newExportSpan(s, span))
 	}
 	r.batchProcessor.OnEnd(root)
+}
+
+// shouldCaptureRequestBody decides from the request headers alone.
+func (s *RequestState) shouldCaptureRequestBody() bool {
+	return s != nil && s.isMonitored && s.runtime.settings.config.CaptureRequestBody && isBodyCaptureAllowed(s.info.Header)
+}
+
+// shouldCaptureResponseBody decides from the response headers alone.
+func (s *RequestState) shouldCaptureResponseBody(header http.Header) bool {
+	return s != nil && s.isMonitored && s.runtime.settings.config.CaptureResponseBody && isBodyCaptureAllowed(header)
 }
 
 func (r *sdkRuntime) isExcluded(info *RequestInfo) bool {
