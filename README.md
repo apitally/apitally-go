@@ -203,6 +203,8 @@ apitally.Shutdown(shutdownCtx)
 
 `Shutdown` returns the context's error if the deadline expires before all telemetry is delivered.
 
+With Fiber's `Prefork` option, child processes serve the requests and exit as soon as the master process exits, without shutting down. Each child therefore loses up to one export interval of telemetry when the app stops, unless the child processes receive the stop signal themselves.
+
 ## Logging
 
 Apitally captures application logs written with [`log/slog`](https://pkg.go.dev/log/slog) and links them to the request they were logged in. Wrap your handler with `apitally.NewSlogHandler`, which passes every record on to your handler unchanged:
@@ -290,7 +292,7 @@ defer span.End()
 
 Spans from OpenTelemetry instrumentation of outgoing calls, such as `otelhttp.NewTransport` or `otelsql`, are included the same way.
 
-If your app uses OpenTelemetry HTTP instrumentation, register its middleware before `Init`, or wrap your handler with `otelhttp.NewHandler`. Apitally then adds its data to the instrumentation's request span instead of creating a second one. On Gin, Apitally's middleware runs before all other middleware, so wrap the engine with `otelhttp.NewHandler` instead of using `otelgin`.
+If your app uses OpenTelemetry HTTP instrumentation, such as `otelgin` or `otelhttp`, register its middleware before `Init`, or wrap your handler with `otelhttp.NewHandler`. Apitally then adds its data to the instrumentation's request span instead of creating a second one.
 
 If your app doesn't use OpenTelemetry yet, Apitally registers its own tracer provider globally when the first request arrives. If your app registers a `go.opentelemetry.io/otel/sdk/trace` tracer provider with `otel.SetTracerProvider` before that, Apitally adds its span processor to your provider, keeping your existing exporters. Your provider's sampling settings then also affect Apitally: requests dropped by the sampler will not have request logs or traces in Apitally. Metrics still include all requests, regardless of sampling.
 

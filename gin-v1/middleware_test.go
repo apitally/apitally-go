@@ -348,7 +348,17 @@ func TestPreInstrumentedAppAdaptsWithoutDuplicateSpans(t *testing.T) {
 	server := setUp(t)
 	userSpans := tracetest.NewInMemoryExporter()
 	otel.SetTracerProvider(sdktrace.NewTracerProvider(sdktrace.WithSyncer(userSpans)))
-	appURL := serve(t, testutils.InstrumentHTTPHandler(newEngine(nil)))
+	r := gin.New()
+	// Registered before Init, as otelgin is.
+	r.Use(func(c *gin.Context) {
+		testutils.InstrumentHTTPHandler(http.HandlerFunc(func(_ http.ResponseWriter, req *http.Request) {
+			c.Request = req
+			c.Next()
+		})).ServeHTTP(c.Writer, c.Request)
+	})
+	apitally.Init(r, nil)
+	r.GET("/items/:id", func(c *gin.Context) { c.String(http.StatusOK, "item") })
+	appURL := serve(t, r)
 
 	testutils.Get(t, appURL+"/items/1")
 	shutDown(t)
@@ -390,31 +400,6 @@ func TestDisabledSDKLeavesResponsesUnchanged(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, missing.StatusCode)
 	assert.Equal(t, http.StatusInternalServerError, panicked.StatusCode)
 	assert.Empty(t, server.Requests())
-}
-
-func TestCustomRecoveryResponseIsObservedWithOriginalPanic(t *testing.T) {
-	server := setUp(t)
-	cfg := apitally.NewConfig()
-	cfg.CaptureResponseBody = true
-	r := gin.New()
-	r.Use(gin.CustomRecovery(func(c *gin.Context, recovered any) {
-		c.Data(http.StatusServiceUnavailable, "text/plain", []byte("try again"))
-	}))
-	apitally.Init(r, cfg)
-	r.GET("/panic", func(c *gin.Context) { panic("boom") })
-	appURL := serve(t, r)
-
-	resp := testutils.Get(t, appURL+"/panic")
-	shutDown(t)
-
-	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	attrs := testutils.Attributes(spans[0].Attributes)
-	assert.Equal(t, int64(503), attrs["http.response.status_code"])
-	assert.Equal(t, "try again", attrs["apitally.response.body"])
-	require.Len(t, spans[0].Events, 1)
-	assert.Equal(t, "boom", testutils.Attributes(spans[0].Events[0].Attributes)["exception.message"])
 }
 
 func TestWriteStringIsCountedAndCapturedOnce(t *testing.T) {

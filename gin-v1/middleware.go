@@ -25,15 +25,11 @@ func Init(engine *gin.Engine, cfg *Config) {
 		if len(engine.Routes()) > 0 {
 			internal.LogLateInitError()
 		}
-		// The observer runs before existing middleware, including recovery,
-		// and panics are captured inside existing recovery. Use also rebuilds
-		// the engine's 404 and 405 handler chains.
-		engine.Handlers = append(gin.HandlersChain{observe}, engine.Handlers...)
-		engine.Use(capturePanic)
+		engine.Use(middleware)
 	})
 }
 
-func observe(c *gin.Context) {
+func middleware(c *gin.Context) {
 	o := internal.BeginNetHTTP(c.Writer, c.Request)
 	c.Request = o.Request
 	if o.State != nil {
@@ -52,18 +48,6 @@ func observe(c *gin.Context) {
 		}
 		o.Finish(c.FullPath(), c.ClientIP(), status, p)
 		if p != nil {
-			panic(p)
-		}
-	}()
-	c.Next()
-}
-
-// capturePanic captures the original panic value and stack inside existing
-// recovery, which then writes its response for the observer to observe.
-func capturePanic(c *gin.Context) {
-	defer func() {
-		if p := recover(); p != nil {
-			internal.RequestStateFromContext(c).CapturePanic(p)
 			panic(p)
 		}
 	}()

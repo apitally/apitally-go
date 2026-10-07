@@ -26,7 +26,7 @@ The SDK now authenticates with a **write token** instead of a client ID. Your ex
 
 ### `Init` replaces the middleware
 
-Replace the `Middleware` registration with a call to `Init`, which registers everything the SDK needs. Call it after your recovery middleware and before your other middleware, groups and routes. On Gin and Fiber, routes registered before `Init` are not monitored, and `Init` logs an error when it finds them.
+Replace the `Middleware` registration with a call to `Init`, which registers everything the SDK needs. Call it after your recovery middleware and OpenTelemetry HTTP instrumentation, and before your other middleware, groups and routes. On Gin and Fiber, routes registered before `Init` are not monitored, and `Init` logs an error when it finds them.
 
 ```go
 // Before
