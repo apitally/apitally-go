@@ -1,7 +1,6 @@
 package internal
 
 import (
-	"errors"
 	"reflect"
 	"strings"
 
@@ -39,30 +38,47 @@ type fieldError interface {
 	Error() string
 }
 
-// validationDetails returns the details of go-playground/validator errors in
-// err's Unwrap chain: a slice whose elements are field errors. Other errors
-// have none.
+// validationDetails returns the details of go-playground/validator errors
+// found by unwrapping err as errors.As does: a slice whose elements are field
+// errors. Other errors have none.
 func validationDetails(err error) []validationDetail {
-	for ; err != nil; err = errors.Unwrap(err) {
-		value := reflect.ValueOf(err)
-		if value.Kind() != reflect.Slice || value.Len() == 0 {
-			continue
+	switch wrapper := err.(type) {
+	case nil:
+		return nil
+	case interface{ Unwrap() error }:
+		if details := fieldErrorDetails(err); details != nil {
+			return details
 		}
-		details := make([]validationDetail, 0, value.Len())
-		for i := range value.Len() {
-			fe, ok := value.Index(i).Interface().(fieldError)
-			if !ok {
-				return nil
+		return validationDetails(wrapper.Unwrap())
+	case interface{ Unwrap() []error }:
+		for _, inner := range wrapper.Unwrap() {
+			if details := validationDetails(inner); details != nil {
+				return details
 			}
-			details = append(details, validationDetail{
-				field:    truncateString(toValidUTF8(namespaceWithoutStruct(fe.Namespace())), maxValidationField),
-				message:  truncateString(toValidUTF8(fe.Error()), maxValidationMessage),
-				typeName: truncateString(toValidUTF8(fe.Tag()), maxValidationType),
-			})
 		}
-		return details
+		return nil
 	}
-	return nil
+	return fieldErrorDetails(err)
+}
+
+func fieldErrorDetails(err error) []validationDetail {
+	value := reflect.ValueOf(err)
+	if value.Kind() != reflect.Slice || value.Len() == 0 {
+		return nil
+	}
+	details := make([]validationDetail, 0, value.Len())
+	for i := range value.Len() {
+		fe, ok := value.Index(i).Interface().(fieldError)
+		if !ok {
+			return nil
+		}
+		details = append(details, validationDetail{
+			field:    truncateString(toValidUTF8(namespaceWithoutStruct(fe.Namespace())), maxValidationField),
+			message:  truncateString(toValidUTF8(fe.Error()), maxValidationMessage),
+			typeName: truncateString(toValidUTF8(fe.Tag()), maxValidationType),
+		})
+	}
+	return details
 }
 
 // namespaceWithoutStruct removes the leading struct name from a field path

@@ -1,4 +1,4 @@
-MODULES := . chi-v5 echo-v4 echo-v5 gin-v1
+MODULES := . chi-v5 echo-v4 echo-v5 fiber-v2 fiber-v3 gin-v1
 
 .PHONY: check test
 

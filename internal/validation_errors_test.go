@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"testing"
@@ -35,7 +36,7 @@ func TestValidationErrorsAreReportedFromErrorChannelAndExplicitCapture(t *testin
 		w.WriteHeader(http.StatusBadRequest)
 	})
 	mux.HandleFunc("POST /orders", func(w http.ResponseWriter, r *http.Request) {
-		CaptureValidationError(r.Context(), fieldErrors{{"Order.Email", "email"}})
+		CaptureValidationError(r.Context(), errors.Join(errors.New("binding failed"), fieldErrors{{"Order.Email", "email"}}))
 	})
 	mux.HandleFunc("POST /teapots", func(w http.ResponseWriter, r *http.Request) {
 		RequestStateFromContext(r.Context()).CaptureError(validationErr)

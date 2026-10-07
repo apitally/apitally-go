@@ -13,6 +13,8 @@ const (
 	// Files closed in earlier cycles are sent at most this many per cycle, which
 	// spreads backlog delivery after an outage over several cycles.
 	maxBacklogSendsPerCycle = 10
+	// Shutdown hooks without a context flush within this deadline.
+	shutdownHookFlushTimeout = 5 * time.Second
 )
 
 // runExportLoop runs export cycles independently of request traffic until
@@ -41,6 +43,24 @@ func (r *sdkRuntime) runExportCycle(ctx context.Context) {
 	budget := maxBacklogSendsPerCycle + r.spool.rotateForExport()
 	r.spool.touchFiles()
 	r.sendPendingFiles(ctx, budget)
+}
+
+// Flush delivers the telemetry released so far, within a fixed deadline,
+// and keeps Apitally running. Fiber's shutdown hooks call it, because they
+// receive no context.
+func Flush() {
+	r := currentRuntime.Load()
+	if r == nil || !r.active.Load() {
+		return
+	}
+	defer recoverAndLogPanic("flush")
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownHookFlushTimeout)
+	defer cancel()
+	r.cycleMu.Lock()
+	defer r.cycleMu.Unlock()
+	r.flushIntake(ctx)
+	r.spool.closeCurrentFiles()
+	r.sendPendingFiles(ctx, -1)
 }
 
 // flushIntake drains the error groups immediately before the log flush.
