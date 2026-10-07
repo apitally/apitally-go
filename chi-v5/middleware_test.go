@@ -3,6 +3,7 @@ package apitally_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
@@ -33,8 +35,16 @@ func setUp(t *testing.T) *testutils.OTLPServer {
 	return server
 }
 
+var validate = validator.New()
+
+type item struct {
+	Name  string `validate:"required"`
+	Price int    `validate:"gte=10"`
+}
+
 func newRouter(cfg *apitally.Config, middlewares ...func(http.Handler) http.Handler) *chi.Mux {
 	r := chi.NewRouter()
+	r.Use(middleware.Recoverer)
 	apitally.Init(r, cfg)
 	r.Use(middlewares...)
 	r.Get("/items/{id}", func(w http.ResponseWriter, r *http.Request) {
@@ -53,7 +63,24 @@ func newRouter(cfg *apitally.Config, middlewares ...func(http.Handler) http.Hand
 			w.(http.Flusher).Flush()
 		}
 	})
+	r.Get("/panic", func(w http.ResponseWriter, r *http.Request) {
+		panic(errors.New("boom"))
+	})
+	r.Post("/validate", func(w http.ResponseWriter, r *http.Request) {
+		if err := validate.Struct(item{Name: "", Price: 5}); err != nil {
+			apitally.CaptureValidationError(r.Context(), err)
+			w.WriteHeader(http.StatusUnprocessableEntity)
+		}
+	})
 	r.Route("/api/v1", func(r chi.Router) {
+		r.Use(func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if id := r.Header.Get("X-Consumer"); id != "" {
+					apitally.SetConsumer(r.Context(), apitally.Consumer{Identifier: id, Name: "Acme Corp"})
+				}
+				next.ServeHTTP(w, r)
+			})
+		})
 		r.Get("/users/{userID}", func(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write([]byte("user"))
 		})
@@ -161,6 +188,8 @@ func TestStartupEventPathsMatchRoutes(t *testing.T) {
 		{"method": "GET", "path": "/items/{id}"},
 		{"method": "POST", "path": "/items"},
 		{"method": "GET", "path": "/stream"},
+		{"method": "GET", "path": "/panic"},
+		{"method": "POST", "path": "/validate"},
 		{"method": "GET", "path": "/api/v1/users/{userID}"},
 	}, body.Paths)
 }
@@ -222,6 +251,74 @@ func TestUnmatchedRequestHasNoRouteAndNoHistogramPoint(t *testing.T) {
 	assert.NotContains(t, attrs, "http.route")
 	assert.Equal(t, int64(404), attrs["http.response.status_code"])
 	assert.Empty(t, testutils.HistogramPoints(server.Metrics(t), "http.server.request.duration"))
+}
+
+func TestSetConsumerReachesSpanAndHistogram(t *testing.T) {
+	server := setUp(t)
+	appURL := serve(t, newRouter(nil))
+
+	req, _ := http.NewRequest(http.MethodGet, appURL+"/api/v1/users/7", nil)
+	req.Header.Set("X-Consumer", "acme")
+	testutils.Do(t, http.DefaultClient.Do, req)
+	shutDown(t)
+
+	spans := server.Spans(t)
+	require.Len(t, spans, 1)
+	assert.Equal(t, "acme", testutils.Attributes(spans[0].Attributes)["apitally.consumer.identifier"])
+	points := testutils.HistogramPoints(server.Metrics(t), "http.server.request.duration")
+	require.Len(t, points, 1)
+	assert.Equal(t, "acme", testutils.Attributes(points[0].Attributes)["apitally.consumer.identifier"])
+	var consumerUpdates []any
+	for _, record := range server.LogRecords(t) {
+		if record.EventName == "apitally.consumer.update" {
+			consumerUpdates = append(consumerUpdates, testutils.Value(record.Body))
+		}
+	}
+	assert.Equal(t, []any{map[string]any{"identifier": "acme", "name": "Acme Corp"}}, consumerUpdates)
+}
+
+func TestUnhandledPanicRecordedOnServerSpan(t *testing.T) {
+	server := setUp(t)
+	appURL := serve(t, newRouter(nil))
+
+	resp := testutils.Get(t, appURL+"/panic")
+	shutDown(t)
+
+	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	spans := server.Spans(t)
+	require.Len(t, spans, 1)
+	require.Len(t, spans[0].Events, 1)
+	attrs := testutils.Attributes(spans[0].Events[0].Attributes)
+	assert.Equal(t, "errors.errorString", attrs["exception.type"])
+	assert.Equal(t, "boom", attrs["exception.message"])
+	assert.Regexp(t, `^github.com/apitally/apitally-go/chi-v5_test.newRouter.func\d+\n\t\S+/middleware_test.go:\d+\n`, attrs["exception.stacktrace"])
+	assert.Equal(t, int64(500), testutils.Attributes(spans[0].Attributes)["http.response.status_code"])
+}
+
+func TestValidationErrorReported(t *testing.T) {
+	server := setUp(t)
+	appURL := serve(t, newRouter(nil))
+
+	req, _ := http.NewRequest(http.MethodPost, appURL+"/validate", nil)
+	testutils.Do(t, http.DefaultClient.Do, req)
+	shutDown(t)
+
+	var events []any
+	for _, record := range server.LogRecords(t) {
+		if record.EventName == "apitally.request.validation_error" {
+			events = append(events, testutils.Value(record.Body))
+		}
+	}
+	event := func(field, tag, message string) map[string]any {
+		return map[string]any{
+			"method": "POST", "path": "/validate", "source": "", "field": field, "type": tag, "message": message,
+			"counts": []any{map[string]any{"count": int64(1)}},
+		}
+	}
+	assert.ElementsMatch(t, []any{
+		event("Name", "required", "Key: 'item.Name' Error:Field validation for 'Name' failed on the 'required' tag"),
+		event("Price", "gte", "Key: 'item.Price' Error:Field validation for 'Price' failed on the 'gte' tag"),
+	}, events)
 }
 
 func TestPreInstrumentedAppAdaptsWithoutDuplicateSpans(t *testing.T) {

@@ -32,9 +32,35 @@ func Shutdown(ctx context.Context) error {
 	return internal.Shutdown(ctx)
 }
 
+// SetConsumer identifies the API consumer making the request, for example
+// in authentication middleware. ctx is the request context, or a context
+// derived from it. The consumer's name, group and attributes update the
+// consumer in Apitally. It does nothing outside a request monitored by
+// Apitally.
+func SetConsumer(ctx context.Context, consumer Consumer) {
+	internal.SetConsumer(ctx, consumer)
+}
+
 // SetRequestAttributes sets attributes on the request's span, for example to
 // use in Config.SampleOnResponse. ctx is the request context, or a context
 // derived from it. It does nothing outside a request monitored by Apitally.
 func SetRequestAttributes(ctx context.Context, attrs ...attribute.KeyValue) {
 	internal.SetRequestAttributes(ctx, attrs...)
+}
+
+// CaptureError captures err as the request's error, with the caller's stack
+// trace. Only the first error captured for a request is kept, and it counts
+// as a server error when the response status is 500. ctx is the request
+// context, or a context derived from it. It does nothing outside a request
+// monitored by Apitally.
+func CaptureError(ctx context.Context, err error) {
+	internal.CaptureError(ctx, err)
+}
+
+// CaptureValidationError reports the validation errors in err, which are
+// recognized when err is or wraps go-playground/validator's
+// ValidationErrors. ctx is the request context, or a context derived from
+// it. It does nothing outside a request monitored by Apitally.
+func CaptureValidationError(ctx context.Context, err error) {
+	internal.CaptureValidationError(ctx, err)
 }

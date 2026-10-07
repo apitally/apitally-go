@@ -52,6 +52,10 @@ type sdkRuntime struct {
 	isProviderPrivate bool
 	tracer            trace.Tracer
 
+	consumers        *consumerUpdates
+	serverErrors     errorGroups[serverErrorKey]
+	validationErrors errorGroups[validationErrorKey]
+
 	exportResourcesMu sync.Mutex
 	exportResources   map[*resource.Resource]*resource.Resource
 
@@ -144,6 +148,7 @@ func (r *sdkRuntime) activate() {
 	r.metrics = newMetrics(r.spool, r.encodedResource)
 	r.redaction = newRedaction(r.settings)
 	r.registry = newRequestRegistry()
+	r.consumers = newConsumerUpdates()
 	r.spanProcessor = &spanProcessor{registry: r.registry}
 	r.batchProcessor = sdktrace.NewBatchSpanProcessor(newSpanExporter(r.redaction, r.settings, r.spool),
 		sdktrace.WithMaxQueueSize(batchQueueSize),
@@ -172,6 +177,7 @@ func (r *sdkRuntime) shutdown(ctx context.Context) error {
 	r.registry.cutOff()
 	r.tearDownTracerProvider(ctx)
 	_ = r.batchProcessor.Shutdown(ctx)
+	r.emitErrorEvents()
 	r.logs.shutdown(ctx)
 	r.metrics.collect()
 	r.spool.closeCurrentFiles()

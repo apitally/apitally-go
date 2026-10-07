@@ -61,6 +61,7 @@ func BeginNetHTTP(w http.ResponseWriter, r *http.Request) *NetHTTPObservation {
 // Finish completes observation. recovered is the value of a panic unwinding
 // the handler chain, or nil.
 func (o *NetHTTPObservation) Finish(route, clientAddress string, recovered any) {
+	o.State.CapturePanic(recovered)
 	status := o.Writer.status
 	if status == 0 {
 		// A panic before the response started is assumed to become a 500.

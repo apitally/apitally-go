@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -73,6 +74,11 @@ type RequestState struct {
 	payload             *payloadStash
 	isObserved          bool
 	isReleased          bool
+	consumer            *requestConsumer
+	capturedError       *capturedError
+	// channelError is the first error from the framework's error channel.
+	channelError      error
+	validationDetails []validationDetail
 }
 
 type requestStateKey struct{}
@@ -112,12 +118,16 @@ func (s *RequestState) FinishObservation(result TransportResult) {
 	}
 	defer recoverAndLogPanic("request observation")
 	end := time.Now()
-	attrs := transportAttributes(&result)
 	r := s.runtime
-	// Request metrics are independent of exclusions and sampling.
-	if result.Route != "" && s.info.Method != http.MethodOptions && !isWebSocketUpgrade(s.info.Header) {
-		key := requestMetricKey{method: s.info.Method, route: result.Route, statusCode: result.StatusCode, scheme: s.info.Scheme}
-		r.metrics.recordRequest(key, end.Sub(s.startTime), result.RequestBodySize, result.ResponseBodySize)
+	s.mu.Lock()
+	consumer := s.consumer
+	s.mu.Unlock()
+	attrs := transportAttributes(&result)
+	if consumer != nil {
+		attrs = append(attrs, attribute.String("apitally.consumer.identifier", toValidUTF8(consumer.identifier)))
+	}
+	if !isWebSocketUpgrade(s.info.Header) {
+		s.recordRequestData(&result, end, consumer)
 	}
 	if s.isMonitored {
 		payload := &payloadStash{
@@ -142,6 +152,42 @@ func (s *RequestState) FinishObservation(result TransportResult) {
 	}
 	if s.isSpanCreated {
 		finishServerSpan(s.span, s.info.Method, result.Route, result.StatusCode, attrs, end)
+	}
+}
+
+// recordRequestData records the consumer update, and for routed requests the
+// metrics and errors, independently of exclusions and sampling.
+func (s *RequestState) recordRequestData(result *TransportResult, end time.Time, consumer *requestConsumer) {
+	r := s.runtime
+	consumerIdentifier := ""
+	if consumer != nil {
+		consumerIdentifier = consumer.identifier
+		if consumer.hasMetadata() && r.consumers.isChanged(consumer) {
+			r.logs.emitEvent(consumerUpdateEventName, consumerUpdateEventBody(consumer))
+		}
+	}
+	method := s.info.Method
+	if result.Route == "" || method == http.MethodOptions {
+		return
+	}
+	key := requestMetricKey{method: method, route: result.Route, statusCode: result.StatusCode, scheme: s.info.Scheme, consumer: consumerIdentifier}
+	r.metrics.recordRequest(key, end.Sub(s.startTime), result.RequestBodySize, result.ResponseBodySize)
+	if !isValidErrorMethod(method) {
+		return
+	}
+	s.mu.Lock()
+	captured, channelError, details := s.capturedError, s.channelError, s.validationDetails
+	s.mu.Unlock()
+	path := truncateString(toValidUTF8(result.Route), maxErrorPath)
+	consumerIdentifier = toValidUTF8(consumerIdentifier)
+	if result.StatusCode == http.StatusBadRequest || result.StatusCode == http.StatusUnprocessableEntity {
+		details = append(slices.Clone(details), validationDetails(channelError)...)
+	}
+	for _, detail := range details {
+		r.validationErrors.add(validationErrorKey{method: method, path: path, validationDetail: detail}, consumerIdentifier)
+	}
+	if result.StatusCode == http.StatusInternalServerError && captured != nil {
+		r.serverErrors.add(serverErrorKey{method: method, path: path, typeName: captured.typeName, message: captured.message, stacktrace: captured.stacktrace}, consumerIdentifier)
 	}
 }
 

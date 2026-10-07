@@ -43,7 +43,9 @@ func (r *sdkRuntime) runExportCycle(ctx context.Context) {
 	r.sendPendingFiles(ctx, budget)
 }
 
+// flushIntake drains the error groups immediately before the log flush.
 func (r *sdkRuntime) flushIntake(ctx context.Context) {
+	r.emitErrorEvents()
 	r.logs.flush(ctx)
 	_ = r.batchProcessor.ForceFlush(ctx)
 	r.metrics.collect()
@@ -79,6 +81,15 @@ func (r *sdkRuntime) sendPendingFiles(ctx context.Context, budget int) {
 		default:
 			return
 		}
+	}
+}
+
+func (r *sdkRuntime) emitErrorEvents() {
+	for key, counts := range r.validationErrors.drain() {
+		r.logs.emitEvent(validationErrorEventName, validationErrorEventBody(key, counts))
+	}
+	for key, counts := range r.serverErrors.drain() {
+		r.logs.emitEvent(serverErrorEventName, serverErrorEventBody(key, counts))
 	}
 }
 
