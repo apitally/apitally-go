@@ -21,8 +21,9 @@ Note: Option 1. Buffered responses and streams of known length complete at handl
 
 ### H2. Every handled 4xx error becomes an `exception` event on the SERVER span
 
-Status: open
+Status: fixed
 Class: b (needs decision)
+Note: Option 1 with threshold >= 500. `CaptureReturnedError` only stores the error; `finishObservation` captures it when the status is 500 or higher. Added `TestReturnedErrorIsExceptionOnlyWithServerErrorStatus` and amended design section 8.
 
 - **Where:** `internal/server_errors.go:41-90`, called from `echo-v4/middleware.go:59`, `echo-v5/middleware.go:52`, `fiber-v2/middleware.go:99`, `fiber-v3/middleware.go:78`, `gin-v1/middleware.go:43`.
 - **Problem:** `RequestState.CaptureError` calls `captureError`, which adds the span event immediately, before the final status is known. Echo and Fiber return router 404/405 errors through the middleware, so every unmatched request, every `echo.ErrUnauthorized`, every `fiber.Error` 4xx and every Gin `c.Bind` 400 gets an exception event. A 4xx error captured first also takes the first-error slot. The recorded-500 rule filters only server error counts, not the span event.

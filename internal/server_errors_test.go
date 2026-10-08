@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 
 	"github.com/apitally/apitally-go/internal/testutils"
 )
@@ -112,6 +113,34 @@ func TestCapturedErrorCountsAsServerErrorOnlyWithStatus500(t *testing.T) {
 	body := testutils.Value(records[0].Body).(map[string]any)
 	assert.Equal(t, "/failed", body["path"])
 	assert.Equal(t, []any{map[string]any{"count": int64(2)}}, body["counts"])
+}
+
+func TestReturnedErrorIsExceptionOnlyWithServerErrorStatus(t *testing.T) {
+	server := testutils.NewOTLPServer(t)
+	registerForTest(t, server, nil)
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /missing", func(w http.ResponseWriter, r *http.Request) {
+		requestStateFromContext(r.Context()).CaptureReturnedError(errors.New("not found"))
+		w.WriteHeader(http.StatusNotFound)
+	})
+	mux.HandleFunc("GET /unavailable", func(w http.ResponseWriter, r *http.Request) {
+		requestStateFromContext(r.Context()).CaptureReturnedError(errors.New("unavailable"))
+		w.WriteHeader(http.StatusServiceUnavailable)
+	})
+	appURL := startTestApp(t, mux)
+
+	testutils.Get(t, appURL+"/missing")
+	testutils.Get(t, appURL+"/unavailable")
+	require.NoError(t, Shutdown(context.Background()))
+
+	events := map[string][]*tracepb.Span_Event{}
+	for _, span := range server.Spans(t) {
+		events[span.Name] = span.Events
+	}
+	require.Len(t, events, 2)
+	assert.Empty(t, events["GET /missing"])
+	require.Len(t, events["GET /unavailable"], 1)
+	assert.Equal(t, "unavailable", testutils.Attributes(events["GET /unavailable"][0].Attributes)["exception.message"])
 }
 
 type nilPointerError struct{ message string }

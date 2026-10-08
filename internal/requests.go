@@ -165,8 +165,13 @@ func (s *RequestState) finishObservation(result TransportResult) {
 	end := time.Now()
 	r := s.runtime
 	s.mu.Lock()
-	consumer := s.consumer
+	consumer, returnedError := s.consumer, s.returnedError
 	s.mu.Unlock()
+	// Frameworks also return client errors, such as Echo's and Fiber's 404 and
+	// 405, which are not exceptions of the application.
+	if returnedError != nil && result.StatusCode >= http.StatusInternalServerError {
+		s.captureError(returnedError, "")
+	}
 	attrs := transportAttributes(&result)
 	if consumer != nil {
 		attrs = append(attrs, attribute.String("apitally.consumer.identifier", consumer.identifier))

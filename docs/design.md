@@ -168,7 +168,7 @@ No other trigger exists. Go has no exit hook (returning from `main` ends all gor
 
 ### Server errors
 
-**Inherited, with the panic-status adaptation below:** request-local error state keeps the first captured error; a server error counts only with a captured error and recorded status 500; captured errors become the SERVER span's `exception` event (first only); cancellation is never captured. Recorded status is the observed response status, except for the explicit panic-unwind assumption below. A 500 response alone does not imply a captured server error.
+**Inherited, with the panic-status adaptation below:** request-local error state keeps the first captured error; a server error counts only with a captured error and recorded status 500; captured errors become the SERVER span's `exception` event (first only), where errors returned to the framework are captured only when the recorded status is 500 or higher, as in JavaScript, because Echo, Fiber and Gin also return client errors such as 404, 405 and binding failures; cancellation is never captured. Recorded status is the observed response status, except for the explicit panic-unwind assumption below. A 500 response alone does not imply a captured server error.
 
 **Confirmed automatic capture sources:**
 

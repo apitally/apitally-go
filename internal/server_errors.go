@@ -44,8 +44,9 @@ func CaptureError(ctx context.Context, err error) {
 }
 
 // CaptureReturnedError records err, returned by the handler chain to the
-// framework, as the request's error unless one was already captured. Returned
-// errors carry no stack trace.
+// framework. When observation finishes with a server error status, it becomes
+// the request's error unless one was already captured. Returned errors carry
+// no stack trace.
 func (s *RequestState) CaptureReturnedError(err error) {
 	if s == nil || err == nil {
 		return
@@ -55,7 +56,6 @@ func (s *RequestState) CaptureReturnedError(err error) {
 		s.returnedError = err
 	}
 	s.mu.Unlock()
-	s.captureError(err, "")
 }
 
 // capturePanic records a recovered panic value with the panicking
