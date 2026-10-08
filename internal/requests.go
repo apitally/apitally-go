@@ -341,11 +341,18 @@ func (g *requestRegistry) register(s *RequestState) bool {
 	return true
 }
 
-// link adds a span to the request of its local parent, if any.
+// link adds a span to the request of its local parent, if any. A request
+// links at most its root and as many spans as it buffers, so long-running
+// requests that start a span per event use bounded memory.
 func (g *requestRegistry) link(parent, child trace.SpanID) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if s := g.entries[parent]; s != nil {
+	s := g.entries[parent]
+	switch {
+	case s == nil:
+	case len(s.members) > maxBufferedSpansPerRequest:
+		logDebug("Apitally span link limit reached for a request, dropping the span")
+	default:
 		g.addLocked(s, child)
 	}
 }

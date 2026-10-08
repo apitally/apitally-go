@@ -35,8 +35,9 @@ Note: Option 1 with threshold >= 500. `CaptureReturnedError` only stores the err
 
 ### M1. Span registry grows without limit during long-running requests
 
-Status: open
+Status: fixed
 Class: b (needs decision)
+Note: Option 1, matching JavaScript (`MAX_TRACKED_SPAN_IDS`) and .NET (`TryAssociate`): `link` stops at the root plus 1,000 spans and logs at debug level. No new test, because the bound is not observable in exports; `TestRequestBuffersAtMostThousandDescendantSpans` still pins the export limit.
 
 - **Where:** `internal/requests.go:311-316` (`link`), `:349-351` (`addLocked`); entries are removed only at release.
 - **Problem:** `OnStart` links every descendant into `registry.entries` and `RequestState.members`. The 1,000-span cap limits buffered ended spans, not links. Python drops entries when their span ends.
