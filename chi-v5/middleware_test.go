@@ -112,18 +112,19 @@ func TestRequestExportsSingleServerSpanWithStableSemconv(t *testing.T) {
 	assert.Equal(t, "GET /items/{id}", spans[0].Name)
 	assert.Equal(t, "github.com/apitally/apitally-go/chi-v5", spans[0].Scope)
 	assert.Equal(t, map[string]any{
-		"http.request.method":       "GET",
-		"url.scheme":                "http",
-		"server.address":            "127.0.0.1",
-		"server.port":               int64(port),
-		"url.path":                  "/items/42",
-		"url.query":                 "page=2",
-		"user_agent.original":       "Go-http-client/1.1",
-		"http.route":                "/items/{id}",
-		"http.response.status_code": int64(200),
-		"client.address":            "127.0.0.1",
-		"http.request.body.size":    int64(0),
-		"http.response.body.size":   int64(7),
+		"http.request.method":               "GET",
+		"url.scheme":                        "http",
+		"server.address":                    "127.0.0.1",
+		"server.port":                       int64(port),
+		"url.path":                          "/items/42",
+		"url.query":                         "page=2",
+		"user_agent.original":               "Go-http-client/1.1",
+		"http.route":                        "/items/{id}",
+		"http.response.status_code":         int64(200),
+		"client.address":                    "127.0.0.1",
+		"http.request.body.size":            int64(0),
+		"http.response.body.size":           int64(7),
+		"http.response.header.content-type": []any{"text/plain; charset=utf-8"},
 	}, testutils.Attributes(spans[0].Attributes))
 }
 

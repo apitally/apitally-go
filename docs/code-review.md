@@ -204,8 +204,9 @@ Note: Covered in `TestRequestLogsAreLinkedToServerSpanAndForwarded`.
 
 ### L10. Chi likely misses the `Content-Type` that net/http sets when sniffing
 
-Status: open
+Status: fixed
 Class: b (needs decision)
+Note: Confirmed (net/http writes the detected type only to the connection). Option 1: the wrapper detects the type from the first write for Apitally's capture decision and recorded header only. Added `TestDetectedContentTypeIsRecordedAndAllowsBodyCapture`; the Chi semconv test now expects the header.
 
 - **Where:** `internal/nethttp.go` (response header capture), pinned by `chi-v5/middleware_test.go` `TestRequestExportsSingleServerSpanWithStableSemconv`.
 - **Problem:** the expected attribute map omits `http.response.header.content-type`, which Gin and Fiber include. net/http sniffs and sets `Content-Type` on first write, apparently after the wrapper read the headers. Python's `test_response_headers_include_headers_added_by_framework` requires it.

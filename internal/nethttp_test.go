@@ -110,6 +110,29 @@ func TestReadFromUsesWrappedWriterUnlessBodyIsCaptured(t *testing.T) {
 	}
 }
 
+func TestDetectedContentTypeIsRecordedAndAllowsBodyCapture(t *testing.T) {
+	server := testutils.NewOTLPServer(t)
+	cfg := root.NewConfig()
+	cfg.CaptureResponseBody = true
+	registerForTest(t, server, cfg)
+	headerAfterWrite := http.Header{}
+	appURL := startTestApp(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"id":1}`))
+		headerAfterWrite = w.Header().Clone()
+	}))
+
+	resp := testutils.Get(t, appURL+"/items")
+	require.NoError(t, Shutdown(context.Background()))
+
+	assert.Equal(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
+	assert.Empty(t, headerAfterWrite.Get("Content-Type"))
+	spans := server.Spans(t)
+	require.Len(t, spans, 1)
+	attrs := testutils.Attributes(spans[0].Attributes)
+	assert.Equal(t, []any{"text/plain; charset=utf-8"}, attrs["http.response.header.content-type"])
+	assert.Equal(t, `{"id":1}`, attrs["apitally.response.body"])
+}
+
 // readerFromRecorder is a response writer implementing io.ReaderFrom, as
 // net/http's own writer does to use sendfile.
 type readerFromRecorder struct {

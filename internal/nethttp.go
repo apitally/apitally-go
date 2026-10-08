@@ -77,7 +77,7 @@ func (o *NetHTTPObservation) Finish(route, clientAddress string, status int, rec
 		ClientAddress:    clientAddress,
 		RequestBodySize:  o.Request.ContentLength,
 		ResponseBodySize: o.Writer.size,
-		ResponseHeader:   o.Writer.Header(),
+		ResponseHeader:   o.Writer.observedHeader(),
 	}
 	if b := o.body; b != nil {
 		if result.RequestBodySize < 0 && b.isEOF {
@@ -101,6 +101,9 @@ type ResponseWriter struct {
 	capture          *bodyCapture
 	isCaptureDecided bool
 	hasWriteError    bool
+	// detectedContentType is the Content-Type net/http detects from the first
+	// body bytes. net/http writes it only to the connection, never to Header.
+	detectedContentType string
 }
 
 func (w *ResponseWriter) WriteHeader(code int) {
@@ -112,7 +115,7 @@ func (w *ResponseWriter) WriteHeader(code int) {
 }
 
 func (w *ResponseWriter) Write(b []byte) (int, error) {
-	w.startBody()
+	w.startBody(b)
 	n, err := w.ResponseWriter.Write(b)
 	w.recordWrite(b[:n], err)
 	return n, err
@@ -121,7 +124,12 @@ func (w *ResponseWriter) Write(b []byte) (int, error) {
 // WriteString supports io.StringWriter, which handlers and frameworks use as
 // an alternate write path.
 func (w *ResponseWriter) WriteString(s string) (int, error) {
-	w.startBody()
+	var first []byte
+	if !w.isCaptureDecided {
+		// http.DetectContentType considers at most 512 bytes.
+		first = []byte(s[:min(len(s), 512)])
+	}
+	w.startBody(first)
 	n, err := io.WriteString(w.ResponseWriter, s)
 	if w.capture != nil {
 		w.capture.write([]byte(s[:n]))
@@ -141,7 +149,7 @@ func (w *ResponseWriter) StatusCode() int {
 // files, while the body is not captured. A captured body is copied through
 // Write, because io.Copy uses ReadFrom for any source, not only files.
 func (w *ResponseWriter) ReadFrom(src io.Reader) (int64, error) {
-	w.startBody()
+	w.startBody(nil)
 	if readerFrom, ok := w.ResponseWriter.(io.ReaderFrom); ok && w.capture == nil {
 		n, err := readerFrom.ReadFrom(src)
 		w.size += n
@@ -153,7 +161,7 @@ func (w *ResponseWriter) ReadFrom(src io.Reader) (int64, error) {
 
 func (w *ResponseWriter) Flush() {
 	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
-		w.startBody()
+		w.startBody(nil)
 		flusher.Flush()
 	}
 }
@@ -194,17 +202,37 @@ func netHTTPRequestInfo(r *http.Request) RequestInfo {
 	}
 }
 
-// startBody decides on body capture from the final response headers.
-func (w *ResponseWriter) startBody() {
+// startBody decides on body capture from the final response headers. first
+// is the first body chunk, or nil when the body starts without one.
+func (w *ResponseWriter) startBody(first []byte) {
 	if w.status == 0 {
 		w.status = http.StatusOK
 	}
-	if !w.isCaptureDecided {
-		w.isCaptureDecided = true
-		if w.state.shouldCaptureResponseBody(w.Header()) {
-			w.capture = newBodyCapture(declaredContentLength(w.Header()))
-		}
+	if w.isCaptureDecided {
+		return
 	}
+	w.isCaptureDecided = true
+	header := w.Header()
+	// These are the conditions under which net/http detects the Content-Type.
+	_, hasContentType := header["Content-Type"]
+	if w.state != nil && len(first) > 0 && !hasContentType && header.Get("Content-Encoding") == "" && header.Get("Transfer-Encoding") == "" &&
+		w.status != http.StatusNoContent && w.status != http.StatusNotModified {
+		w.detectedContentType = http.DetectContentType(first)
+	}
+	if w.state.shouldCaptureResponseBody(w.observedHeader()) {
+		w.capture = newBodyCapture(declaredContentLength(header))
+	}
+}
+
+// observedHeader returns the response header including the detected
+// Content-Type.
+func (w *ResponseWriter) observedHeader() http.Header {
+	if w.detectedContentType == "" {
+		return w.Header()
+	}
+	header := w.Header().Clone()
+	header.Set("Content-Type", w.detectedContentType)
+	return header
 }
 
 func (w *ResponseWriter) recordWrite(p []byte, err error) {
