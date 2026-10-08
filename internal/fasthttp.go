@@ -91,14 +91,18 @@ func (o *FasthttpObservation) FinishHandler(result TransportResult, request, res
 	}
 	o.mu.Lock()
 	o.result = &result
-	isComplete := o.isClosed || !o.isCloseRegistered
+	// Only a wrapped stream is read after the handler returns. Everything else
+	// completes now, because adaptors such as adaptor.FiberApp and AWS Lambda
+	// proxies never reset the RequestCtx, so they never call Close.
+	isComplete := o.stream == nil || o.isClosed || !o.isCloseRegistered
 	o.mu.Unlock()
 	if isComplete {
 		o.finish()
 	}
 }
 
-// Close completes observation after fasthttp wrote or aborted the response.
+// Close completes observation of a wrapped response stream after fasthttp
+// wrote or aborted the response.
 func (o *FasthttpObservation) Close() error {
 	o.mu.Lock()
 	o.isClosed = true

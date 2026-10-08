@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/adaptor"
 	"github.com/gofiber/fiber/v3/middleware/recover"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -499,6 +500,23 @@ func TestAbortedStreamOmitsSize(t *testing.T) {
 	attrs := testutils.Attributes(spans[0].Attributes)
 	assert.NotContains(t, attrs, "http.response.body.size")
 	assert.Equal(t, int64(200), attrs["http.response.status_code"])
+}
+
+func TestRequestServedThroughAdaptorIsExported(t *testing.T) {
+	server := setUp(t)
+	app := newApp(nil)
+	url := testutils.Serve(t, adaptor.FiberApp(app))
+
+	resp := testutils.Get(t, url+"/items/42")
+	shutDown(t)
+
+	assert.Equal(t, "item 42", resp.Body)
+	spans := server.Spans(t)
+	require.Len(t, spans, 1)
+	assert.Equal(t, "GET /items/:id", spans[0].Name)
+	points := testutils.HistogramPoints(server.Metrics(t), "http.server.request.duration")
+	require.Len(t, points, 1)
+	assert.Equal(t, uint64(1), points[0].Count)
 }
 
 func TestListeningActivatesBeforeFirstRequest(t *testing.T) {

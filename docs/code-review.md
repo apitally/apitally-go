@@ -8,8 +8,9 @@ Each finding has an ID, a status (`open`, `fixed`, `rejected` or `deferred`) and
 
 ### H1. Fiber requests never complete when fasthttp does not reset the request context
 
-Status: open
+Status: fixed
 Class: b (needs decision)
+Note: Option 1. Buffered responses and streams of known length complete at handler return; only wrapped streams of unknown length wait for `Close`. Added `TestRequestServedThroughAdaptorIsExported` (fiber-v2, fiber-v3) and updated design sections 6, 7, 8 and the summary table.
 
 - **Where:** `internal/fasthttp.go:36-37,96`, `internal/requests.go:114` (register) and `:233` (the only `remove`).
 - **Problem:** Observation completes only when fasthttp closes the Apitally `io.Closer` user value on `RequestCtx` reset. Fiber v2's `adaptor.FiberApp`/`adaptor.HTTPHandler` and `aws-lambda-go-api-proxy/fiber` build a `fasthttp.RequestCtx` that is never reset; the v3 adaptor pools it and resets it only when the next request reuses it. `FinishObservation` then never runs: no metrics, errors or spans, the created SERVER span never ends, and each request stays in `requestRegistry.entries` (with up to 1,000 buffered spans) until `Shutdown`. No warning is logged.
