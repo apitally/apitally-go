@@ -38,11 +38,15 @@ func Do(t testing.TB, roundTrip func(*http.Request) (*http.Response, error), req
 	return Response{StatusCode: resp.StatusCode, Header: resp.Header, Body: string(body)}
 }
 
-// Get sends a GET request with http.DefaultClient.
-func Get(t testing.TB, url string) Response {
+// Get sends a GET request with http.DefaultClient and the request headers
+// given as name and value pairs.
+func Get(t testing.TB, url string, headers ...string) Response {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	require.NoError(t, err)
+	for i := 0; i+1 < len(headers); i += 2 {
+		req.Header.Set(headers[i], headers[i+1])
+	}
 	return Do(t, http.DefaultClient.Do, req)
 }
 

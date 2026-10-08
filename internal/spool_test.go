@@ -18,7 +18,7 @@ import (
 	"github.com/apitally/apitally-go/internal/testutils"
 )
 
-func TestSpoolRotatesFilesBeforeExceedingMaxUncompressedSize(t *testing.T) {
+func TestSpoolRotatesFilesAtMaxSize(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir())
 	s := newSpool()
 	payload := bytes.Repeat([]byte("x"), 1_000_000)
@@ -82,7 +82,7 @@ func TestSpoolDeletesOrphanedFilesUntouchedForTwoHours(t *testing.T) {
 	assert.FileExists(t, recent)
 }
 
-func TestSpoolDropsFilesNotDeliveredWithinRetentionAfterFirstAttempt(t *testing.T) {
+func TestSpoolDropsFilesPastRetention(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir())
 	testutils.RecordSlog(t)
 	synctest.Test(t, func(t *testing.T) {

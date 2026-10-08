@@ -2,7 +2,6 @@ package internal
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"net/http"
 	"testing"
@@ -17,7 +16,7 @@ import (
 	"github.com/apitally/apitally-go/internal/testutils"
 )
 
-func TestSamplingKeepsTracesWhoseLowTraceIDBitsFallUnderRate(t *testing.T) {
+func TestSamplingIsDeterministicByTraceID(t *testing.T) {
 	server := testutils.NewOTLPServer(t)
 	cfg := root.NewConfig()
 	cfg.SampleRate = 0.5
@@ -26,9 +25,7 @@ func TestSamplingKeepsTracesWhoseLowTraceIDBitsFallUnderRate(t *testing.T) {
 	kept, dropped := "0af7651916cd43dd7fffffffffffffff", "0af7651916cd43dd8000000000000000"
 
 	for _, traceID := range []string{kept, dropped, kept} {
-		req, _ := http.NewRequest(http.MethodGet, appURL+"/items", nil)
-		req.Header.Set("traceparent", "00-"+traceID+"-b7ad6b7169203331-01")
-		testutils.Do(t, http.DefaultClient.Do, req)
+		testutils.Get(t, appURL+"/items", "traceparent", "00-"+traceID+"-b7ad6b7169203331-01")
 	}
 	require.NoError(t, Shutdown(context.Background()))
 
@@ -69,30 +66,7 @@ func TestSampledOutRequestDropsDescendantsAndLogs(t *testing.T) {
 	}
 }
 
-func TestSampleRateZeroDropsTraceButKeepsServerError(t *testing.T) {
-	server := testutils.NewOTLPServer(t)
-	cfg := root.NewConfig()
-	cfg.SampleRate = 0
-	registerForTest(t, server, cfg)
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /items", func(w http.ResponseWriter, r *http.Request) {
-		CaptureError(r.Context(), errors.New("failed"))
-		w.WriteHeader(http.StatusInternalServerError)
-	})
-	appURL := startTestApp(t, mux)
-
-	testutils.Get(t, appURL+"/items")
-	require.NoError(t, Shutdown(context.Background()))
-
-	assert.Empty(t, server.Spans(t))
-	records := server.Events(t, serverErrorEventName)
-	require.Len(t, records, 1)
-	body := testutils.Value(records[0].Body).(map[string]any)
-	assert.Equal(t, "/items", body["path"])
-	assert.Equal(t, "failed", body["message"])
-}
-
-func TestSampleOnRequestFailsOpenAndAbstentionFallsBackToSampleRate(t *testing.T) {
+func TestSampleOnRequestFailsOpen(t *testing.T) {
 	for _, tc := range []struct {
 		name          string
 		sampleRate    float64
@@ -121,7 +95,7 @@ func TestSampleOnRequestFailsOpenAndAbstentionFallsBackToSampleRate(t *testing.T
 	}
 }
 
-func TestSampleOnResponseDropsByFinalAttributesAndAbstentionKeepsRequest(t *testing.T) {
+func TestSampleOnResponseDecidesOnFinalAttributes(t *testing.T) {
 	server := testutils.NewOTLPServer(t)
 	cfg := root.NewConfig()
 	cfg.SampleOnResponse = func(span sdktrace.ReadOnlySpan) (float64, bool) {

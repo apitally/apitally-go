@@ -12,7 +12,7 @@ import (
 	"github.com/apitally/apitally-go/internal/testutils"
 )
 
-func TestExplicitOptionsTakePrecedenceOverEnvironmentVariables(t *testing.T) {
+func TestOptionsOverrideEnvironmentVariables(t *testing.T) {
 	testutils.ClearEnv(t)
 	t.Setenv("APITALLY_WRITE_TOKEN", "apt_zzzzzzzzzzzzzzzzzzzzzzzz")
 	t.Setenv("APITALLY_ENV", "staging")
@@ -59,26 +59,19 @@ func TestDisableControlsAreAdditive(t *testing.T) {
 	}
 }
 
-func TestInvalidWriteTokenDisablesWithMaskedError(t *testing.T) {
+func TestMissingOrInvalidWriteTokenDisables(t *testing.T) {
 	testutils.ClearEnv(t)
 	cfg := root.NewConfig()
 	cfg.WriteToken = "apt_secretvalue"
 
-	s := resolveSettings(cfg)
+	missing, invalid := resolveSettings(nil), resolveSettings(cfg)
 
-	assert.False(t, s.isEnabled)
-	require.Len(t, s.configErrors, 1)
-	assert.Contains(t, s.configErrors[0], "apt_secr...")
-	assert.NotContains(t, s.configErrors[0], "apt_secretvalue")
-}
-
-func TestMissingWriteTokenDisables(t *testing.T) {
-	testutils.ClearEnv(t)
-
-	s := resolveSettings(nil)
-
-	assert.False(t, s.isEnabled)
-	assert.Len(t, s.configErrors, 1)
+	assert.False(t, missing.isEnabled)
+	assert.Len(t, missing.configErrors, 1)
+	assert.False(t, invalid.isEnabled)
+	require.Len(t, invalid.configErrors, 1)
+	assert.Contains(t, invalid.configErrors[0], "apt_secr...")
+	assert.NotContains(t, invalid.configErrors[0], "apt_secretvalue")
 }
 
 func TestInvalidSampleRateResolvesToOne(t *testing.T) {
@@ -90,7 +83,7 @@ func TestInvalidSampleRateResolvesToOne(t *testing.T) {
 	}
 }
 
-func TestUserPatternsAreCaseInsensitiveAndInvalidPatternsDropped(t *testing.T) {
+func TestUserPatternsAreValidatedAndCaseInsensitive(t *testing.T) {
 	testutils.ClearEnv(t)
 	cfg := root.NewConfig()
 	cfg.WriteToken = testutils.WriteToken
@@ -106,7 +99,7 @@ func TestUserPatternsAreCaseInsensitiveAndInvalidPatternsDropped(t *testing.T) {
 	assert.True(t, s.isEnabled)
 }
 
-func TestLaterRegistrationWithDifferentConfigurationWarnsAndIsIgnored(t *testing.T) {
+func TestConflictingRegistrationIsIgnored(t *testing.T) {
 	testutils.ClearEnv(t)
 	SetUpTest(t)
 	logs := testutils.RecordSlog(t)

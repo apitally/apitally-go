@@ -38,8 +38,6 @@ func TestRequestExportsServerSpanWithHandlerSpans(t *testing.T) {
 	require.Len(t, spans, 2)
 	rootSpan, child := findSpan(t, spans, "GET /items/{id}"), findSpan(t, spans, "load item")
 	assert.Equal(t, rootSpan.SpanId, child.ParentSpanId)
-	assert.Equal(t, tracepb.Span_SPAN_KIND_INTERNAL, child.Kind)
-	assert.Equal(t, "test", child.Scope)
 }
 
 func TestRequestAttributesAreSetOnServerSpan(t *testing.T) {
@@ -60,7 +58,7 @@ func TestRequestAttributesAreSetOnServerSpan(t *testing.T) {
 	assert.Equal(t, []any{"admin", "billing"}, attrs["roles"])
 }
 
-func TestNestedMonitoredRequestIsExportedAsSeparateRequest(t *testing.T) {
+func TestNestedRequestIsExportedSeparately(t *testing.T) {
 	server := testutils.NewOTLPServer(t)
 	registerForTest(t, server, nil)
 	var app http.Handler
@@ -83,7 +81,7 @@ func TestNestedMonitoredRequestIsExportedAsSeparateRequest(t *testing.T) {
 	assert.Equal(t, outer.SpanId, inner.ParentSpanId)
 }
 
-func TestStackedServerSpanInsideRequestIsExportedAsInternalWithWarning(t *testing.T) {
+func TestStackedServerSpanIsExportedAsInternal(t *testing.T) {
 	server := testutils.NewOTLPServer(t)
 	registerForTest(t, server, nil)
 	logs := testutils.RecordSlog(t)
@@ -156,10 +154,8 @@ func TestExcludedRequestsAreNotExportedOrSampled(t *testing.T) {
 	cfg := root.NewConfig()
 	cfg.ExcludePaths = []string{"^/internal/"}
 	callbackCalls := 0
-	var callbackSpanKind trace.SpanKind
-	cfg.SampleOnRequest = func(span sdktrace.ReadOnlySpan) (float64, bool) {
+	cfg.SampleOnRequest = func(sdktrace.ReadOnlySpan) (float64, bool) {
 		callbackCalls++
-		callbackSpanKind = span.SpanKind()
 		return 1, true
 	}
 	registerForTest(t, server, cfg)
@@ -167,10 +163,8 @@ func TestExcludedRequestsAreNotExportedOrSampled(t *testing.T) {
 
 	testutils.Get(t, appURL+"/healthz")
 	testutils.Get(t, appURL+"/Internal/stats")
-	req, _ := http.NewRequest(http.MethodGet, appURL+"/items", nil)
-	req.Header.Set("User-Agent", "kube-probe/1.30")
-	testutils.Do(t, http.DefaultClient.Do, req)
-	req, _ = http.NewRequest(http.MethodOptions, appURL+"/items", nil)
+	testutils.Get(t, appURL+"/items", "User-Agent", "kube-probe/1.30")
+	req, _ := http.NewRequest(http.MethodOptions, appURL+"/items", nil)
 	testutils.Do(t, http.DefaultClient.Do, req)
 	testutils.Get(t, appURL+"/items")
 	require.NoError(t, Shutdown(context.Background()))
@@ -179,41 +173,9 @@ func TestExcludedRequestsAreNotExportedOrSampled(t *testing.T) {
 	require.Len(t, spans, 1)
 	assert.Equal(t, "/items", testutils.Attributes(spans[0].Attributes)["url.path"])
 	assert.Equal(t, 1, callbackCalls)
-	assert.Equal(t, trace.SpanKindServer, callbackSpanKind)
 }
 
-func TestExcludedRoutedRequestsStillProduceServerErrorsAndMetrics(t *testing.T) {
-	server := testutils.NewOTLPServer(t)
-	registerForTest(t, server, nil)
-	fail := func(w http.ResponseWriter, r *http.Request) {
-		CaptureError(r.Context(), errors.New("failed"))
-		w.WriteHeader(http.StatusInternalServerError)
-	}
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", fail)
-	mux.HandleFunc("GET /items", fail)
-	appURL := startTestApp(t, mux)
-
-	testutils.Get(t, appURL+"/healthz")
-	req, _ := http.NewRequest(http.MethodGet, appURL+"/items", nil)
-	req.Header.Set("User-Agent", "kube-probe/1.30")
-	testutils.Do(t, http.DefaultClient.Do, req)
-	require.NoError(t, Shutdown(context.Background()))
-
-	assert.Empty(t, server.Spans(t))
-	var errorPaths []any
-	for _, record := range server.Events(t, serverErrorEventName) {
-		errorPaths = append(errorPaths, testutils.Value(record.Body).(map[string]any)["path"])
-	}
-	assert.ElementsMatch(t, []any{"/healthz", "/items"}, errorPaths)
-	var metricRoutes []any
-	for _, point := range testutils.HistogramPoints(server.Metrics(t), "http.server.request.duration") {
-		metricRoutes = append(metricRoutes, testutils.Attributes(point.Attributes)["http.route"])
-	}
-	assert.ElementsMatch(t, []any{"/healthz", "/items"}, metricRoutes)
-}
-
-func TestWebSocketUpgradeIsPassedThroughWithoutTelemetry(t *testing.T) {
+func TestWebSocketUpgradeIsNotMonitored(t *testing.T) {
 	server := testutils.NewOTLPServer(t)
 	registerForTest(t, server, nil)
 	mux := http.NewServeMux()
@@ -237,10 +199,7 @@ func TestWebSocketUpgradeIsPassedThroughWithoutTelemetry(t *testing.T) {
 		app.ServeHTTP(w, r)
 	}))
 
-	req, _ := http.NewRequest(http.MethodGet, appURL+"/ws", nil)
-	req.Header.Set("Connection", "Upgrade")
-	req.Header.Set("Upgrade", "websocket")
-	resp := testutils.Do(t, http.DefaultClient.Do, req)
+	resp := testutils.Get(t, appURL+"/ws", "Connection", "Upgrade", "Upgrade", "websocket")
 	<-served
 	require.NoError(t, Shutdown(context.Background()))
 

@@ -14,7 +14,7 @@ import (
 	"github.com/apitally/apitally-go/internal/testutils"
 )
 
-func TestConsumerIsNormalizedAndMergedWithAttributesInKeyOrder(t *testing.T) {
+func TestConsumerIsNormalizedAndMerged(t *testing.T) {
 	attributes := map[string]string{" plan ": " pro ", "region": "", "": "x", "long": strings.Repeat("x", 1025)}
 	for i := range 9 {
 		attributes["k"+strconv.Itoa(i)] = "v"
@@ -56,7 +56,7 @@ func TestConsumerUpdateIsEmittedWhenPayloadChanges(t *testing.T) {
 	assert.Equal(t, "Acme Corp", testutils.Value(records[1].Body).(map[string]any)["name"])
 }
 
-func TestConsumerUpdateHashesEvictLeastRecentlyUsedIdentifier(t *testing.T) {
+func TestConsumerUpdateCacheEvictsLeastRecentlyUsed(t *testing.T) {
 	updates := newConsumerUpdates()
 	first := &requestConsumer{identifier: "first", name: "First"}
 	updates.isChanged(first)

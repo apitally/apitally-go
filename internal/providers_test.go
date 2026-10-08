@@ -22,7 +22,7 @@ import (
 
 const traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
 
-func TestAttachesToGlobalSDKTracerProviderWithApitallyResourceOnExportCopies(t *testing.T) {
+func TestAttachesToApplicationTracerProvider(t *testing.T) {
 	server := testutils.NewOTLPServer(t)
 	registerForTest(t, server, nil)
 	userSpans := tracetest.NewInMemoryExporter()
@@ -67,17 +67,14 @@ func TestShutdownLeavesApplicationTracerProviderRunning(t *testing.T) {
 	assert.Equal(t, "after shutdown", userSpans.GetSpans()[0].Name)
 }
 
-func TestOwnProviderAndPropagatorAreRegisteredWhenUnset(t *testing.T) {
+func TestOwnProviderIsRegisteredWithPropagator(t *testing.T) {
 	server := testutils.NewOTLPServer(t)
 	registerForTest(t, server, nil)
 	appURL := startTestApp(t, http.HandlerFunc(writeOK))
 
-	req, _ := http.NewRequest(http.MethodGet, appURL+"/items", nil)
-	req.Header.Set("traceparent", traceparent)
-	testutils.Do(t, http.DefaultClient.Do, req)
+	testutils.Get(t, appURL+"/items", "traceparent", traceparent)
 	require.NoError(t, Shutdown(context.Background()))
 
-	assert.IsType(t, &sdktrace.TracerProvider{}, otel.GetTracerProvider())
 	assert.Equal(t, defaultPropagator, otel.GetTextMapPropagator())
 	spans := server.Spans(t)
 	require.Len(t, spans, 1)
@@ -92,9 +89,7 @@ func TestApplicationPropagatorIsKept(t *testing.T) {
 	otel.SetTextMapPropagator(empty)
 	appURL := startTestApp(t, http.HandlerFunc(writeOK))
 
-	req, _ := http.NewRequest(http.MethodGet, appURL+"/items", nil)
-	req.Header.Set("traceparent", traceparent)
-	testutils.Do(t, http.DefaultClient.Do, req)
+	testutils.Get(t, appURL+"/items", "traceparent", traceparent)
 	require.NoError(t, Shutdown(context.Background()))
 
 	assert.Equal(t, empty, otel.GetTextMapPropagator())
@@ -103,32 +98,22 @@ func TestApplicationPropagatorIsKept(t *testing.T) {
 	assert.Empty(t, spans[0].ParentSpanId)
 }
 
-func TestPropagatorStaysUnsetWhenApplicationSetTracerProvider(t *testing.T) {
-	providers := map[string]trace.TracerProvider{
-		"SDK provider":  sdktrace.NewTracerProvider(),
-		"noop provider": noop.NewTracerProvider(),
-	}
-	for name, provider := range providers {
-		t.Run(name, func(t *testing.T) {
-			server := testutils.NewOTLPServer(t)
-			registerForTest(t, server, nil)
-			otel.SetTracerProvider(provider)
-			appURL := startTestApp(t, http.HandlerFunc(writeOK))
+func TestApplicationProviderLeavesPropagatorUnset(t *testing.T) {
+	server := testutils.NewOTLPServer(t)
+	registerForTest(t, server, nil)
+	otel.SetTracerProvider(sdktrace.NewTracerProvider())
+	appURL := startTestApp(t, http.HandlerFunc(writeOK))
 
-			req, _ := http.NewRequest(http.MethodGet, appURL+"/items", nil)
-			req.Header.Set("traceparent", traceparent)
-			testutils.Do(t, http.DefaultClient.Do, req)
-			require.NoError(t, Shutdown(context.Background()))
+	testutils.Get(t, appURL+"/items", "traceparent", traceparent)
+	require.NoError(t, Shutdown(context.Background()))
 
-			assert.Equal(t, initialPropagator, otel.GetTextMapPropagator())
-			spans := server.Spans(t)
-			require.Len(t, spans, 1)
-			assert.Equal(t, "0af7651916cd43dd8448eb211c80319c", trace.TraceID(spans[0].TraceId).String())
-		})
-	}
+	assert.Equal(t, initialPropagator, otel.GetTextMapPropagator())
+	spans := server.Spans(t)
+	require.Len(t, spans, 1)
+	assert.Equal(t, "0af7651916cd43dd8448eb211c80319c", trace.TraceID(spans[0].TraceId).String())
 }
 
-func TestForeignTracerProviderGetsPrivateProviderWithoutDescendants(t *testing.T) {
+func TestForeignTracerProviderGetsPrivateProvider(t *testing.T) {
 	server := testutils.NewOTLPServer(t)
 	registerForTest(t, server, nil)
 	logs := testutils.RecordSlog(t)

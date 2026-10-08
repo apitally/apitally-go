@@ -40,7 +40,6 @@ func TestRequestLogsAreLinkedToServerSpanAndForwarded(t *testing.T) {
 		logger.WarnContext(ctx, "slow query")
 		span.End()
 		_ = logger.Handler().Handle(r.Context(), slog.NewRecord(time.Now(), slog.LevelInfo, "without code location", 0))
-		logger.Info("without request context")
 	})
 	appURL := startTestApp(t, mux)
 
@@ -48,7 +47,7 @@ func TestRequestLogsAreLinkedToServerSpanAndForwarded(t *testing.T) {
 	testutils.Get(t, appURL+"/items")
 	require.NoError(t, Shutdown(context.Background()))
 
-	assert.Equal(t, 5, strings.Count(output.String(), "\n"))
+	assert.Equal(t, 4, strings.Count(output.String(), "\n"))
 	spans := server.Spans(t)
 	rootSpan := findSpan(t, spans, "GET /items")
 	slogRecords := server.ApplicationLogRecords(t)

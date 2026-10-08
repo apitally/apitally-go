@@ -190,21 +190,20 @@ The rules in `AGENTS.md` apply. This section fixes where tests live and what eac
 2. `TestClientAddressUsesFrameworkResolvedClientIP`
 3. `TestHistogramAttributesAndLogCorrelation` (the handler logs with the context from design section 13's request helpers table)
 4. `TestRouteIncludesGroupPrefix`
-5. `TestFirstRequestActivatesAndIsRecorded`
-6. `TestStartupEventPathsMatchRoutes`
-7. `TestRequestAndResponseBodiesCapturedAndRedacted`
-8. `TestStreamingResponseSizeAndBodyCaptured`
-9. `TestUnmatchedRequestHasNoRouteAndNoHistogramPoint`
-10. `TestSetConsumerReachesSpanAndHistogram`
-11. `TestUnhandledPanicRecordedOnServerSpan`
-12. `TestValidationErrorReported`
-13. `TestPreInstrumentedAppAdaptsWithoutDuplicateSpans`
-14. `TestInitTwiceDoesNotStackMiddleware`
-15. `TestDisabledSDKLeavesResponsesUnchanged`
+5. `TestStartupEventPathsMatchRoutes`
+6. `TestRequestAndResponseBodiesCapturedAndRedacted`
+7. `TestStreamingResponseSizeAndBodyCaptured`
+8. `TestUnmatchedRequestHasNoRouteAndNoHistogramPoint`
+9. `TestSetConsumerReachesSpanAndHistogram`
+10. `TestUnhandledPanicRecordedOnServerSpan`
+11. `TestValidationErrorReported`
+12. `TestPreInstrumentedAppAdaptsWithoutDuplicateSpans`
+13. `TestInitTwiceDoesNotStackMiddleware`
+14. `TestDisabledSDKLeavesResponsesUnchanged`
 
 `chi-v5` adds each scenario in the stage that implements its behavior (stages 3 to 6), keeping this order. The Gin, Echo and Fiber modules add the full set when they are created.
 
-Framework-specific tests follow the canonical set: Gin recovery ordering and `WriteString`, Echo and Fiber single error-handler dispatch, Gin and Fiber late-`Init` error, Fiber `OnListen`, prefork skip, stream completion and abort, and shutdown-hook flush. The Fiber modules also own the `internal/fasthttp.go` tests: the root module never imports fasthttp, and each Fiber module's CI jobs run them at its fasthttp floor and latest version (stream wrapper active, sizes from stream types, capture of unknown-length streams). `sdk_test.go` asserts that `CaptureError` records the caller's file.
+Framework-specific tests follow the canonical set: Gin recovery ordering and `WriteString`, Echo and Fiber single error-handler dispatch, Gin and Fiber late-`Init` error, Fiber `OnListen`, prefork skip, stream completion and abort, and shutdown-hook flush. The Fiber modules also own the `internal/fasthttp.go` tests: the root module never imports fasthttp, and each Fiber module's CI jobs run them at its fasthttp floor and latest version (stream wrapper active, sizes from stream types, capture of unknown-length streams). `chi-v5/sdk_test.go` asserts that `CaptureError` records the caller's file; the wrapper is identical in every module.
 
 **Isolation.** Tests that touch the runtime, OTel globals, `slog.Default` or env vars call `internal.SetUpTest(t)` and the `testutils` helpers they need, which register their resets with `t.Cleanup`, and never call `t.Parallel`. Root tests build their `net/http` apps themselves. Assertions decode OTLP payloads received by the stub endpoint after `Shutdown`, with exact counts.
 

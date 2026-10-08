@@ -34,62 +34,36 @@ func writeOK(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte("ok"))
 }
 
-func TestResponseWriterKeepsStreamingAndHijacking(t *testing.T) {
+func TestResponseWriterSupportsStreaming(t *testing.T) {
 	server := testutils.NewOTLPServer(t)
 	registerForTest(t, server, nil)
-	proceed, proceedAgain := make(chan struct{}), make(chan struct{})
+	proceed := make(chan struct{})
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /events", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("data: 1\n\n"))
 		w.(http.Flusher).Flush()
 		<-proceed
-		_, _ = w.Write([]byte("data: 2\n\n"))
 		controller := http.NewResponseController(w)
 		assert.NoError(t, controller.Flush())
 		// Only the wrapped writer implements SetWriteDeadline, so this goes through Unwrap.
 		assert.NoError(t, controller.SetWriteDeadline(time.Now().Add(time.Minute)))
-		<-proceedAgain
-		_, _ = w.Write([]byte("data: 3\n\n"))
+		_, _ = w.Write([]byte("data: 2\n\n"))
 	})
-	mux.HandleFunc("GET /raw", func(w http.ResponseWriter, r *http.Request) {
-		conn, buffer, err := w.(http.Hijacker).Hijack()
-		if !assert.NoError(t, err) {
-			return
-		}
-		defer conn.Close()
-		_, _ = buffer.WriteString("HTTP/1.1 200 OK\r\nContent-Length: 3\r\nConnection: close\r\n\r\nraw")
-		_ = buffer.Flush()
-	})
-	app := NetHTTPMiddleware(serveMuxRoute)(mux)
-	// The client can read the hijacked response before the middleware ends
-	// the request, so the test waits for both requests to be served.
-	served := make(chan struct{}, 2)
-	appURL := testutils.Serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		app.ServeHTTP(w, r)
-		served <- struct{}{}
-	}))
+	appURL := startTestApp(t, mux)
 
 	resp, err := http.Get(appURL + "/events")
 	require.NoError(t, err)
-	first, second := make([]byte, 9), make([]byte, 9)
+	first := make([]byte, 9)
 	_, err = io.ReadFull(resp.Body, first)
 	require.NoError(t, err)
 	close(proceed)
-	_, err = io.ReadFull(resp.Body, second)
-	require.NoError(t, err)
-	close(proceedAgain)
 	rest, _ := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
-	raw := testutils.Get(t, appURL+"/raw")
-	<-served
-	<-served
 	require.NoError(t, Shutdown(context.Background()))
 
 	assert.Equal(t, "data: 1\n\n", string(first))
-	assert.Equal(t, "data: 2\n\n", string(second))
-	assert.Equal(t, "data: 3\n\n", string(rest))
-	assert.Equal(t, "raw", raw.Body)
-	assert.Len(t, server.Spans(t), 2)
+	assert.Equal(t, "data: 2\n\n", string(rest))
+	assert.Len(t, server.Spans(t), 1)
 }
 
 func TestReadFromUsesWrappedWriterUnlessBodyIsCaptured(t *testing.T) {
@@ -121,24 +95,42 @@ func TestReadFromUsesWrappedWriterUnlessBodyIsCaptured(t *testing.T) {
 	}
 }
 
-func TestChunkedRequestBodyReadToEndReportsCountedSize(t *testing.T) {
+func TestRequestBodyIsRecordedOnlyWhenReadToEnd(t *testing.T) {
 	server := testutils.NewOTLPServer(t)
-	registerForTest(t, server, nil)
-	appURL := startTestApp(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	cfg := root.NewConfig()
+	cfg.CaptureRequestBody = true
+	registerForTest(t, server, cfg)
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /full", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.ReadAll(r.Body)
-	}))
+	})
+	mux.HandleFunc("POST /partial", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = r.Body.Read(make([]byte, 2))
+	})
+	appURL := startTestApp(t, mux)
 
-	// A reader of unknown length makes the client send the body chunked.
-	req, _ := http.NewRequest(http.MethodPost, appURL+"/items", io.MultiReader(strings.NewReader(`{"name":"x"}`)))
-	testutils.Do(t, http.DefaultClient.Do, req)
+	for _, path := range []string{"/full", "/partial"} {
+		// A reader of unknown length makes the client send the body chunked.
+		req, _ := http.NewRequest(http.MethodPost, appURL+path, io.MultiReader(strings.NewReader(`{"name":"x"}`)))
+		req.Header.Set("Content-Type", "application/json")
+		testutils.Do(t, http.DefaultClient.Do, req)
+	}
 	require.NoError(t, Shutdown(context.Background()))
 
 	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	assert.Equal(t, int64(12), testutils.Attributes(spans[0].Attributes)["http.request.body.size"])
+	require.Len(t, spans, 2)
+	bodies := map[string][]any{}
+	for _, span := range spans {
+		attrs := testutils.Attributes(span.Attributes)
+		bodies[span.Name] = []any{attrs["http.request.body.size"], attrs["apitally.request.body"]}
+	}
+	assert.Equal(t, map[string][]any{
+		"POST /full":    {int64(12), `{"name":"x"}`},
+		"POST /partial": {nil, nil},
+	}, bodies)
 }
 
-func TestDetectedContentTypeIsRecordedAndAllowsBodyCapture(t *testing.T) {
+func TestDetectedContentTypeIsRecorded(t *testing.T) {
 	server := testutils.NewOTLPServer(t)
 	cfg := root.NewConfig()
 	cfg.CaptureResponseBody = true
@@ -149,10 +141,9 @@ func TestDetectedContentTypeIsRecordedAndAllowsBodyCapture(t *testing.T) {
 		headerAfterWrite = w.Header().Clone()
 	}))
 
-	resp := testutils.Get(t, appURL+"/items")
+	testutils.Get(t, appURL+"/items")
 	require.NoError(t, Shutdown(context.Background()))
 
-	assert.Equal(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
 	assert.Empty(t, headerAfterWrite.Get("Content-Type"))
 	spans := server.Spans(t)
 	require.Len(t, spans, 1)

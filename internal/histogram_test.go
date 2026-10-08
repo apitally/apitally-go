@@ -12,7 +12,7 @@ import (
 	"github.com/apitally/apitally-go/internal/testutils"
 )
 
-func TestHistogramIsExportedWithExponentialBucketsAtScaleThree(t *testing.T) {
+func TestHistogramIsExportedWithExponentialBuckets(t *testing.T) {
 	server := testutils.NewOTLPServer(t)
 	registerForTest(t, server, nil)
 	mux := http.NewServeMux()

@@ -13,7 +13,7 @@ import (
 	"github.com/apitally/apitally-go/internal/testutils"
 )
 
-func TestExportRequestsCarryAuthorizationEnvironmentAndEncodingHeaders(t *testing.T) {
+func TestExportRequestsCarryRequiredHeaders(t *testing.T) {
 	server := testutils.NewOTLPServer(t)
 	cfg := root.NewConfig()
 	cfg.Env = "prod"

@@ -45,15 +45,16 @@ func TestActivationEmitsStartupEventOnce(t *testing.T) {
 	cfg.AppVersion = "1.2.3"
 	cfg.ExcludePaths = []string{"/internal/"}
 	cfg.SampleOnResponse = func(span sdktrace.ReadOnlySpan) (float64, bool) { return 1, true }
-	startRuntimeForTest(t, server, cfg, Route{"GET", "/items"}, Route{"HEAD", "/items"}, Route{"POST", "/items/{id}"}, Route{"GET", "/items"})
+	registerForTest(t, server, cfg, Route{"GET", "/items"}, Route{"HEAD", "/items"}, Route{"POST", "/items/{id}"}, Route{"GET", "/items"})
+	Register(cfg, testFramework, func() []Route { return []Route{{"POST", "/orders"}} })
 
+	Activate()
 	Activate()
 	require.NoError(t, Shutdown(context.Background()))
 
 	records := server.LogRecords(t)
 	require.Len(t, records, 1)
 	assert.Equal(t, "apitally", records[0].Scope)
-	assert.Equal(t, "apitally.app.startup", records[0].EventName)
 	assert.Empty(t, records[0].TraceId)
 	var body map[string]any
 	server.DecodeStartupEvent(t, &body)
@@ -76,6 +77,7 @@ func TestActivationEmitsStartupEventOnce(t *testing.T) {
 		"paths": []any{
 			map[string]any{"method": "GET", "path": "/items"},
 			map[string]any{"method": "POST", "path": "/items/{id}"},
+			map[string]any{"method": "POST", "path": "/orders"},
 		},
 	}, body)
 	resource := testutils.Attributes(records[0].Resource.Attributes)
@@ -84,25 +86,7 @@ func TestActivationEmitsStartupEventOnce(t *testing.T) {
 	assert.Regexp(t, `^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`, resource["service.instance.id"])
 }
 
-func TestStartupEventPathsAreUnionOfAllRegisteredApps(t *testing.T) {
-	server := testutils.NewOTLPServer(t)
-	registerForTest(t, server, nil, Route{"GET", "/items"})
-	Register(nil, testFramework, func() []Route { return []Route{{"POST", "/orders"}} })
-
-	Activate()
-	require.NoError(t, Shutdown(context.Background()))
-
-	var body struct {
-		Paths []map[string]string `json:"paths"`
-	}
-	server.DecodeStartupEvent(t, &body)
-	assert.Equal(t, []map[string]string{
-		{"method": "GET", "path": "/items"},
-		{"method": "POST", "path": "/orders"},
-	}, body.Paths)
-}
-
-func TestActivationIsSuppressedInTestBinariesWithoutTestHook(t *testing.T) {
+func TestActivationIsSuppressedInTestBinaries(t *testing.T) {
 	server := testutils.NewOTLPServer(t)
 	SetUpTest(t)
 	isActivationAllowedInTests.Store(false)
@@ -147,7 +131,7 @@ func TestIdleShutdownDeliversProcessGauges(t *testing.T) {
 	assert.Equal(t, []string{"process.cpu.utilization", "process.memory.usage", "process.uptime"}, names)
 }
 
-func TestShutdownReturnsContextErrorWhenDeadlineExpires(t *testing.T) {
+func TestShutdownHonorsContextDeadline(t *testing.T) {
 	server := testutils.NewOTLPServer(t)
 	synctest.Test(t, func(t *testing.T) {
 		startRuntimeForTest(t, server, nil)

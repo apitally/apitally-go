@@ -2,7 +2,9 @@ package internal
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -17,18 +19,24 @@ import (
 	"github.com/apitally/apitally-go/internal/testutils"
 )
 
-func TestRequestMetricsCountExcludedAndSampledOutButNotUnmatchedRequests(t *testing.T) {
+func TestExcludedAndSampledOutRequestsAreStillCounted(t *testing.T) {
 	server := testutils.NewOTLPServer(t)
 	cfg := root.NewConfig()
 	cfg.SampleRate = 0
 	registerForTest(t, server, cfg)
+	fail := func(w http.ResponseWriter, r *http.Request) {
+		CaptureError(r.Context(), errors.New("failed"))
+		w.WriteHeader(http.StatusInternalServerError)
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/items", writeOK)
-	mux.HandleFunc("GET /healthz", writeOK)
+	mux.HandleFunc("GET /orders", fail)
+	mux.HandleFunc("GET /healthz", fail)
 	appURL := startTestApp(t, mux)
 
 	testutils.Get(t, appURL+"/items")
 	testutils.Get(t, appURL+"/items")
+	testutils.Get(t, appURL+"/orders")
 	testutils.Get(t, appURL+"/healthz")
 	testutils.Get(t, appURL+"/missing")
 	req, _ := http.NewRequest(http.MethodOptions, appURL+"/items", nil)
@@ -37,22 +45,25 @@ func TestRequestMetricsCountExcludedAndSampledOutButNotUnmatchedRequests(t *test
 
 	assert.Empty(t, server.Spans(t))
 	metrics := server.Metrics(t)
-	points := testutils.HistogramPoints(metrics, "http.server.request.duration")
-	require.Len(t, points, 2)
-	counts := map[string]uint64{}
-	for _, point := range points {
-		attrs := testutils.Attributes(point.Attributes)
-		counts[attrs["http.route"].(string)] = point.Count
-		assert.Equal(t, map[string]any{
-			"http.request.method":       "GET",
-			"http.route":                attrs["http.route"],
-			"http.response.status_code": int64(200),
-			"url.scheme":                "http",
-		}, attrs)
+	var points []any
+	for _, point := range testutils.HistogramPoints(metrics, "http.server.request.duration") {
+		points = append(points, []any{testutils.Attributes(point.Attributes), point.Count})
 	}
-	assert.Equal(t, map[string]uint64{"/items": 2, "/healthz": 1}, counts)
-	assert.Len(t, testutils.HistogramPoints(metrics, "http.server.request.body.size"), 2)
-	assert.Len(t, testutils.HistogramPoints(metrics, "http.server.response.body.size"), 2)
+	point := func(route string, count uint64, statusAttributes map[string]any) []any {
+		attrs := map[string]any{"http.request.method": "GET", "http.route": route, "url.scheme": "http"}
+		maps.Copy(attrs, statusAttributes)
+		return []any{attrs, count}
+	}
+	succeeded := map[string]any{"http.response.status_code": int64(200)}
+	failed := map[string]any{"http.response.status_code": int64(500), "error.type": "500"}
+	assert.ElementsMatch(t, []any{point("/items", 2, succeeded), point("/orders", 1, failed), point("/healthz", 1, failed)}, points)
+	assert.Len(t, testutils.HistogramPoints(metrics, "http.server.request.body.size"), 3)
+	assert.Len(t, testutils.HistogramPoints(metrics, "http.server.response.body.size"), 3)
+	var errorPaths []any
+	for _, record := range server.Events(t, serverErrorEventName) {
+		errorPaths = append(errorPaths, testutils.Value(record.Body).(map[string]any)["path"])
+	}
+	assert.ElementsMatch(t, []any{"/orders", "/healthz"}, errorPaths)
 }
 
 func TestRequestMetricsAreDeltasBetweenCollections(t *testing.T) {
@@ -78,7 +89,7 @@ func TestRequestMetricsAreDeltasBetweenCollections(t *testing.T) {
 	})
 }
 
-func TestMetricCombinationsAreCappedPerIntervalAndSplitIntoRequests(t *testing.T) {
+func TestMetricCombinationsAreCappedAndSplit(t *testing.T) {
 	server := testutils.NewOTLPServer(t)
 	startRuntimeForTest(t, server, nil)
 	logs := testutils.RecordSlog(t)

@@ -133,11 +133,10 @@ type LogRecord struct {
 	Scope    string
 }
 
-// Metric is an exported metric with its resource and scope.
+// Metric is an exported metric with its scope.
 type Metric struct {
 	*metricspb.Metric
-	Resource *resourcepb.Resource
-	Scope    string
+	Scope string
 }
 
 // Spans decodes all spans received in successful requests.
@@ -209,7 +208,7 @@ func (s *OTLPServer) Metrics(t testing.TB) []Metric {
 		for _, rm := range data.ResourceMetrics {
 			for _, sm := range rm.ScopeMetrics {
 				for _, metric := range sm.Metrics {
-					metrics = append(metrics, Metric{Metric: metric, Resource: rm.Resource, Scope: sm.Scope.GetName()})
+					metrics = append(metrics, Metric{Metric: metric, Scope: sm.Scope.GetName()})
 				}
 			}
 		}

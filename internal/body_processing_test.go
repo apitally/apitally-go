@@ -7,6 +7,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -18,7 +19,7 @@ import (
 	"github.com/apitally/apitally-go/internal/testutils"
 )
 
-func TestCompressedResponseBodiesAreDecompressedBeforeRedaction(t *testing.T) {
+func TestCompressedResponseBodiesAreDecompressed(t *testing.T) {
 	body := []byte(`{"password":"secret","id":1}`)
 	var gzipped, deflated, gzippedLarge bytes.Buffer
 	gzipWriter := gzip.NewWriter(&gzipped)
@@ -54,9 +55,7 @@ func TestCompressedResponseBodiesAreDecompressedBeforeRedaction(t *testing.T) {
 				_, _ = w.Write(tc.body)
 			}))
 
-			req, _ := http.NewRequest(http.MethodGet, appURL+"/items", nil)
-			req.Header.Set("Accept-Encoding", tc.encoding)
-			testutils.Do(t, http.DefaultClient.Do, req)
+			testutils.Get(t, appURL+"/items", "Accept-Encoding", tc.encoding)
 			require.NoError(t, Shutdown(context.Background()))
 
 			spans := server.Spans(t)
@@ -106,12 +105,12 @@ func TestMaskCallbacksReplaceBodiesAndFailClosed(t *testing.T) {
 			assert.Equal(t, tc.captured, attrs["apitally.request.body"])
 			assert.Equal(t, tc.captured, attrs["apitally.response.body"])
 			assert.Contains(t, maskedSpanAttributes, attribute.StringSlice("http.response.header.content-type", []string{"application/json"}))
-			assert.NotContains(t, attributeKeys(maskedSpanAttributes), "apitally.request.body")
+			assert.False(t, slices.ContainsFunc(maskedSpanAttributes, func(kv attribute.KeyValue) bool { return kv.Key == "apitally.request.body" }))
 		})
 	}
 }
 
-func TestJSONBodyFieldsAreRedactedInNestedValuesKeepingKeyOrder(t *testing.T) {
+func TestNestedJSONBodyFieldsAreRedacted(t *testing.T) {
 	red := newRedaction(&settings{maskBodyFields: compileDefaultPatterns("^email$")})
 
 	redacted, ok := red.redactJSON([]byte(`{"z": 1, "items": [{"Card_Number": "4111", "email": "a@b.c", "auth": {"pwd": "x"}}], "note": "<b>&", "n": 1.50}`))
@@ -120,12 +119,4 @@ func TestJSONBodyFieldsAreRedactedInNestedValuesKeepingKeyOrder(t *testing.T) {
 	assert.Equal(t, `{"z":1,"items":[{"Card_Number":"[REDACTED]","email":"[REDACTED]","auth":{"pwd":"[REDACTED]"}}],"note":"<b>&","n":1.50}`, redacted)
 	_, ok = red.redactJSON([]byte("{\"a\":1}\n{\"b\":2}"))
 	assert.False(t, ok)
-}
-
-func attributeKeys(attrs []attribute.KeyValue) []string {
-	keys := make([]string, len(attrs))
-	for i, kv := range attrs {
-		keys[i] = string(kv.Key)
-	}
-	return keys
 }

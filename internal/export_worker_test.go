@@ -16,7 +16,7 @@ import (
 	"github.com/apitally/apitally-go/internal/testutils"
 )
 
-func TestRetryableFailureEndsCycleAndRejectedFileIsDropped(t *testing.T) {
+func TestExportFailuresAreRetriedOrDropped(t *testing.T) {
 	for _, tc := range []struct {
 		status               int
 		requestsInFirstCycle int

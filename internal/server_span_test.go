@@ -18,7 +18,7 @@ import (
 	"github.com/apitally/apitally-go/internal/testutils"
 )
 
-func TestOuterServerSpanIsReusedWithApitallyAttributesOnExportCopyOnly(t *testing.T) {
+func TestOuterServerSpanIsReused(t *testing.T) {
 	server := testutils.NewOTLPServer(t)
 	synctest.Test(t, func(t *testing.T) {
 		registerForTest(t, server, nil)
