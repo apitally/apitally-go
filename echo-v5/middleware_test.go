@@ -197,7 +197,11 @@ func TestFirstRequestActivatesAndIsRecorded(t *testing.T) {
 
 func TestStartupEventPathsMatchRoutes(t *testing.T) {
 	server := setUp(t)
-	appURL := testutils.Serve(t, newApp(nil))
+	e := newApp(nil)
+	// Catch-all and not-found registrations are not reported as paths.
+	e.Any("/proxy/*", func(c *echo.Context) error { return nil })
+	e.RouteNotFound("/api/*", func(c *echo.Context) error { return nil })
+	appURL := testutils.Serve(t, e)
 
 	testutils.Get(t, appURL+"/items/1")
 	shutDown(t)

@@ -84,6 +84,24 @@ func TestActivationEmitsStartupEventOnce(t *testing.T) {
 	assert.Regexp(t, `^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`, resource["service.instance.id"])
 }
 
+func TestStartupEventPathsAreUnionOfAllRegisteredApps(t *testing.T) {
+	server := testutils.NewOTLPServer(t)
+	registerForTest(t, server, nil, Route{"GET", "/items"})
+	Register(nil, testFramework, func() []Route { return []Route{{"POST", "/orders"}} })
+
+	Activate()
+	require.NoError(t, Shutdown(context.Background()))
+
+	var body struct {
+		Paths []map[string]string `json:"paths"`
+	}
+	server.DecodeStartupEvent(t, &body)
+	assert.Equal(t, []map[string]string{
+		{"method": "GET", "path": "/items"},
+		{"method": "POST", "path": "/orders"},
+	}, body.Paths)
+}
+
 func TestActivationIsSuppressedInTestBinariesWithoutTestHook(t *testing.T) {
 	server := testutils.NewOTLPServer(t)
 	SetUpTest(t)

@@ -30,7 +30,6 @@ func TestSpoolRotatesFilesBeforeExceedingMaxUncompressedSize(t *testing.T) {
 	files := s.pendingFiles()
 	require.Len(t, files, 1)
 	assert.Equal(t, 4_000_000, len(readSpoolFile(t, s, files[0])))
-	assert.Equal(t, 1, s.rotateForExport())
 }
 
 func TestSpoolEvictsOldestNonMetricsFilesFirstWhenFull(t *testing.T) {

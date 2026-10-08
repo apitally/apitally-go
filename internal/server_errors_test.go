@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -16,11 +17,13 @@ import (
 )
 
 // recoverPanics responds with 500 to a panic, as application recovery
-// registered before Apitally does.
-func recoverPanics(next http.Handler) http.Handler {
+// registered before Apitally does, and sends the recovered value to
+// recovered.
+func recoverPanics(next http.Handler, recovered chan<- any) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
-			if recover() != nil {
+			if p := recover(); p != nil {
+				recovered <- p
 				w.WriteHeader(http.StatusInternalServerError)
 			}
 		}()
@@ -31,16 +34,19 @@ func recoverPanics(next http.Handler) http.Handler {
 func TestPanicIsRecordedAsExceptionEventAndServerErrorEvent(t *testing.T) {
 	server := testutils.NewOTLPServer(t)
 	registerForTest(t, server, nil)
+	panicValue := fmt.Errorf("loading config: %w", &fs.PathError{Op: "open", Path: "app.yaml", Err: fs.ErrNotExist})
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /config", func(w http.ResponseWriter, r *http.Request) {
-		panic(fmt.Errorf("loading config: %w", &fs.PathError{Op: "open", Path: "app.yaml", Err: fs.ErrNotExist}))
+		panic(panicValue)
 	})
-	appURL := testutils.Serve(t, recoverPanics(NetHTTPMiddleware(serveMuxRoute)(mux)))
+	recovered := make(chan any, 1)
+	appURL := testutils.Serve(t, recoverPanics(NetHTTPMiddleware(serveMuxRoute)(mux), recovered))
 
 	resp := testutils.Get(t, appURL+"/config")
 	require.NoError(t, Shutdown(context.Background()))
 
 	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	assert.Same(t, panicValue, <-recovered)
 	spans := server.Spans(t)
 	require.Len(t, spans, 1)
 	require.Len(t, spans[0].Events, 1)
@@ -72,7 +78,7 @@ func TestOnlyFirstCapturedErrorIsKept(t *testing.T) {
 		CaptureError(r.Context(), errors.New("second"))
 		panic("third")
 	})
-	appURL := testutils.Serve(t, recoverPanics(NetHTTPMiddleware(serveMuxRoute)(mux)))
+	appURL := testutils.Serve(t, recoverPanics(NetHTTPMiddleware(serveMuxRoute)(mux), make(chan any, 1)))
 
 	testutils.Get(t, appURL+"/items")
 	require.NoError(t, Shutdown(context.Background()))
@@ -84,6 +90,45 @@ func TestOnlyFirstCapturedErrorIsKept(t *testing.T) {
 	records := server.Events(t, serverErrorEventName)
 	require.Len(t, records, 1)
 	assert.Equal(t, "first", testutils.Value(records[0].Body).(map[string]any)["message"])
+}
+
+func TestPanicAfterResponseStartedRecordsCommittedStatus(t *testing.T) {
+	server := testutils.NewOTLPServer(t)
+	registerForTest(t, server, nil)
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /items", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+		panic("boom")
+	})
+	app := recoverPanics(NetHTTPMiddleware(serveMuxRoute)(mux), make(chan any, 1))
+	recorder := httptest.NewRecorder()
+
+	app.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/items", nil))
+	require.NoError(t, Shutdown(context.Background()))
+
+	assert.Equal(t, http.StatusAccepted, recorder.Code)
+	spans := server.Spans(t)
+	require.Len(t, spans, 1)
+	assert.Equal(t, int64(http.StatusAccepted), testutils.Attributes(spans[0].Attributes)["http.response.status_code"])
+	assert.Empty(t, server.Events(t, serverErrorEventName))
+}
+
+func TestAbortHandlerPanicIsNotCaptured(t *testing.T) {
+	server := testutils.NewOTLPServer(t)
+	registerForTest(t, server, nil)
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /items", func(w http.ResponseWriter, r *http.Request) {
+		panic(http.ErrAbortHandler)
+	})
+	app := recoverPanics(NetHTTPMiddleware(serveMuxRoute)(mux), make(chan any, 1))
+
+	app.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/items", nil))
+	require.NoError(t, Shutdown(context.Background()))
+
+	spans := server.Spans(t)
+	require.Len(t, spans, 1)
+	assert.Empty(t, spans[0].Events)
+	assert.Empty(t, server.Events(t, serverErrorEventName))
 }
 
 func TestCapturedErrorCountsAsServerErrorOnlyWithStatus500(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"compress/zlib"
 	"context"
+	"io"
 	"net/http"
 	"testing"
 
@@ -19,9 +20,12 @@ import (
 
 func TestCompressedResponseBodiesAreDecompressedBeforeRedaction(t *testing.T) {
 	body := []byte(`{"password":"secret","id":1}`)
-	var gzipped, deflated bytes.Buffer
+	var gzipped, deflated, gzippedLarge bytes.Buffer
 	gzipWriter := gzip.NewWriter(&gzipped)
 	_, _ = gzipWriter.Write(body)
+	_ = gzipWriter.Close()
+	gzipWriter = gzip.NewWriter(&gzippedLarge)
+	_, _ = gzipWriter.Write(append(bytes.Repeat([]byte(" "), maxBodySize), body...))
 	_ = gzipWriter.Close()
 	zlibWriter := zlib.NewWriter(&deflated)
 	_, _ = zlibWriter.Write(body)
@@ -35,12 +39,14 @@ func TestCompressedResponseBodiesAreDecompressedBeforeRedaction(t *testing.T) {
 		{"gzip is decompressed", "gzip", gzipped.Bytes(), `{"password":"[REDACTED]","id":1}`},
 		{"deflate is decompressed", "deflate", deflated.Bytes(), `{"password":"[REDACTED]","id":1}`},
 		{"truncated gzip is redacted", "gzip", gzipped.Bytes()[:gzipped.Len()-4], "[REDACTED]"},
+		{"gzip decompressing beyond the limit is too large", "gzip", gzippedLarge.Bytes(), "[BODY_TOO_LARGE]"},
 		{"unsupported encoding is not captured", "br", []byte("brotli"), nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server := testutils.NewOTLPServer(t)
 			cfg := root.NewConfig()
-			cfg.CaptureResponseBody = true
+			// The encoding is read from the response even when headers are not captured.
+			cfg.CaptureResponseBody, cfg.CaptureResponseHeaders = true, false
 			registerForTest(t, server, cfg)
 			appURL := startTestApp(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
@@ -77,16 +83,18 @@ func TestMaskCallbacksReplaceBodiesAndFailClosed(t *testing.T) {
 			server := testutils.NewOTLPServer(t)
 			var maskedSpanAttributes []attribute.KeyValue
 			cfg := root.NewConfig()
-			cfg.CaptureRequestBody = true
+			cfg.CaptureRequestBody, cfg.CaptureResponseBody = true, true
 			cfg.MaskRequestBody = func(span sdktrace.ReadOnlySpan, body []byte) []byte {
 				maskedSpanAttributes = span.Attributes()
 				return tc.mask(span, body)
 			}
+			cfg.MaskResponseBody = tc.mask
 			registerForTest(t, server, cfg)
 			testutils.RecordSlog(t)
 			appURL := startTestApp(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "text/plain")
-				_, _ = r.Body.Read(make([]byte, 1024))
+				body, _ := io.ReadAll(r.Body)
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write(body)
 			}))
 
 			post(t, appURL+"/items", "application/json", `{ "name": "alice", "token": "abc" }`)
@@ -94,8 +102,10 @@ func TestMaskCallbacksReplaceBodiesAndFailClosed(t *testing.T) {
 
 			spans := server.Spans(t)
 			require.Len(t, spans, 1)
-			assert.Equal(t, tc.captured, testutils.Attributes(spans[0].Attributes)["apitally.request.body"])
-			assert.Contains(t, maskedSpanAttributes, attribute.StringSlice("http.response.header.content-type", []string{"text/plain"}))
+			attrs := testutils.Attributes(spans[0].Attributes)
+			assert.Equal(t, tc.captured, attrs["apitally.request.body"])
+			assert.Equal(t, tc.captured, attrs["apitally.response.body"])
+			assert.Contains(t, maskedSpanAttributes, attribute.StringSlice("http.response.header.content-type", []string{"application/json"}))
 			assert.NotContains(t, attributeKeys(maskedSpanAttributes), "apitally.request.body")
 		})
 	}

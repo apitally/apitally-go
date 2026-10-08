@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -36,13 +37,19 @@ func writeOK(w http.ResponseWriter, _ *http.Request) {
 func TestResponseWriterKeepsStreamingAndHijacking(t *testing.T) {
 	server := testutils.NewOTLPServer(t)
 	registerForTest(t, server, nil)
-	proceed := make(chan struct{})
+	proceed, proceedAgain := make(chan struct{}), make(chan struct{})
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /events", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("data: 1\n\n"))
 		w.(http.Flusher).Flush()
 		<-proceed
 		_, _ = w.Write([]byte("data: 2\n\n"))
+		controller := http.NewResponseController(w)
+		assert.NoError(t, controller.Flush())
+		// Only the wrapped writer implements SetWriteDeadline, so this goes through Unwrap.
+		assert.NoError(t, controller.SetWriteDeadline(time.Now().Add(time.Minute)))
+		<-proceedAgain
+		_, _ = w.Write([]byte("data: 3\n\n"))
 	})
 	mux.HandleFunc("GET /raw", func(w http.ResponseWriter, r *http.Request) {
 		conn, buffer, err := w.(http.Hijacker).Hijack()
@@ -64,10 +71,13 @@ func TestResponseWriterKeepsStreamingAndHijacking(t *testing.T) {
 
 	resp, err := http.Get(appURL + "/events")
 	require.NoError(t, err)
-	first := make([]byte, 9)
+	first, second := make([]byte, 9), make([]byte, 9)
 	_, err = io.ReadFull(resp.Body, first)
 	require.NoError(t, err)
 	close(proceed)
+	_, err = io.ReadFull(resp.Body, second)
+	require.NoError(t, err)
+	close(proceedAgain)
 	rest, _ := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
 	raw := testutils.Get(t, appURL+"/raw")
@@ -76,7 +86,8 @@ func TestResponseWriterKeepsStreamingAndHijacking(t *testing.T) {
 	require.NoError(t, Shutdown(context.Background()))
 
 	assert.Equal(t, "data: 1\n\n", string(first))
-	assert.Equal(t, "data: 2\n\n", string(rest))
+	assert.Equal(t, "data: 2\n\n", string(second))
+	assert.Equal(t, "data: 3\n\n", string(rest))
 	assert.Equal(t, "raw", raw.Body)
 	assert.Len(t, server.Spans(t), 2)
 }
@@ -108,6 +119,23 @@ func TestReadFromUsesWrappedWriterUnlessBodyIsCaptured(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestChunkedRequestBodyReadToEndReportsCountedSize(t *testing.T) {
+	server := testutils.NewOTLPServer(t)
+	registerForTest(t, server, nil)
+	appURL := startTestApp(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.ReadAll(r.Body)
+	}))
+
+	// A reader of unknown length makes the client send the body chunked.
+	req, _ := http.NewRequest(http.MethodPost, appURL+"/items", io.MultiReader(strings.NewReader(`{"name":"x"}`)))
+	testutils.Do(t, http.DefaultClient.Do, req)
+	require.NoError(t, Shutdown(context.Background()))
+
+	spans := server.Spans(t)
+	require.Len(t, spans, 1)
+	assert.Equal(t, int64(12), testutils.Attributes(spans[0].Attributes)["http.request.body.size"])
 }
 
 func TestDetectedContentTypeIsRecordedAndAllowsBodyCapture(t *testing.T) {

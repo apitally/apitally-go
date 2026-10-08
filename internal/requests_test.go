@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
@@ -38,6 +40,24 @@ func TestRequestExportsServerSpanWithHandlerSpans(t *testing.T) {
 	assert.Equal(t, rootSpan.SpanId, child.ParentSpanId)
 	assert.Equal(t, tracepb.Span_SPAN_KIND_INTERNAL, child.Kind)
 	assert.Equal(t, "test", child.Scope)
+}
+
+func TestRequestAttributesAreSetOnServerSpan(t *testing.T) {
+	server := testutils.NewOTLPServer(t)
+	registerForTest(t, server, nil)
+	appURL := startTestApp(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		SetRequestAttributes(r.Context(), attribute.String("tenant", "acme"), attribute.StringSlice("roles", []string{"admin", "billing"}))
+		writeOK(w, r)
+	}))
+
+	testutils.Get(t, appURL+"/items")
+	require.NoError(t, Shutdown(context.Background()))
+
+	spans := server.Spans(t)
+	require.Len(t, spans, 1)
+	attrs := testutils.Attributes(spans[0].Attributes)
+	assert.Equal(t, "acme", attrs["tenant"])
+	assert.Equal(t, []any{"admin", "billing"}, attrs["roles"])
 }
 
 func TestNestedMonitoredRequestIsExportedAsSeparateRequest(t *testing.T) {
@@ -160,6 +180,76 @@ func TestExcludedRequestsAreNotExportedOrSampled(t *testing.T) {
 	assert.Equal(t, "/items", testutils.Attributes(spans[0].Attributes)["url.path"])
 	assert.Equal(t, 1, callbackCalls)
 	assert.Equal(t, trace.SpanKindServer, callbackSpanKind)
+}
+
+func TestExcludedRoutedRequestsStillProduceServerErrorsAndMetrics(t *testing.T) {
+	server := testutils.NewOTLPServer(t)
+	registerForTest(t, server, nil)
+	fail := func(w http.ResponseWriter, r *http.Request) {
+		CaptureError(r.Context(), errors.New("failed"))
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", fail)
+	mux.HandleFunc("GET /items", fail)
+	appURL := startTestApp(t, mux)
+
+	testutils.Get(t, appURL+"/healthz")
+	req, _ := http.NewRequest(http.MethodGet, appURL+"/items", nil)
+	req.Header.Set("User-Agent", "kube-probe/1.30")
+	testutils.Do(t, http.DefaultClient.Do, req)
+	require.NoError(t, Shutdown(context.Background()))
+
+	assert.Empty(t, server.Spans(t))
+	var errorPaths []any
+	for _, record := range server.Events(t, serverErrorEventName) {
+		errorPaths = append(errorPaths, testutils.Value(record.Body).(map[string]any)["path"])
+	}
+	assert.ElementsMatch(t, []any{"/healthz", "/items"}, errorPaths)
+	var metricRoutes []any
+	for _, point := range testutils.HistogramPoints(server.Metrics(t), "http.server.request.duration") {
+		metricRoutes = append(metricRoutes, testutils.Attributes(point.Attributes)["http.route"])
+	}
+	assert.ElementsMatch(t, []any{"/healthz", "/items"}, metricRoutes)
+}
+
+func TestWebSocketUpgradeIsPassedThroughWithoutTelemetry(t *testing.T) {
+	server := testutils.NewOTLPServer(t)
+	registerForTest(t, server, nil)
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /ws", func(w http.ResponseWriter, r *http.Request) {
+		conn, buffer, err := w.(http.Hijacker).Hijack()
+		if !assert.NoError(t, err) {
+			return
+		}
+		_, _ = buffer.WriteString("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\nhello")
+		_ = buffer.Flush()
+		_ = conn.Close()
+		// A panic with a captured error would otherwise produce a server error event.
+		panic(errors.New("connection lost"))
+	})
+	app := NetHTTPMiddleware(serveMuxRoute)(mux)
+	// The client reads the hijacked response before the middleware ends the
+	// request, so the test waits for the request to be served.
+	served := make(chan any, 1)
+	appURL := testutils.Serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() { served <- recover() }()
+		app.ServeHTTP(w, r)
+	}))
+
+	req, _ := http.NewRequest(http.MethodGet, appURL+"/ws", nil)
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", "websocket")
+	resp := testutils.Do(t, http.DefaultClient.Do, req)
+	<-served
+	require.NoError(t, Shutdown(context.Background()))
+
+	assert.Equal(t, http.StatusSwitchingProtocols, resp.StatusCode)
+	assert.Equal(t, "websocket", resp.Header.Get("Upgrade"))
+	assert.Equal(t, "hello", resp.Body)
+	assert.Empty(t, server.Spans(t))
+	assert.Empty(t, testutils.HistogramPoints(server.Metrics(t), "http.server.request.duration"))
+	assert.Empty(t, server.Events(t, serverErrorEventName))
 }
 
 func findSpan(t *testing.T, spans []testutils.Span, name string) testutils.Span {

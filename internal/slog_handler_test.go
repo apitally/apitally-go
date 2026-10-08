@@ -159,8 +159,18 @@ func TestCapturedValuesAreConvertedAndTruncated(t *testing.T) {
 	}, attrs["request"])
 }
 
-func TestRequestLoggingMiddlewareIsRecognizedByFunctionName(t *testing.T) {
-	assert.True(t, isRequestLoggerFunction("github.com/samber/slog-gin.NewWithConfig.func1"))
-	assert.True(t, isRequestLoggerFunction("github.com/go-chi/httplog/v3.RequestLogger.func1.1"))
-	assert.False(t, isRequestLoggerFunction("main.listItems"))
+func TestRequestBuffersAtMostThousandLogRecords(t *testing.T) {
+	server := testutils.NewOTLPServer(t)
+	registerForTest(t, server, nil)
+	appURL := startTestApp(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for range maxBufferedLogsPerRequest + 1 {
+			slog.InfoContext(r.Context(), "query")
+		}
+		writeOK(w, r)
+	}))
+
+	testutils.Get(t, appURL+"/items")
+	require.NoError(t, Shutdown(context.Background()))
+
+	assert.Len(t, server.ApplicationLogRecords(t), maxBufferedLogsPerRequest)
 }

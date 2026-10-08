@@ -326,15 +326,17 @@ Note: `isRegistered` was inlined as `lookup(...) == nil`.
 
 ### T1. Captured payloads in user exporters are untested in attach mode
 
-Status: open
+Status: fixed
 Class: b (needs decision)
+Note: Added `TestCapturedPayloadsAreExportedOnlyToApitally` (attach mode). No leak found.
 
 - Add an attach-mode test with request and response body and header capture on, asserting the user's exporter receives none of `apitally.request.body`, `apitally.response.body` and `http.request.header.*` while Apitally's copy has them.
 
 ### T2. Sampling tests do not cover descendants, logs or errors
 
-Status: open
+Status: fixed
 Class: b (needs decision)
+Note: Added `TestSampledOutRequestDropsDescendantsAndLogs` and `TestSampleRateZeroDropsTraceButKeepsServerError`; added the `SampleRate=1` abstain case. Response-stage abstain was already covered; that test is renamed `TestSampleOnResponseDropsByFinalAttributesAndAbstentionKeepsRequest`.
 
 - Add `TestSampledOutRequestDropsDescendantsAndLogs` for request and response sampling.
 - Add `TestSampleRateZeroDropsTraceButKeepsServerError`.
@@ -343,23 +345,26 @@ Class: b (needs decision)
 
 ### T3. `SetRequestAttributes` is untested
 
-Status: open
+Status: fixed
 Class: b (needs decision)
+Note: Added `TestRequestAttributesAreSetOnServerSpan`.
 
 - 0% coverage in every module. Add an internal test asserting the attributes on the SERVER export copy.
 
 ### T4. Shutdown contracts are untested
 
-Status: open
+Status: fixed
 Class: b (needs decision)
+Note: Added `TestShutdownLeavesApplicationTracerProviderRunning`. The in-flight discard is not tested: not a user contract.
 
 - A request in flight at `Shutdown` is discarded.
 - `Shutdown` leaves a user-owned provider running (it still exports a new span afterward).
 
 ### T5. Error capture paths are untested
 
-Status: open
+Status: fixed
 Class: b (needs decision)
+Note: Added Gin `TestAbortWithErrorIsRecordedAsExceptionAndServerError`, Fiber `TestFailingErrorHandlerFallsBackToStatus500`, `TestPanicAfterResponseStartedRecordsCommittedStatus`, `TestAbortHandlerPanicIsNotCaptured`, and a re-panic identity check. The last bullet was wrong: per spec sections 6.8 and 9.2, routed excluded requests still produce server error events and metrics, pinned by `TestExcludedRoutedRequestsStillProduceServerErrorsAndMetrics`.
 
 - Gin `c.AbortWithError(500, err)`.
 - Fiber's `SendStatus(500)` fallback when the custom `ErrorHandler` fails.
@@ -370,15 +375,17 @@ Class: b (needs decision)
 
 ### T6. Websocket exclusion is untested
 
-Status: open
+Status: fixed
 Class: b (needs decision)
+Note: Added `TestWebSocketUpgradeIsPassedThroughWithoutTelemetry` (internal).
 
 - Add a Gin test where a hijacking handler receives an `Upgrade: websocket` request: the raw response arrives unchanged and no span, metric point or error is exported. Add the case to `TestExcludedRequestsAreNotExportedOrSampled`.
 
 ### T7. Fiber stream contracts are untested
 
-Status: open
+Status: fixed
 Class: b (needs decision)
+Note: Added `TestStreamWriterSpanIsExportedAndServerSpanEndsAfterStream` and `TestUnknownLengthStreamIsClosedAfterResponse` (both Fiber modules). Not tested: released once (internal mechanism), stream over the cap (shared capture code) and `CloseWithError`.
 
 - Telemetry created inside `SetBodyStreamWriter` is exported with the request.
 - Duration covers the stream write.
@@ -388,8 +395,9 @@ Class: b (needs decision)
 
 ### T8. Log pipeline limits are untested
 
-Status: open
+Status: fixed
 Class: b (needs decision)
+Note: Added `TestRequestBuffersAtMostThousandLogRecords`. Not tested: logs after release (spec allows dropping) and release order (internal mechanism).
 
 - The 1,000 log records per request cap.
 - A log record emitted after release is dropped (only the span case exists).
@@ -397,8 +405,9 @@ Class: b (needs decision)
 
 ### T9. Body capture gaps
 
-Status: open
+Status: fixed
 Class: b (needs decision)
+Note: Added the gzip-past-cap case, decompression with `CaptureResponseHeaders=false`, `TestChunkedRequestBodyReadToEndReportsCountedSize`, and `MaskResponseBody` in `TestMaskCallbacksReplaceBodiesAndFailClosed`.
 
 - A gzip body decompressing beyond the cap yields `[BODY_TOO_LARGE]` (`body_processing.go:28` uncovered).
 - Decompression works with `CaptureResponseHeaders=false`.
@@ -407,8 +416,9 @@ Class: b (needs decision)
 
 ### T10. Startup, activation and writer gaps
 
-Status: open
+Status: fixed
 Class: b (needs decision)
+Note: Echo v5 startup test covers `Any` and `RouteNotFound`; added `TestStartupEventPathsAreUnionOfAllRegisteredApps`; the streaming test calls `ResponseController.Flush` and `SetWriteDeadline` (through `Unwrap`); added `TestConsumersFromReusedRequestMemoryAreKept` to fiber-v3. Not tested: tracers obtained before activation (OTel's global delegation).
 
 - Echo v5 omission of `RouteAny` and `RouteNotFound` registrations in `TestStartupEventPathsMatchRoutes`.
 - Startup `paths` is the union of all apps passed to `Init` before activation.
@@ -429,8 +439,9 @@ Note: Applied as listed.
 
 ### T12. Tests of internal mechanisms
 
-Status: open
+Status: fixed
 Class: b (needs decision)
+Note: Replaced the two histogram tests with `TestHistogramIsExportedWithExponentialBucketsAtScaleThree`; deleted `TestRequestLoggingMiddlewareIsRecognizedByFunctionName`; dropped the `rotateForExport()` assertion. The metric cap test stays: crossing the cap needs 50,001 combinations.
 
 - Replace `TestHistogramGrowsBucketsInBothDirections` (private fields) and `TestHistogramBucketIndexMatchesOpenTelemetryMapping` with one test asserting the exported exponential histogram data point (scale, zero count, offset, bucket counts).
 - `TestRequestLoggingMiddlewareIsRecognizedByFunctionName` restates the prefix list and never runs the PC resolution (`slog_handler.go:101`); delete it or replace it with a test logging from a function in a matching package path.
@@ -482,8 +493,9 @@ Class: a (mechanical)
 
 ### R2. POCs and design review documents are committed
 
-Status: open
+Status: deferred
 Class: b (needs decision)
+Note: Following .NET (`cc89c16`, `998cca0`): remove `pocs/` and all of `docs/`, and the `docs/design.md` sentence in `AGENTS.md`, as the final cleanup before v1 replaces `main`.
 
 - `pocs/` (five modules with results and logs), `docs/design-review.md`, `docs/design-review-2.md` and `docs/design-review-3.md` are tracked. Remove them before v1 replaces `main`; git history keeps them.
 

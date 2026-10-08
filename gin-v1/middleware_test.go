@@ -393,6 +393,39 @@ func TestDisabledSDKLeavesResponsesUnchanged(t *testing.T) {
 	assert.Empty(t, server.Requests())
 }
 
+func TestAbortWithErrorIsRecordedAsExceptionAndServerError(t *testing.T) {
+	server := setUp(t)
+	r := gin.New()
+	apitally.Init(r, nil)
+	r.GET("/error", func(c *gin.Context) {
+		_ = c.AbortWithError(http.StatusInternalServerError, errors.New("failed"))
+	})
+	appURL := testutils.Serve(t, r)
+
+	resp := testutils.Get(t, appURL+"/error")
+	shutDown(t)
+
+	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	spans := server.Spans(t)
+	require.Len(t, spans, 1)
+	require.Len(t, spans[0].Events, 1)
+	assert.Equal(t, map[string]any{
+		"exception.type":       "errors.errorString",
+		"exception.message":    "failed",
+		"exception.stacktrace": "",
+	}, testutils.Attributes(spans[0].Events[0].Attributes))
+	serverErrors := server.Events(t, "apitally.request.server_error")
+	require.Len(t, serverErrors, 1)
+	assert.Equal(t, map[string]any{
+		"method":     "GET",
+		"path":       "/error",
+		"type":       "errors.errorString",
+		"message":    "failed",
+		"stacktrace": "",
+		"counts":     []any{map[string]any{"count": int64(1)}},
+	}, testutils.Value(serverErrors[0].Body))
+}
+
 func TestWriteStringIsCountedAndCapturedOnce(t *testing.T) {
 	server := setUp(t)
 	cfg := apitally.NewConfig()

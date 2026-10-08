@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
@@ -429,6 +430,22 @@ func TestReturnedErrorIsDispatchedToErrorHandlerOnce(t *testing.T) {
 	assert.Equal(t, "", testutils.Value(errors[0].Body).(map[string]any)["stacktrace"])
 }
 
+func TestFailingErrorHandlerFallsBackToStatus500(t *testing.T) {
+	server := setUp(t)
+	app := newApp(nil, fiber.Config{ErrorHandler: func(c *fiber.Ctx, err error) error {
+		c.Status(fiber.StatusServiceUnavailable)
+		return errors.New("rendering the error page failed")
+	}})
+
+	resp := send(t, app, http.MethodGet, "/error", nil)
+	shutDown(t)
+
+	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	spans := server.Spans(t)
+	require.Len(t, spans, 1)
+	assert.Equal(t, int64(500), testutils.Attributes(spans[0].Attributes)["http.response.status_code"])
+}
+
 func TestConsumersFromReusedRequestMemoryAreKept(t *testing.T) {
 	server := setUp(t)
 	app := newApp(nil)
@@ -473,6 +490,66 @@ func TestStreamsOfKnownLengthReportSizeWithoutCapture(t *testing.T) {
 		assert.NotContains(t, attrs, "apitally.response.body")
 	}
 	assert.Equal(t, map[string]any{"GET /bytes": int64(5), "GET /limited": int64(7)}, sizes)
+}
+
+func TestStreamWriterSpanIsExportedAndServerSpanEndsAfterStream(t *testing.T) {
+	server := setUp(t)
+	streamEnd := make(chan time.Time, 1)
+	app := fiber.New()
+	apitally.Init(app, nil)
+	app.Get("/stream", func(c *fiber.Ctx) error {
+		// The stream writer runs after the handler returned, when Fiber may have
+		// reused c.
+		ctx := c.UserContext()
+		c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+			_, span := otel.Tracer("test").Start(ctx, "write chunk")
+			_, _ = w.WriteString("chunk\n")
+			_ = w.Flush()
+			span.End()
+			streamEnd <- time.Now()
+		})
+		return nil
+	})
+
+	resp := send(t, app, http.MethodGet, "/stream", nil)
+	shutDown(t)
+
+	assert.Equal(t, "chunk\n", resp.Body)
+	spans := map[string]testutils.Span{}
+	for _, span := range server.Spans(t) {
+		spans[span.Name] = span
+	}
+	require.Len(t, spans, 2)
+	assert.Equal(t, spans["GET /stream"].SpanId, spans["write chunk"].ParentSpanId)
+	assert.GreaterOrEqual(t, int64(spans["GET /stream"].EndTimeUnixNano), (<-streamEnd).UnixNano())
+}
+
+func TestUnknownLengthStreamIsClosedAfterResponse(t *testing.T) {
+	setUp(t)
+	stream := &closableStream{Reader: strings.NewReader("streamed")}
+	app := fiber.New()
+	apitally.Init(app, nil)
+	app.Get("/stream", func(c *fiber.Ctx) error {
+		return c.SendStream(stream)
+	})
+
+	resp := send(t, app, http.MethodGet, "/stream", nil)
+	shutDown(t)
+
+	assert.Equal(t, "streamed", resp.Body)
+	assert.Equal(t, 1, stream.closes)
+}
+
+// closableStream is a response stream of unknown length that counts its
+// Close calls.
+type closableStream struct {
+	io.Reader
+	closes int
+}
+
+func (s *closableStream) Close() error {
+	s.closes++
+	return nil
 }
 
 func TestAbortedStreamOmitsSize(t *testing.T) {

@@ -51,6 +51,22 @@ func TestAttachesToGlobalSDKTracerProviderWithApitallyResourceOnExportCopies(t *
 	}
 }
 
+func TestShutdownLeavesApplicationTracerProviderRunning(t *testing.T) {
+	server := testutils.NewOTLPServer(t)
+	registerForTest(t, server, nil)
+	userSpans := tracetest.NewInMemoryExporter()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(userSpans))
+	otel.SetTracerProvider(provider)
+	Activate()
+
+	require.NoError(t, Shutdown(context.Background()))
+	_, span := provider.Tracer("test").Start(context.Background(), "after shutdown")
+	span.End()
+
+	require.Len(t, userSpans.GetSpans(), 1)
+	assert.Equal(t, "after shutdown", userSpans.GetSpans()[0].Name)
+}
+
 func TestOwnProviderAndPropagatorAreRegisteredWhenUnset(t *testing.T) {
 	server := testutils.NewOTLPServer(t)
 	registerForTest(t, server, nil)
