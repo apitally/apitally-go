@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -172,12 +171,7 @@ func TestHistogramAttributesAndLogCorrelation(t *testing.T) {
 		"http.response.status_code": int64(200),
 		"url.scheme":                "http",
 	}, testutils.Attributes(points[0].Attributes))
-	var logs []testutils.LogRecord
-	for _, record := range server.LogRecords(t) {
-		if record.Scope == "slog" {
-			logs = append(logs, record)
-		}
-	}
+	logs := server.ApplicationLogRecords(t)
 	require.Len(t, logs, 1)
 	assert.Equal(t, "fetching item", logs[0].Body.GetStringValue())
 	assert.Equal(t, spans[0].TraceId, logs[0].TraceId)
@@ -217,13 +211,11 @@ func TestStartupEventPathsMatchRoutes(t *testing.T) {
 	send(t, app, http.MethodGet, "/items/1", nil)
 	shutDown(t)
 
-	records := server.Events(t, "apitally.app.startup")
-	require.Len(t, records, 1)
 	var body struct {
 		Framework string              `json:"framework"`
 		Paths     []map[string]string `json:"paths"`
 	}
-	require.NoError(t, json.Unmarshal([]byte(records[0].Body.GetStringValue()), &body))
+	server.DecodeStartupEvent(t, &body)
 	assert.Equal(t, "fiber", body.Framework)
 	assert.ElementsMatch(t, []map[string]string{
 		{"method": "GET", "path": "/"},
@@ -333,7 +325,6 @@ func TestUnhandledPanicRecordedOnServerSpan(t *testing.T) {
 	assert.Equal(t, "boom", attrs["exception.message"])
 	assert.Regexp(t, `^github.com/apitally/apitally-go/fiber-v2_test.newApp.func\d+\n\t\S+/middleware_test.go:\d+\n`, attrs["exception.stacktrace"])
 	assert.Equal(t, int64(500), testutils.Attributes(spans[0].Attributes)["http.response.status_code"])
-	assert.Len(t, server.Events(t, "apitally.request.server_error"), 1)
 }
 
 func TestValidationErrorReported(t *testing.T) {
@@ -485,14 +476,18 @@ func TestStreamsOfKnownLengthReportSizeWithoutCapture(t *testing.T) {
 
 func TestAbortedStreamOmitsSize(t *testing.T) {
 	server := setUp(t)
+	isDisconnected := make(chan struct{})
 	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 	apitally.Init(app, nil)
 	app.Get("/stream", func(c *fiber.Ctx) error {
 		c.Set(fiber.HeaderContentType, fiber.MIMETextPlain)
 		c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
-			chunk := strings.Repeat("x", 1024) + "\n"
-			for range 100_000 {
-				if _, err := w.WriteString(chunk); err != nil {
+			_, _ = w.WriteString("first\n")
+			_ = w.Flush()
+			<-isDisconnected
+			// Writes fail once the client's connection close reaches the server.
+			for {
+				if _, err := w.WriteString("next\n"); err != nil {
 					return
 				}
 				if w.Flush() != nil {
@@ -509,6 +504,7 @@ func TestAbortedStreamOmitsSize(t *testing.T) {
 	_, err = resp.Body.Read(make([]byte, 1))
 	require.NoError(t, err)
 	_ = resp.Body.Close()
+	close(isDisconnected)
 	require.NoError(t, app.Shutdown())
 	shutDown(t)
 

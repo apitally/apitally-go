@@ -75,7 +75,7 @@ func middleware(c fiber.Ctx) error {
 	// Dispatching the error here lets Apitally observe the error handler's
 	// response; returning nil keeps Fiber from dispatching it a second time.
 	if err := c.Next(); err != nil {
-		o.State.CaptureError(err)
+		o.State.CaptureReturnedError(err)
 		if c.App().ErrorHandler(c, err) != nil {
 			_ = c.SendStatus(fiber.StatusInternalServerError)
 		}

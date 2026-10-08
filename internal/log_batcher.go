@@ -21,7 +21,7 @@ const (
 // logRecord is a captured application log record or an SDK event, which has
 // an event name and body and no request linkage.
 type logRecord struct {
-	Record       root.LogRecord
+	record       root.LogRecord
 	eventName    string
 	eventBody    attribute.Value
 	traceID      trace.TraceID
@@ -72,7 +72,7 @@ func (b *logBatcher) add(r *logRecord) {
 }
 
 func (b *logBatcher) emitEvent(name string, body attribute.Value) {
-	b.add(&logRecord{Record: root.LogRecord{Time: time.Now()}, eventName: name, eventBody: body})
+	b.add(&logRecord{record: root.LogRecord{Time: time.Now()}, eventName: name, eventBody: body})
 }
 
 // flush appends all queued records to the spool.
@@ -101,6 +101,7 @@ func (b *logBatcher) shutdown(ctx context.Context) {
 }
 
 func (b *logBatcher) run() {
+	defer recoverAndLogPanic("log batching")
 	defer close(b.done)
 	timer := time.NewTimer(batchDelay)
 	defer timer.Stop()

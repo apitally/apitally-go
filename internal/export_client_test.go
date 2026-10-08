@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -21,7 +22,7 @@ func TestExportRequestsCarryAuthorizationEnvironmentAndEncodingHeaders(t *testin
 	require.NoError(t, Shutdown(context.Background()))
 
 	requests := server.Requests()
-	require.NotEmpty(t, requests)
+	require.Len(t, requests, 2)
 	for _, req := range requests {
 		assert.Equal(t, "Bearer "+testutils.WriteToken, req.Header.Get("Authorization"))
 		assert.Equal(t, "prod", req.Header.Get("Apitally-Env"))
@@ -29,4 +30,11 @@ func TestExportRequestsCarryAuthorizationEnvironmentAndEncodingHeaders(t *testin
 		assert.Equal(t, "gzip", req.Header.Get("Content-Encoding"))
 		assert.True(t, strings.HasPrefix(req.Header.Get("User-Agent"), "apitally-go/"))
 	}
+}
+
+// setExportTransportForTest replaces the network transport until the test
+// ends.
+func setExportTransportForTest(t testing.TB, transport http.RoundTripper) {
+	exportTransportForTest = transport
+	t.Cleanup(func() { exportTransportForTest = nil })
 }

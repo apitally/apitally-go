@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"context"
 	"reflect"
 	"strings"
 
@@ -17,7 +18,6 @@ const (
 // validationDetail is one normalized validation error of a request. Its
 // fields form the validation error identity together with method and path.
 type validationDetail struct {
-	source   string
 	field    string
 	message  string
 	typeName string
@@ -27,6 +27,18 @@ type validationErrorKey struct {
 	method string
 	path   string
 	validationDetail
+}
+
+// CaptureValidationError records the validation details of err for the
+// request in ctx. It does nothing outside a monitored request.
+func CaptureValidationError(ctx context.Context, err error) {
+	defer recoverAndLogPanic("CaptureValidationError")
+	if s := requestStateFromContext(ctx); s != nil {
+		details := validationDetails(err)
+		s.mu.Lock()
+		s.validationDetails = append(s.validationDetails, details...)
+		s.mu.Unlock()
+	}
 }
 
 // fieldError is the method set of go-playground/validator's FieldError, so
@@ -94,7 +106,8 @@ func validationErrorEventBody(key validationErrorKey, counts map[string]uint64) 
 	return attribute.MapValue(
 		attribute.String("method", key.method),
 		attribute.String("path", key.path),
-		attribute.String("source", key.source),
+		// The validator does not report which part of the request a field came from.
+		attribute.String("source", ""),
 		attribute.String("field", key.field),
 		attribute.String("message", key.message),
 		attribute.String("type", key.typeName),

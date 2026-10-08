@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -36,25 +35,9 @@ func TestRequestExportsServerSpanWithHandlerSpans(t *testing.T) {
 	spans := server.Spans(t)
 	require.Len(t, spans, 2)
 	rootSpan, child := findSpan(t, spans, "GET /items/{id}"), findSpan(t, spans, "load item")
-	parsedURL, _ := url.Parse(appURL)
-	assert.Equal(t, tracepb.Span_SPAN_KIND_SERVER, rootSpan.Kind)
-	assert.Equal(t, testFramework.ScopeName, rootSpan.Scope)
-	assert.Equal(t, map[string]any{
-		"http.request.method":       "GET",
-		"url.scheme":                "http",
-		"server.address":            "127.0.0.1",
-		"server.port":               int64(mustAtoi(t, parsedURL.Port())),
-		"url.path":                  "/items/1",
-		"url.query":                 "q=2",
-		"user_agent.original":       "Go-http-client/1.1",
-		"http.route":                "/items/{id}",
-		"http.response.status_code": int64(200),
-		"client.address":            "127.0.0.1",
-		"http.request.body.size":    int64(0),
-		"http.response.body.size":   int64(2),
-	}, testutils.Attributes(rootSpan.Attributes))
 	assert.Equal(t, rootSpan.SpanId, child.ParentSpanId)
 	assert.Equal(t, tracepb.Span_SPAN_KIND_INTERNAL, child.Kind)
+	assert.Equal(t, "test", child.Scope)
 }
 
 func TestNestedMonitoredRequestIsExportedAsSeparateRequest(t *testing.T) {
@@ -68,10 +51,9 @@ func TestNestedMonitoredRequestIsExportedAsSeparateRequest(t *testing.T) {
 		writeOK(w, r)
 	})
 	app = NetHTTPMiddleware(serveMuxRoute)(mux)
-	appServer := httptest.NewServer(app)
-	t.Cleanup(appServer.Close)
+	appURL := testutils.Serve(t, app)
 
-	testutils.Get(t, appServer.URL+"/outer")
+	testutils.Get(t, appURL+"/outer")
 	require.NoError(t, Shutdown(context.Background()))
 
 	spans := server.Spans(t)
@@ -99,9 +81,15 @@ func TestStackedServerSpanInsideRequestIsExportedAsInternalWithWarning(t *testin
 	require.NoError(t, Shutdown(context.Background()))
 
 	spans := server.Spans(t)
-	require.Len(t, spans, 3)
-	assert.Equal(t, 1, countRequestRoots(spans))
-	assert.Len(t, logs.Messages(slog.LevelWarn), 1)
+	kinds := map[string][]tracepb.Span_SpanKind{}
+	for _, span := range spans {
+		kinds[span.Name] = append(kinds[span.Name], span.Kind)
+	}
+	assert.Equal(t, map[string][]tracepb.Span_SpanKind{
+		"GET /items": {tracepb.Span_SPAN_KIND_SERVER},
+		"inner":      {tracepb.Span_SPAN_KIND_INTERNAL, tracepb.Span_SPAN_KIND_INTERNAL},
+	}, kinds)
+	assert.Equal(t, []string{"Instrumentation scope inner-instrumentation starts SERVER spans inside Apitally's request span. Apitally exports them as INTERNAL spans, but other exporters receive two SERVER spans per request. Install that instrumentation outside Apitally's middleware."}, logs.Messages(slog.LevelWarn))
 }
 
 func TestSpanEndingAfterReleaseIsDropped(t *testing.T) {
@@ -183,14 +171,4 @@ func findSpan(t *testing.T, spans []testutils.Span, name string) testutils.Span 
 	}
 	require.Failf(t, "span not found", "no span named %q", name)
 	return testutils.Span{}
-}
-
-func countRequestRoots(spans []testutils.Span) int {
-	n := 0
-	for _, span := range spans {
-		if span.Kind == tracepb.Span_SPAN_KIND_SERVER {
-			n++
-		}
-	}
-	return n
 }

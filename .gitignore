@@ -23,3 +23,6 @@ go.work.sum
 
 # Agents
 .pi/tasks/
+
+# macOS
+.DS_Store

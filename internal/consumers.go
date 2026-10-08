@@ -2,6 +2,7 @@ package internal
 
 import (
 	"container/list"
+	"context"
 	"hash/maphash"
 	"slices"
 	"strconv"
@@ -23,6 +24,17 @@ const (
 	maxConsumerAttributes    = 10
 	maxCachedConsumers       = 10_000
 )
+
+// SetConsumer merges consumer into the consumer of the request in ctx. It
+// does nothing outside a monitored request.
+func SetConsumer(ctx context.Context, consumer root.Consumer) {
+	defer recoverAndLogPanic("SetConsumer")
+	if s := requestStateFromContext(ctx); s != nil {
+		s.mu.Lock()
+		s.consumer = mergeConsumer(s.consumer, consumer)
+		s.mu.Unlock()
+	}
+}
 
 // requestConsumer is a request's normalized consumer: the identifier for
 // span and metric attribution and the metadata patch for a consumer-update

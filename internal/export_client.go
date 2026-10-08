@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"strconv"
-	"testing"
 	"time"
 )
 
@@ -27,6 +26,9 @@ const (
 	exportRejected
 )
 
+// exportTransportForTest replaces the network transport in tests that run in
+// testing/synctest bubbles, where idle network connections would block fake
+// time.
 var exportTransportForTest http.RoundTripper
 
 // exportClient posts spool files with a private transport, so neither
@@ -101,14 +103,6 @@ func (c *exportClient) send(ctx context.Context, signal string, body []byte) (*h
 	}
 	req.Header = c.header.Clone()
 	return c.client.Do(req)
-}
-
-// setExportTransportForTest replaces the network transport until the test
-// ends, for tests in testing/synctest bubbles, where idle network connections
-// would block fake time.
-func setExportTransportForTest(t testing.TB, transport http.RoundTripper) {
-	exportTransportForTest = transport
-	t.Cleanup(func() { exportTransportForTest = nil })
 }
 
 func (c *exportClient) close() {

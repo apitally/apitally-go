@@ -3,6 +3,7 @@ package testutils
 import (
 	"bytes"
 	"compress/gzip"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -167,6 +168,27 @@ func (s *OTLPServer) LogRecords(t testing.TB) []LogRecord {
 		}
 	}
 	return records
+}
+
+// ApplicationLogRecords returns the log records captured from the
+// application's slog records, which are exported with the scope "slog".
+func (s *OTLPServer) ApplicationLogRecords(t testing.TB) []LogRecord {
+	var records []LogRecord
+	for _, record := range s.LogRecords(t) {
+		if record.Scope == "slog" {
+			records = append(records, record)
+		}
+	}
+	return records
+}
+
+// DecodeStartupEvent requires exactly one exported startup event and decodes
+// its JSON body into body.
+func (s *OTLPServer) DecodeStartupEvent(t testing.TB, body any) {
+	t.Helper()
+	records := s.Events(t, "apitally.app.startup")
+	require.Len(t, records, 1)
+	require.NoError(t, json.Unmarshal([]byte(records[0].Body.GetStringValue()), body))
 }
 
 // Events returns the SDK event log records with the given event name.

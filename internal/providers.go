@@ -38,7 +38,7 @@ func (r *sdkRuntime) setUpTracerProvider() {
 			sdktrace.WithRawSpanLimits(limits),
 			sdktrace.WithSpanProcessor(r.spanProcessor),
 		)
-		r.ownsProvider = true
+		r.isProviderOwned = true
 		if global == initialTracerProvider {
 			otel.SetTracerProvider(r.provider)
 		} else {
@@ -55,7 +55,7 @@ func (r *sdkRuntime) setUpTracerProvider() {
 // tearDownTracerProvider shuts down Apitally's own provider and detaches the
 // span processor from an application's provider, which stays running.
 func (r *sdkRuntime) tearDownTracerProvider(ctx context.Context) {
-	if r.ownsProvider {
+	if r.isProviderOwned {
 		_ = r.provider.Shutdown(ctx)
 	} else {
 		r.provider.UnregisterSpanProcessor(r.spanProcessor)

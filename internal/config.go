@@ -21,7 +21,7 @@ var writeTokenFormat = regexp.MustCompile(`^apt_[a-zA-Z0-9]{24}$`)
 // lists hold user patterns only; the components using them add the defaults.
 type settings struct {
 	config          root.Config
-	enabled         bool
+	isEnabled       bool
 	otlpEndpoint    string
 	maskQueryParams []*regexp.Regexp
 	maskHeaders     []*regexp.Regexp
@@ -58,7 +58,7 @@ func resolveSettings(cfg *root.Config) *settings {
 		// The write token is a credential and never appears unmasked in logs.
 		s.configErrors = append(s.configErrors, "Apitally write token has an invalid format ("+truncateString(c.WriteToken, 8)+"...), Apitally is disabled")
 	default:
-		s.enabled = true
+		s.isEnabled = true
 	}
 	return s
 }

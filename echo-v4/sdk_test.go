@@ -20,7 +20,7 @@ func TestCaptureErrorRecordsCallerStack(t *testing.T) {
 		apitally.CaptureError(c.Request().Context(), errors.New("failed"))
 		return nil
 	})
-	appURL := serve(t, e)
+	appURL := testutils.Serve(t, e)
 
 	testutils.Get(t, appURL+"/items")
 	shutDown(t)

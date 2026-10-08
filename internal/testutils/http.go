@@ -3,12 +3,21 @@ package testutils
 import (
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 )
+
+// Serve serves handler on a local HTTP server until the test ends and
+// returns the server's URL.
+func Serve(t testing.TB, handler http.Handler) string {
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+	return server.URL
+}
 
 // Response is an HTTP response read to completion.
 type Response struct {

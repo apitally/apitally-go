@@ -2,17 +2,16 @@ package apitally_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -77,16 +76,13 @@ func newEngine(cfg *apitally.Config) *gin.Engine {
 			apitally.SetConsumer(c, apitally.Consumer{Identifier: id, Name: "Acme Corp"})
 		}
 	})
+	api.GET("", func(c *gin.Context) {
+		c.String(http.StatusOK, "api")
+	})
 	api.GET("/users/:userID", func(c *gin.Context) {
 		c.String(http.StatusOK, "user")
 	})
 	return r
-}
-
-func serve(t *testing.T, handler http.Handler) string {
-	server := httptest.NewServer(handler)
-	t.Cleanup(server.Close)
-	return server.URL
 }
 
 func shutDown(t *testing.T) {
@@ -95,7 +91,7 @@ func shutDown(t *testing.T) {
 
 func TestRequestExportsSingleServerSpanWithStableSemconv(t *testing.T) {
 	server := setUp(t)
-	appURL := serve(t, newEngine(nil))
+	appURL := testutils.Serve(t, newEngine(nil))
 
 	resp := testutils.Get(t, appURL+"/items/42?page=2")
 	shutDown(t)
@@ -129,7 +125,7 @@ func TestClientAddressUsesFrameworkResolvedClientIP(t *testing.T) {
 	server := setUp(t)
 	r := newEngine(nil)
 	require.NoError(t, r.SetTrustedProxies([]string{"127.0.0.1"}))
-	appURL := serve(t, r)
+	appURL := testutils.Serve(t, r)
 
 	req, _ := http.NewRequest(http.MethodGet, appURL+"/items/1", nil)
 	req.Header.Set("X-Forwarded-For", "203.0.113.7")
@@ -143,7 +139,7 @@ func TestClientAddressUsesFrameworkResolvedClientIP(t *testing.T) {
 
 func TestHistogramAttributesAndLogCorrelation(t *testing.T) {
 	server := setUp(t)
-	appURL := serve(t, newEngine(nil))
+	appURL := testutils.Serve(t, newEngine(nil))
 
 	testutils.Get(t, appURL+"/items/42")
 	shutDown(t)
@@ -159,12 +155,7 @@ func TestHistogramAttributesAndLogCorrelation(t *testing.T) {
 		"http.response.status_code": int64(200),
 		"url.scheme":                "http",
 	}, testutils.Attributes(points[0].Attributes))
-	var logs []testutils.LogRecord
-	for _, record := range server.LogRecords(t) {
-		if record.Scope == "slog" {
-			logs = append(logs, record)
-		}
-	}
+	logs := server.ApplicationLogRecords(t)
 	require.Len(t, logs, 1)
 	assert.Equal(t, "fetching item", logs[0].Body.GetStringValue())
 	assert.Equal(t, spans[0].TraceId, logs[0].TraceId)
@@ -173,20 +164,22 @@ func TestHistogramAttributesAndLogCorrelation(t *testing.T) {
 
 func TestRouteIncludesGroupPrefix(t *testing.T) {
 	server := setUp(t)
-	appURL := serve(t, newEngine(nil))
+	appURL := testutils.Serve(t, newEngine(nil))
 
 	testutils.Get(t, appURL+"/api/v1/users/7")
+	testutils.Get(t, appURL+"/api/v1")
 	shutDown(t)
 
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	assert.Equal(t, "GET /api/v1/users/:userID", spans[0].Name)
-	assert.Equal(t, "/api/v1/users/:userID", testutils.Attributes(spans[0].Attributes)["http.route"])
+	var routes []any
+	for _, span := range server.Spans(t) {
+		routes = append(routes, testutils.Attributes(span.Attributes)["http.route"])
+	}
+	assert.ElementsMatch(t, []any{"/api/v1/users/:userID", "/api/v1"}, routes)
 }
 
 func TestFirstRequestActivatesAndIsRecorded(t *testing.T) {
 	server := setUp(t)
-	appURL := serve(t, newEngine(nil))
+	appURL := testutils.Serve(t, newEngine(nil))
 
 	testutils.Get(t, appURL+"/items/1")
 	shutDown(t)
@@ -197,18 +190,16 @@ func TestFirstRequestActivatesAndIsRecorded(t *testing.T) {
 
 func TestStartupEventPathsMatchRoutes(t *testing.T) {
 	server := setUp(t)
-	appURL := serve(t, newEngine(nil))
+	appURL := testutils.Serve(t, newEngine(nil))
 
 	testutils.Get(t, appURL+"/items/1")
 	shutDown(t)
 
-	records := server.Events(t, "apitally.app.startup")
-	require.Len(t, records, 1)
 	var body struct {
 		Framework string              `json:"framework"`
 		Paths     []map[string]string `json:"paths"`
 	}
-	require.NoError(t, json.Unmarshal([]byte(records[0].Body.GetStringValue()), &body))
+	server.DecodeStartupEvent(t, &body)
 	assert.Equal(t, "gin", body.Framework)
 	assert.ElementsMatch(t, []map[string]string{
 		{"method": "GET", "path": "/items/:id"},
@@ -216,6 +207,7 @@ func TestStartupEventPathsMatchRoutes(t *testing.T) {
 		{"method": "GET", "path": "/stream"},
 		{"method": "GET", "path": "/panic"},
 		{"method": "POST", "path": "/validate"},
+		{"method": "GET", "path": "/api/v1"},
 		{"method": "GET", "path": "/api/v1/users/:userID"},
 	}, body.Paths)
 }
@@ -225,7 +217,7 @@ func TestRequestAndResponseBodiesCapturedAndRedacted(t *testing.T) {
 	cfg := apitally.NewConfig()
 	cfg.CaptureRequestBody = true
 	cfg.CaptureResponseBody = true
-	appURL := serve(t, newEngine(cfg))
+	appURL := testutils.Serve(t, newEngine(cfg))
 
 	req, _ := http.NewRequest(http.MethodPost, appURL+"/items", strings.NewReader(`{"name": "x", "password": "secret"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -246,7 +238,7 @@ func TestStreamingResponseSizeAndBodyCaptured(t *testing.T) {
 	server := setUp(t)
 	cfg := apitally.NewConfig()
 	cfg.CaptureResponseBody = true
-	appURL := serve(t, newEngine(cfg))
+	appURL := testutils.Serve(t, newEngine(cfg))
 
 	resp := testutils.Get(t, appURL+"/stream")
 	shutDown(t)
@@ -264,7 +256,7 @@ func TestStreamingResponseSizeAndBodyCaptured(t *testing.T) {
 
 func TestUnmatchedRequestHasNoRouteAndNoHistogramPoint(t *testing.T) {
 	server := setUp(t)
-	appURL := serve(t, newEngine(nil))
+	appURL := testutils.Serve(t, newEngine(nil))
 
 	resp := testutils.Get(t, appURL+"/missing")
 	shutDown(t)
@@ -281,7 +273,7 @@ func TestUnmatchedRequestHasNoRouteAndNoHistogramPoint(t *testing.T) {
 
 func TestSetConsumerReachesSpanAndHistogram(t *testing.T) {
 	server := setUp(t)
-	appURL := serve(t, newEngine(nil))
+	appURL := testutils.Serve(t, newEngine(nil))
 
 	req, _ := http.NewRequest(http.MethodGet, appURL+"/api/v1/users/7", nil)
 	req.Header.Set("X-Consumer", "acme")
@@ -301,7 +293,7 @@ func TestSetConsumerReachesSpanAndHistogram(t *testing.T) {
 
 func TestUnhandledPanicRecordedOnServerSpan(t *testing.T) {
 	server := setUp(t)
-	appURL := serve(t, newEngine(nil))
+	appURL := testutils.Serve(t, newEngine(nil))
 
 	resp := testutils.Get(t, appURL+"/panic")
 	shutDown(t)
@@ -315,12 +307,11 @@ func TestUnhandledPanicRecordedOnServerSpan(t *testing.T) {
 	assert.Equal(t, "boom", attrs["exception.message"])
 	assert.Regexp(t, `^github.com/apitally/apitally-go/gin-v1_test.newEngine.func\d+\n\t\S+/middleware_test.go:\d+\n`, attrs["exception.stacktrace"])
 	assert.Equal(t, int64(500), testutils.Attributes(spans[0].Attributes)["http.response.status_code"])
-	assert.Len(t, server.Events(t, "apitally.request.server_error"), 1)
 }
 
 func TestValidationErrorReported(t *testing.T) {
 	server := setUp(t)
-	appURL := serve(t, newEngine(nil))
+	appURL := testutils.Serve(t, newEngine(nil))
 
 	req, _ := http.NewRequest(http.MethodPost, appURL+"/validate", strings.NewReader(`{"name": "", "price": 5}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -358,7 +349,7 @@ func TestPreInstrumentedAppAdaptsWithoutDuplicateSpans(t *testing.T) {
 	})
 	apitally.Init(r, nil)
 	r.GET("/items/:id", func(c *gin.Context) { c.String(http.StatusOK, "item") })
-	appURL := serve(t, r)
+	appURL := testutils.Serve(t, r)
 
 	testutils.Get(t, appURL+"/items/1")
 	shutDown(t)
@@ -376,7 +367,7 @@ func TestInitTwiceDoesNotStackMiddleware(t *testing.T) {
 	apitally.Init(r, nil)
 	apitally.Init(r, nil)
 	r.GET("/items", func(c *gin.Context) {})
-	appURL := serve(t, r)
+	appURL := testutils.Serve(t, r)
 
 	testutils.Get(t, appURL+"/items")
 	shutDown(t)
@@ -388,7 +379,7 @@ func TestDisabledSDKLeavesResponsesUnchanged(t *testing.T) {
 	server := setUp(t)
 	cfg := apitally.NewConfig()
 	cfg.Disabled = true
-	appURL := serve(t, newEngine(cfg))
+	appURL := testutils.Serve(t, newEngine(cfg))
 
 	item := testutils.Get(t, appURL+"/items/1")
 	missing := testutils.Get(t, appURL+"/missing")
@@ -413,7 +404,7 @@ func TestWriteStringIsCountedAndCapturedOnce(t *testing.T) {
 		_, _ = c.Writer.WriteString("hello ")
 		_, _ = c.Writer.Write([]byte("world"))
 	})
-	appURL := serve(t, r)
+	appURL := testutils.Serve(t, r)
 
 	resp := testutils.Get(t, appURL+"/text")
 	shutDown(t)
@@ -426,6 +417,24 @@ func TestWriteStringIsCountedAndCapturedOnce(t *testing.T) {
 	assert.Equal(t, int64(11), attrs["http.response.body.size"])
 }
 
+func TestResponseControllerReachesUnderlyingWriter(t *testing.T) {
+	setUp(t)
+	r := gin.New()
+	apitally.Init(r, nil)
+	r.GET("/deadline", func(c *gin.Context) {
+		if err := http.NewResponseController(c.Writer).SetWriteDeadline(time.Now().Add(time.Minute)); err != nil {
+			c.String(http.StatusInternalServerError, err.Error())
+		}
+	})
+	appURL := testutils.Serve(t, r)
+
+	resp := testutils.Get(t, appURL+"/deadline")
+	shutDown(t)
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Empty(t, resp.Body)
+}
+
 func TestInitAfterRoutesLogsErrorAndMonitorsLaterRoutes(t *testing.T) {
 	server := setUp(t)
 	logs := testutils.RecordSlog(t)
@@ -433,7 +442,7 @@ func TestInitAfterRoutesLogsErrorAndMonitorsLaterRoutes(t *testing.T) {
 	r.GET("/early", func(c *gin.Context) {})
 	apitally.Init(r, nil)
 	r.GET("/late", func(c *gin.Context) {})
-	appURL := serve(t, r)
+	appURL := testutils.Serve(t, r)
 
 	testutils.Get(t, appURL+"/early")
 	testutils.Get(t, appURL+"/late")

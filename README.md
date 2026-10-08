@@ -48,8 +48,8 @@ of each request, making troubleshooting faster and easier.
 ### Error tracking
 
 Understand which validation rules in your endpoints cause client errors. Capture
-error details and stack traces for 500 error responses, and have them linked to
-Sentry issues automatically.
+error details for 500 error responses, with stack traces for panics and errors
+captured with `CaptureError`.
 
 ### API monitoring & alerts
 
@@ -250,7 +250,7 @@ On high-traffic applications you can capture logs and traces for only a fraction
 
 Use `MaskLogRecord` to transform or drop Apitally's captured copy of a log record, or opt out of log capture with `CaptureLogs = false`.
 
-Apitally is disabled in `go test` binaries, and when the `Disabled` option or the `APITALLY_DISABLED` environment variable is set.
+Apitally is disabled in `go test` binaries, and when the `Disabled` option or the `APITALLY_DISABLED` or `OTEL_SDK_DISABLED` environment variable is set.
 
 See the [SDK reference](https://docs.apitally.io/sdk-reference/go/v1/configuration) for all configuration options.
 

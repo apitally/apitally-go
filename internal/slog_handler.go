@@ -89,7 +89,7 @@ func (h *slogHandler) WithGroup(name string) slog.Handler {
 func (h *slogHandler) capture(ctx context.Context, record slog.Record) {
 	defer recoverAndLogPanic("log capture")
 	r := currentRuntime.Load()
-	if r == nil || !r.active.Load() || !r.settings.config.CaptureLogs {
+	if r == nil || !r.isActive.Load() || !r.settings.config.CaptureLogs {
 		return
 	}
 	state, spanCtx := r.logRequestState(ctx)
@@ -104,7 +104,7 @@ func (h *slogHandler) capture(ctx context.Context, record slog.Record) {
 		record.Time = time.Now()
 	}
 	captured := &logRecord{
-		Record:       root.LogRecord{Time: record.Time, Level: record.Level, Message: record.Message, Attrs: h.recordAttrs(record)},
+		record:       root.LogRecord{Time: record.Time, Level: record.Level, Message: record.Message, Attrs: h.recordAttrs(record)},
 		traceID:      spanCtx.TraceID(),
 		spanID:       spanCtx.SpanID(),
 		traceFlags:   spanCtx.TraceFlags(),
@@ -113,14 +113,14 @@ func (h *slogHandler) capture(ctx context.Context, record slog.Record) {
 		codeFile:     frame.File,
 		codeLine:     frame.Line,
 	}
-	if mask := r.settings.config.MaskLogRecord; mask != nil && !callMaskLogRecord(mask, &captured.Record) {
+	if mask := r.settings.config.MaskLogRecord; mask != nil && !callMaskLogRecord(mask, &captured.record) {
 		return
 	}
 	// The server drops records without a message.
-	if captured.Record.Message == "" {
+	if captured.record.Message == "" {
 		return
 	}
-	captured.Record.Message = strings.Clone(truncateString(captured.Record.Message, maxLogTextLength))
+	captured.record.Message = strings.Clone(truncateString(captured.record.Message, maxLogTextLength))
 	state.logEmitted(captured)
 }
 
@@ -136,7 +136,7 @@ func (r *sdkRuntime) logRequestState(ctx context.Context) (*RequestState, trace.
 			return state, spanCtx
 		}
 	}
-	if state := RequestStateFromContext(ctx); state != nil && state.isMonitored && state.runtime == r {
+	if state := requestStateFromContext(ctx); state != nil && state.isMonitored && state.runtime == r {
 		return state, state.span.SpanContext()
 	}
 	return nil, trace.SpanContext{}
@@ -233,7 +233,9 @@ func ownedAnyValue(value any, depth int) slog.Value {
 	case []byte:
 		return slog.AnyValue(bytes.Clone(value))
 	case error:
-		return slog.StringValue(value.Error())
+		// fmt recovers panics of Error methods, such as on a typed nil error, as
+		// slog's own handlers do.
+		return slog.StringValue(fmt.Sprint(value))
 	}
 	rv := reflect.ValueOf(value)
 	switch rv.Kind() {

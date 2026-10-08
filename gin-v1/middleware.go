@@ -2,6 +2,8 @@
 package apitally
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 
 	"github.com/apitally/apitally-go/internal"
@@ -40,7 +42,7 @@ func middleware(c *gin.Context) {
 	defer func() {
 		p := recover()
 		if len(c.Errors) > 0 {
-			o.State.CaptureError(c.Errors[0].Err)
+			o.State.CaptureReturnedError(c.Errors[0].Err)
 		}
 		status := c.Writer.Status()
 		if p != nil && !c.Writer.Written() {
@@ -60,4 +62,34 @@ func listRoutes(engine *gin.Engine) []internal.Route {
 		routes = append(routes, internal.Route{Method: route.Method, Path: route.Path})
 	}
 	return routes
+}
+
+// responseWriter is a gin.ResponseWriter whose write paths go through
+// Apitally's observed writer. Other methods, including those of later Gin
+// releases, are Gin's own.
+type responseWriter struct {
+	gin.ResponseWriter
+	observed *internal.ResponseWriter
+}
+
+func (w *responseWriter) WriteHeader(code int) {
+	w.observed.WriteHeader(code)
+}
+
+func (w *responseWriter) Write(b []byte) (int, error) {
+	return w.observed.Write(b)
+}
+
+func (w *responseWriter) WriteString(s string) (int, error) {
+	return w.observed.WriteString(s)
+}
+
+func (w *responseWriter) Flush() {
+	w.observed.Flush()
+}
+
+// Unwrap supports http.ResponseController, which gin.ResponseWriter does not
+// declare.
+func (w *responseWriter) Unwrap() http.ResponseWriter {
+	return w.observed
 }

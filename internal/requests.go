@@ -76,20 +76,59 @@ type RequestState struct {
 	isReleased          bool
 	consumer            *requestConsumer
 	capturedError       *capturedError
-	// channelError is the first error from the framework's error channel.
-	channelError      error
+	// returnedError is the first error the handler chain returned to the
+	// framework.
+	returnedError     error
 	validationDetails []validationDetail
 	logs              []*logRecord
 }
 
 type requestStateKey struct{}
 
-// BeginRequest selects the request's SERVER span, applies exclusions and
+// RequestStateKey is the string key under which the Gin and Fiber
+// integrations also store the request state, because their contexts resolve
+// only string keys to their own values.
+const RequestStateKey = "github.com/apitally/apitally-go/request-state"
+
+// requestStateFromContext returns the state of the request in ctx, or nil.
+func requestStateFromContext(ctx context.Context) *RequestState {
+	if state, ok := ctx.Value(requestStateKey{}).(*RequestState); ok {
+		return state
+	}
+	state, _ := ctx.Value(RequestStateKey).(*RequestState)
+	return state
+}
+
+// SetRequestAttributes sets attributes on the SERVER span of the request in
+// ctx. It does nothing outside a monitored request. String values are copied,
+// because Fiber reuses the memory of request strings.
+func SetRequestAttributes(ctx context.Context, attrs ...attribute.KeyValue) {
+	defer recoverAndLogPanic("SetRequestAttributes")
+	if s := requestStateFromContext(ctx); s != nil {
+		copied := make([]attribute.KeyValue, len(attrs))
+		for i, kv := range attrs {
+			copied[i] = kv
+			switch kv.Value.Type() {
+			case attribute.STRING:
+				copied[i].Value = attribute.StringValue(strings.Clone(kv.Value.AsString()))
+			case attribute.STRINGSLICE:
+				values := kv.Value.AsStringSlice()
+				for j := range values {
+					values[j] = strings.Clone(values[j])
+				}
+				copied[i].Value = attribute.StringSliceValue(values)
+			}
+		}
+		s.span.SetAttributes(copied...)
+	}
+}
+
+// beginRequest selects the request's SERVER span, applies exclusions and
 // request sampling, and stores the request state in the returned context. It
 // returns a nil state when Apitally is inactive.
-func BeginRequest(ctx context.Context, info RequestInfo) (state *RequestState, requestCtx context.Context) {
+func beginRequest(ctx context.Context, info RequestInfo) (state *RequestState, requestCtx context.Context) {
 	r := currentRuntime.Load()
-	if r == nil || !r.active.Load() {
+	if r == nil || !r.isActive.Load() {
 		return nil, ctx
 	}
 	defer func() {
@@ -110,15 +149,15 @@ func BeginRequest(ctx context.Context, info RequestInfo) (state *RequestState, r
 		state.requestAttributes = attrs
 	}
 	if live, ok := state.span.(sdktrace.ReadOnlySpan); ok && state.span.IsRecording() && !r.isExcluded(&info) &&
-		r.shouldKeepAtRequestStage(newExportSpanCopy(live, mergeAttributes(live.Attributes(), attrs))) {
+		r.shouldKeepAtRequestStage(newExportSpan(live, mergeAttributes(live.Attributes(), attrs))) {
 		state.isMonitored = r.registry.register(state)
 	}
 	return state, context.WithValue(ctx, requestStateKey{}, state)
 }
 
-// FinishObservation records the response data and marks transport
+// finishObservation records the response data and marks transport
 // observation complete. It ends a SERVER span that Apitally started.
-func (s *RequestState) FinishObservation(result TransportResult) {
+func (s *RequestState) finishObservation(result TransportResult) {
 	if s == nil {
 		return
 	}
@@ -144,6 +183,10 @@ func (s *RequestState) FinishObservation(result TransportResult) {
 		}
 		if r.settings.config.CaptureRequestHeaders {
 			payload.requestHeader = s.info.Header.Clone()
+			// net/http moves the Host header to Request.Host.
+			if payload.requestHeader.Get("Host") == "" && s.info.Host != "" {
+				payload.requestHeader.Set("Host", s.info.Host)
+			}
 		}
 		if r.settings.config.CaptureResponseHeaders {
 			payload.responseHeader = result.ResponseHeader.Clone()
@@ -182,11 +225,11 @@ func (s *RequestState) recordRequestData(result *TransportResult, end time.Time,
 		return
 	}
 	s.mu.Lock()
-	captured, channelError, details := s.capturedError, s.channelError, s.validationDetails
+	captured, returnedError, details := s.capturedError, s.returnedError, s.validationDetails
 	s.mu.Unlock()
 	path := truncateString(result.Route, maxErrorPath)
 	if result.StatusCode == http.StatusBadRequest || result.StatusCode == http.StatusUnprocessableEntity {
-		details = append(slices.Clone(details), validationDetails(channelError)...)
+		details = append(slices.Clone(details), validationDetails(returnedError)...)
 	}
 	for _, detail := range details {
 		r.validationErrors.add(validationErrorKey{method: method, path: path, validationDetail: detail}, consumerIdentifier)
@@ -231,16 +274,16 @@ func (s *RequestState) claimReleaseLocked() bool {
 func (s *RequestState) release() {
 	r := s.runtime
 	r.registry.remove(s)
-	if !r.active.Load() {
+	if !r.isActive.Load() {
 		return
 	}
 	defer recoverAndLogPanic("request release")
-	root := r.newExportSpan(s, s.root)
+	root := r.newRequestExportSpan(s, s.root)
 	if !r.shouldKeepAtResponseStage(root) {
 		return
 	}
 	for _, span := range s.descendants {
-		r.batchProcessor.OnEnd(r.newExportSpan(s, span))
+		r.batchProcessor.OnEnd(r.newRequestExportSpan(s, span))
 	}
 	r.batchProcessor.OnEnd(root)
 	for _, record := range s.logs {
@@ -268,27 +311,13 @@ func isWebSocketUpgrade(header http.Header) bool {
 	return strings.Contains(strings.ToLower(header.Get("Upgrade")), "websocket")
 }
 
-// RequestStateKey is the string key under which the Gin and Fiber
-// integrations also store the request state, because their contexts resolve
-// only string keys to their own values.
-const RequestStateKey = "github.com/apitally/apitally-go/request-state"
-
-// RequestStateFromContext returns the state of the request in ctx, or nil.
-func RequestStateFromContext(ctx context.Context) *RequestState {
-	if state, ok := ctx.Value(requestStateKey{}).(*RequestState); ok {
-		return state
-	}
-	state, _ := ctx.Value(RequestStateKey).(*RequestState)
-	return state
-}
-
 // requestRegistry maps the span IDs of monitored requests' SERVER spans and
 // their descendants to the request state. Lock order: RequestState.mu before
 // requestRegistry.mu.
 type requestRegistry struct {
 	mu       sync.Mutex
 	entries  map[trace.SpanID]*RequestState
-	isCutOff bool
+	isClosed bool
 }
 
 func newRequestRegistry() *requestRegistry {
@@ -300,7 +329,7 @@ func newRequestRegistry() *requestRegistry {
 func (g *requestRegistry) register(s *RequestState) bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if g.isCutOff {
+	if g.isClosed {
 		return false
 	}
 	g.addLocked(s, s.span.SpanContext().SpanID())
@@ -322,10 +351,6 @@ func (g *requestRegistry) lookup(id trace.SpanID) *RequestState {
 	return g.entries[id]
 }
 
-func (g *requestRegistry) isRegistered(id trace.SpanID) bool {
-	return g.lookup(id) != nil
-}
-
 // remove deletes the entries the request still owns.
 func (g *requestRegistry) remove(s *RequestState) {
 	g.mu.Lock()
@@ -338,11 +363,11 @@ func (g *requestRegistry) remove(s *RequestState) {
 	s.members = nil
 }
 
-// cutOff discards all requests not yet released.
-func (g *requestRegistry) cutOff() {
+// close discards all requests not yet released and refuses new registrations.
+func (g *requestRegistry) close() {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	g.isCutOff = true
+	g.isClosed = true
 	clear(g.entries)
 }
 

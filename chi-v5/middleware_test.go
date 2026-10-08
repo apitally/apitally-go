@@ -2,13 +2,11 @@ package apitally_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"strconv"
 	"strings"
@@ -94,19 +92,13 @@ func newRouter(cfg *apitally.Config, middlewares ...func(http.Handler) http.Hand
 	return r
 }
 
-func serve(t *testing.T, handler http.Handler) string {
-	server := httptest.NewServer(handler)
-	t.Cleanup(server.Close)
-	return server.URL
-}
-
 func shutDown(t *testing.T) {
 	require.NoError(t, apitally.Shutdown(context.Background()))
 }
 
 func TestRequestExportsSingleServerSpanWithStableSemconv(t *testing.T) {
 	server := setUp(t)
-	appURL := serve(t, newRouter(nil))
+	appURL := testutils.Serve(t, newRouter(nil))
 
 	resp := testutils.Get(t, appURL+"/items/42?page=2")
 	shutDown(t)
@@ -137,7 +129,7 @@ func TestRequestExportsSingleServerSpanWithStableSemconv(t *testing.T) {
 
 func TestClientAddressUsesFrameworkResolvedClientIP(t *testing.T) {
 	server := setUp(t)
-	appURL := serve(t, newRouter(nil, middleware.RealIP))
+	appURL := testutils.Serve(t, newRouter(nil, middleware.RealIP))
 
 	req, _ := http.NewRequest(http.MethodGet, appURL+"/items/1", nil)
 	req.Header.Set("X-Forwarded-For", "203.0.113.7")
@@ -151,7 +143,7 @@ func TestClientAddressUsesFrameworkResolvedClientIP(t *testing.T) {
 
 func TestHistogramAttributesAndLogCorrelation(t *testing.T) {
 	server := setUp(t)
-	appURL := serve(t, newRouter(nil))
+	appURL := testutils.Serve(t, newRouter(nil))
 
 	testutils.Get(t, appURL+"/items/42")
 	shutDown(t)
@@ -167,12 +159,7 @@ func TestHistogramAttributesAndLogCorrelation(t *testing.T) {
 		"http.response.status_code": int64(200),
 		"url.scheme":                "http",
 	}, testutils.Attributes(points[0].Attributes))
-	var logs []testutils.LogRecord
-	for _, record := range server.LogRecords(t) {
-		if record.Scope == "slog" {
-			logs = append(logs, record)
-		}
-	}
+	logs := server.ApplicationLogRecords(t)
 	require.Len(t, logs, 1)
 	assert.Equal(t, "fetching item", logs[0].Body.GetStringValue())
 	assert.Equal(t, spans[0].TraceId, logs[0].TraceId)
@@ -181,7 +168,7 @@ func TestHistogramAttributesAndLogCorrelation(t *testing.T) {
 
 func TestRouteIncludesGroupPrefix(t *testing.T) {
 	server := setUp(t)
-	appURL := serve(t, newRouter(nil))
+	appURL := testutils.Serve(t, newRouter(nil))
 
 	testutils.Get(t, appURL+"/api/v1/users/7")
 	testutils.Get(t, appURL+"/api/v1")
@@ -196,7 +183,7 @@ func TestRouteIncludesGroupPrefix(t *testing.T) {
 
 func TestFirstRequestActivatesAndIsRecorded(t *testing.T) {
 	server := setUp(t)
-	appURL := serve(t, newRouter(nil))
+	appURL := testutils.Serve(t, newRouter(nil))
 
 	testutils.Get(t, appURL+"/items/1")
 	shutDown(t)
@@ -207,18 +194,16 @@ func TestFirstRequestActivatesAndIsRecorded(t *testing.T) {
 
 func TestStartupEventPathsMatchRoutes(t *testing.T) {
 	server := setUp(t)
-	appURL := serve(t, newRouter(nil))
+	appURL := testutils.Serve(t, newRouter(nil))
 
 	testutils.Get(t, appURL+"/items/1")
 	shutDown(t)
 
-	records := server.Events(t, "apitally.app.startup")
-	require.Len(t, records, 1)
 	var body struct {
 		Framework string              `json:"framework"`
 		Paths     []map[string]string `json:"paths"`
 	}
-	require.NoError(t, json.Unmarshal([]byte(records[0].Body.GetStringValue()), &body))
+	server.DecodeStartupEvent(t, &body)
 	assert.Equal(t, "chi", body.Framework)
 	assert.ElementsMatch(t, []map[string]string{
 		{"method": "GET", "path": "/items/{id}"},
@@ -236,7 +221,7 @@ func TestRequestAndResponseBodiesCapturedAndRedacted(t *testing.T) {
 	cfg := apitally.NewConfig()
 	cfg.CaptureRequestBody = true
 	cfg.CaptureResponseBody = true
-	appURL := serve(t, newRouter(cfg))
+	appURL := testutils.Serve(t, newRouter(cfg))
 
 	req, _ := http.NewRequest(http.MethodPost, appURL+"/items", strings.NewReader(`{"name": "x", "password": "secret"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -257,7 +242,7 @@ func TestStreamingResponseSizeAndBodyCaptured(t *testing.T) {
 	server := setUp(t)
 	cfg := apitally.NewConfig()
 	cfg.CaptureResponseBody = true
-	appURL := serve(t, newRouter(cfg))
+	appURL := testutils.Serve(t, newRouter(cfg))
 
 	resp := testutils.Get(t, appURL+"/stream")
 	shutDown(t)
@@ -275,7 +260,7 @@ func TestStreamingResponseSizeAndBodyCaptured(t *testing.T) {
 
 func TestUnmatchedRequestHasNoRouteAndNoHistogramPoint(t *testing.T) {
 	server := setUp(t)
-	appURL := serve(t, newRouter(nil))
+	appURL := testutils.Serve(t, newRouter(nil))
 
 	resp := testutils.Get(t, appURL+"/api/v1/missing")
 	shutDown(t)
@@ -292,7 +277,7 @@ func TestUnmatchedRequestHasNoRouteAndNoHistogramPoint(t *testing.T) {
 
 func TestSetConsumerReachesSpanAndHistogram(t *testing.T) {
 	server := setUp(t)
-	appURL := serve(t, newRouter(nil))
+	appURL := testutils.Serve(t, newRouter(nil))
 
 	req, _ := http.NewRequest(http.MethodGet, appURL+"/api/v1/users/7", nil)
 	req.Header.Set("X-Consumer", "acme")
@@ -312,7 +297,7 @@ func TestSetConsumerReachesSpanAndHistogram(t *testing.T) {
 
 func TestUnhandledPanicRecordedOnServerSpan(t *testing.T) {
 	server := setUp(t)
-	appURL := serve(t, newRouter(nil))
+	appURL := testutils.Serve(t, newRouter(nil))
 
 	resp := testutils.Get(t, appURL+"/panic")
 	shutDown(t)
@@ -330,7 +315,7 @@ func TestUnhandledPanicRecordedOnServerSpan(t *testing.T) {
 
 func TestValidationErrorReported(t *testing.T) {
 	server := setUp(t)
-	appURL := serve(t, newRouter(nil))
+	appURL := testutils.Serve(t, newRouter(nil))
 
 	req, _ := http.NewRequest(http.MethodPost, appURL+"/validate", nil)
 	testutils.Do(t, http.DefaultClient.Do, req)
@@ -356,7 +341,7 @@ func TestPreInstrumentedAppAdaptsWithoutDuplicateSpans(t *testing.T) {
 	server := setUp(t)
 	userSpans := tracetest.NewInMemoryExporter()
 	otel.SetTracerProvider(sdktrace.NewTracerProvider(sdktrace.WithSyncer(userSpans)))
-	appURL := serve(t, testutils.InstrumentHTTPHandler(newRouter(nil)))
+	appURL := testutils.Serve(t, testutils.InstrumentHTTPHandler(newRouter(nil)))
 
 	testutils.Get(t, appURL+"/items/1")
 	shutDown(t)
@@ -374,7 +359,7 @@ func TestInitTwiceDoesNotStackMiddleware(t *testing.T) {
 	apitally.Init(r, nil)
 	apitally.Init(r, nil)
 	r.Get("/items", func(w http.ResponseWriter, r *http.Request) {})
-	appURL := serve(t, r)
+	appURL := testutils.Serve(t, r)
 
 	testutils.Get(t, appURL+"/items")
 	shutDown(t)
@@ -386,7 +371,7 @@ func TestDisabledSDKLeavesResponsesUnchanged(t *testing.T) {
 	server := setUp(t)
 	cfg := apitally.NewConfig()
 	cfg.Disabled = true
-	appURL := serve(t, newRouter(cfg))
+	appURL := testutils.Serve(t, newRouter(cfg))
 
 	item := testutils.Get(t, appURL+"/items/1")
 	missing := testutils.Get(t, appURL+"/missing")

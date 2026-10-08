@@ -3,6 +3,7 @@ package internal
 import (
 	"encoding/json"
 	"runtime"
+	"sync"
 
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -24,6 +25,20 @@ type FrameworkInfo struct {
 type Route struct {
 	Method string
 	Path   string
+}
+
+// NewRouteSet returns a function reporting whether a route is registered.
+// It lists the routes on its first call, because all routes are registered
+// before the first request.
+func NewRouteSet(listRoutes func() []Route) func(Route) bool {
+	routes := sync.OnceValue(func() map[Route]bool {
+		routes := map[Route]bool{}
+		for _, route := range listRoutes() {
+			routes[route] = true
+		}
+		return routes
+	})
+	return func(route Route) bool { return routes()[route] }
 }
 
 // startupEventBody returns the startup event payload as a JSON string. It

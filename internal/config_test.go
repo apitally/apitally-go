@@ -12,33 +12,31 @@ import (
 	"github.com/apitally/apitally-go/internal/testutils"
 )
 
-const testWriteToken = "apt_abcdefghijklmnopqrstuvwx"
-
 func TestExplicitOptionsTakePrecedenceOverEnvironmentVariables(t *testing.T) {
 	testutils.ClearEnv(t)
 	t.Setenv("APITALLY_WRITE_TOKEN", "apt_zzzzzzzzzzzzzzzzzzzzzzzz")
 	t.Setenv("APITALLY_ENV", "staging")
 	cfg := root.NewConfig()
-	cfg.WriteToken = testWriteToken
+	cfg.WriteToken = testutils.WriteToken
 	cfg.Env = "prod"
 
 	s := resolveSettings(cfg)
 
-	assert.Equal(t, testWriteToken, s.config.WriteToken)
+	assert.Equal(t, testutils.WriteToken, s.config.WriteToken)
 	assert.Equal(t, "prod", s.config.Env)
-	assert.True(t, s.enabled)
+	assert.True(t, s.isEnabled)
 	assert.Empty(t, s.configErrors)
 }
 
 func TestEnvironmentVariablesApplyWhenOptionsAreEmpty(t *testing.T) {
 	testutils.ClearEnv(t)
-	t.Setenv("APITALLY_WRITE_TOKEN", testWriteToken)
+	t.Setenv("APITALLY_WRITE_TOKEN", testutils.WriteToken)
 
 	s := resolveSettings(nil)
 
-	assert.Equal(t, testWriteToken, s.config.WriteToken)
+	assert.Equal(t, testutils.WriteToken, s.config.WriteToken)
 	assert.Equal(t, "dev", s.config.Env)
-	assert.True(t, s.enabled)
+	assert.True(t, s.isEnabled)
 
 	t.Setenv("APITALLY_ENV", "staging")
 	assert.Equal(t, "staging", resolveSettings(nil).config.Env)
@@ -50,13 +48,13 @@ func TestDisableControlsAreAdditive(t *testing.T) {
 			testutils.ClearEnv(t)
 			t.Setenv(name, " Yes ")
 			cfg := root.NewConfig()
-			cfg.WriteToken = testWriteToken
+			cfg.WriteToken = testutils.WriteToken
 			cfg.Disabled = false
 
 			s := resolveSettings(cfg)
 
 			assert.True(t, s.config.Disabled)
-			assert.False(t, s.enabled)
+			assert.False(t, s.isEnabled)
 		})
 	}
 }
@@ -68,7 +66,7 @@ func TestInvalidWriteTokenDisablesWithMaskedError(t *testing.T) {
 
 	s := resolveSettings(cfg)
 
-	assert.False(t, s.enabled)
+	assert.False(t, s.isEnabled)
 	require.Len(t, s.configErrors, 1)
 	assert.Contains(t, s.configErrors[0], "apt_secr...")
 	assert.NotContains(t, s.configErrors[0], "apt_secretvalue")
@@ -79,7 +77,7 @@ func TestMissingWriteTokenDisables(t *testing.T) {
 
 	s := resolveSettings(nil)
 
-	assert.False(t, s.enabled)
+	assert.False(t, s.isEnabled)
 	assert.Len(t, s.configErrors, 1)
 }
 
@@ -95,7 +93,7 @@ func TestInvalidSampleRateResolvesToOne(t *testing.T) {
 func TestUserPatternsAreCaseInsensitiveAndInvalidPatternsDropped(t *testing.T) {
 	testutils.ClearEnv(t)
 	cfg := root.NewConfig()
-	cfg.WriteToken = testWriteToken
+	cfg.WriteToken = testutils.WriteToken
 	cfg.MaskHeaders = []string{"x-custom", "(", "(?-i:Exact)"}
 
 	s := resolveSettings(cfg)
@@ -105,7 +103,7 @@ func TestUserPatternsAreCaseInsensitiveAndInvalidPatternsDropped(t *testing.T) {
 	assert.True(t, s.maskHeaders[0].MatchString("X-Custom"))
 	assert.False(t, s.maskHeaders[1].MatchString("exact"))
 	assert.Len(t, s.configErrors, 1)
-	assert.True(t, s.enabled)
+	assert.True(t, s.isEnabled)
 }
 
 func TestLaterRegistrationWithDifferentConfigurationWarnsAndIsIgnored(t *testing.T) {
@@ -114,7 +112,7 @@ func TestLaterRegistrationWithDifferentConfigurationWarnsAndIsIgnored(t *testing
 	logs := testutils.RecordSlog(t)
 	newConfig := func() *root.Config {
 		cfg := root.NewConfig()
-		cfg.WriteToken = testWriteToken
+		cfg.WriteToken = testutils.WriteToken
 		cfg.MaskHeaders = []string{"x-secret"}
 		cfg.MaskLogRecord = func(*root.LogRecord) bool { return true }
 		return cfg

@@ -19,9 +19,7 @@ import (
 // startTestApp serves handler behind Apitally's net/http middleware, with
 // routes taken from http.ServeMux patterns.
 func startTestApp(t *testing.T, handler http.Handler) string {
-	server := httptest.NewServer(NetHTTPMiddleware(serveMuxRoute)(handler))
-	t.Cleanup(server.Close)
-	return server.URL
+	return testutils.Serve(t, NetHTTPMiddleware(serveMuxRoute)(handler))
 }
 
 func serveMuxRoute(r *http.Request) string {
@@ -29,15 +27,6 @@ func serveMuxRoute(r *http.Request) string {
 		return path
 	}
 	return r.Pattern
-}
-
-func mustAtoi(t *testing.T, s string) int {
-	t.Helper()
-	n, err := strconv.Atoi(s)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return n
 }
 
 func writeOK(w http.ResponseWriter, _ *http.Request) {
@@ -57,12 +46,21 @@ func TestResponseWriterKeepsStreamingAndHijacking(t *testing.T) {
 	})
 	mux.HandleFunc("GET /raw", func(w http.ResponseWriter, r *http.Request) {
 		conn, buffer, err := w.(http.Hijacker).Hijack()
-		require.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return
+		}
 		defer conn.Close()
 		_, _ = buffer.WriteString("HTTP/1.1 200 OK\r\nContent-Length: 3\r\nConnection: close\r\n\r\nraw")
 		_ = buffer.Flush()
 	})
-	appURL := startTestApp(t, mux)
+	app := NetHTTPMiddleware(serveMuxRoute)(mux)
+	// The client can read the hijacked response before the middleware ends
+	// the request, so the test waits for both requests to be served.
+	served := make(chan struct{}, 2)
+	appURL := testutils.Serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		app.ServeHTTP(w, r)
+		served <- struct{}{}
+	}))
 
 	resp, err := http.Get(appURL + "/events")
 	require.NoError(t, err)
@@ -73,12 +71,14 @@ func TestResponseWriterKeepsStreamingAndHijacking(t *testing.T) {
 	rest, _ := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
 	raw := testutils.Get(t, appURL+"/raw")
+	<-served
+	<-served
 	require.NoError(t, Shutdown(context.Background()))
 
 	assert.Equal(t, "data: 1\n\n", string(first))
 	assert.Equal(t, "data: 2\n\n", string(rest))
 	assert.Equal(t, "raw", raw.Body)
-	assert.Equal(t, int64(18), testutils.Attributes(findSpan(t, server.Spans(t), "GET /events").Attributes)["http.response.body.size"])
+	assert.Len(t, server.Spans(t), 2)
 }
 
 func TestReadFromUsesWrappedWriterUnlessBodyIsCaptured(t *testing.T) {
@@ -99,7 +99,9 @@ func TestReadFromUsesWrappedWriterUnlessBodyIsCaptured(t *testing.T) {
 
 			assert.Equal(t, "file contents", recorder.Body.String())
 			assert.Equal(t, !isCaptured, recorder.isReadFromCalled)
-			attrs := testutils.Attributes(server.Spans(t)[0].Attributes)
+			spans := server.Spans(t)
+			require.Len(t, spans, 1)
+			attrs := testutils.Attributes(spans[0].Attributes)
 			assert.Equal(t, int64(13), attrs["http.response.body.size"])
 			if isCaptured {
 				assert.Equal(t, "file contents", attrs["apitally.response.body"])

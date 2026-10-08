@@ -40,7 +40,7 @@ func (r *sdkRuntime) startServerSpan(ctx context.Context, info *RequestInfo, att
 func (r *sdkRuntime) isReusable(span trace.Span) bool {
 	readOnly, ok := span.(sdktrace.ReadOnlySpan)
 	return ok && span.IsRecording() && readOnly.SpanKind() == trace.SpanKindServer &&
-		span.TracerProvider() == trace.TracerProvider(r.provider) && !r.registry.isRegistered(span.SpanContext().SpanID())
+		span.TracerProvider() == trace.TracerProvider(r.provider) && r.registry.lookup(span.SpanContext().SpanID()) == nil
 }
 
 // finishServerSpan sets the transport attributes on a span Apitally started
@@ -114,13 +114,6 @@ func mergeAttributes(sets ...[]attribute.KeyValue) []attribute.KeyValue {
 		}
 	}
 	return out
-}
-
-// HostFromAddress returns the host of a host:port address, or the address
-// itself when it has no port.
-func HostFromAddress(address string) string {
-	host, _ := splitHostPort(address)
-	return host
 }
 
 func splitHostPort(address string) (string, int) {

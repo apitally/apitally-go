@@ -19,7 +19,10 @@ import (
 // compact serialization. It returns false when the body is omitted. Failures
 // fail closed with the redacted marker.
 func (red *redaction) processBody(span sdktrace.ReadOnlySpan, body []byte, encoding string, option string, mask func(sdktrace.ReadOnlySpan, []byte) []byte) (attribute.Value, bool) {
-	if bytes.Equal(body, bodyTooLarge) {
+	switch {
+	case body == nil:
+		return attribute.Value{}, false
+	case bytes.Equal(body, bodyTooLarge):
 		return attribute.StringValue(string(bodyTooLarge)), true
 	}
 	body, err := decompressBody(body, encoding)

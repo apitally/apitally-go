@@ -49,7 +49,7 @@ func middleware(next echo.HandlerFunc) echo.HandlerFunc {
 		// Dispatching the error here lets Apitally observe the error handler's
 		// response; returning nil keeps Echo from dispatching it a second time.
 		if err := next(c); err != nil {
-			o.State.CaptureError(err)
+			o.State.CaptureReturnedError(err)
 			c.Echo().HTTPErrorHandler(c, err)
 		}
 		return nil

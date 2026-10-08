@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"net/http"
 	"slices"
 	"time"
 
@@ -28,7 +29,18 @@ type exportSpan struct {
 	payload    *payloadStash
 }
 
-func newExportSpanCopy(span sdktrace.ReadOnlySpan, attrs []attribute.KeyValue) *exportSpan {
+// payloadStash holds a request's captured headers and raw bodies until the
+// span exporter redacts them on its own goroutine.
+type payloadStash struct {
+	requestHeader    http.Header
+	responseHeader   http.Header
+	requestBody      []byte
+	responseBody     []byte
+	requestEncoding  string
+	responseEncoding string
+}
+
+func newExportSpan(span sdktrace.ReadOnlySpan, attrs []attribute.KeyValue) *exportSpan {
 	return &exportSpan{ReadOnlySpan: span, attributes: attrs, resource: span.Resource(), kind: span.SpanKind(), endTime: span.EndTime()}
 }
 
@@ -37,12 +49,12 @@ func (s *exportSpan) Resource() *resource.Resource     { return s.resource }
 func (s *exportSpan) SpanKind() trace.SpanKind         { return s.kind }
 func (s *exportSpan) EndTime() time.Time               { return s.endTime }
 
-// newExportSpan copies an ended request member for export. A reused SERVER
-// span's copy carries Apitally's attributes and ends no earlier than
+// newRequestExportSpan copies an ended request member for export. A reused
+// SERVER span's copy carries Apitally's attributes and ends no earlier than
 // transport observation. Other SERVER spans in the request come from stacked
 // HTTP instrumentation and are exported as INTERNAL.
-func (r *sdkRuntime) newExportSpan(s *RequestState, span sdktrace.ReadOnlySpan) *exportSpan {
-	c := newExportSpanCopy(span, span.Attributes())
+func (r *sdkRuntime) newRequestExportSpan(s *RequestState, span sdktrace.ReadOnlySpan) *exportSpan {
+	c := newExportSpan(span, span.Attributes())
 	c.resource = r.exportResource(span.Resource())
 	if span.SpanContext().SpanID() != s.span.SpanContext().SpanID() {
 		if c.kind == trace.SpanKindServer {
@@ -133,22 +145,15 @@ func (e *spanExporter) process(span sdktrace.ReadOnlySpan) (_ sdktrace.ReadOnlyS
 			e.redaction.headerAttributes(requestHeaderPrefix, p.requestHeader),
 			e.redaction.headerAttributes(responseHeaderPrefix, p.responseHeader))
 		var bodies []attribute.KeyValue
-		if value, ok := e.processBody(c, p.requestBody, p.requestEncoding, "MaskRequestBody", e.config.MaskRequestBody); ok {
+		if value, ok := e.redaction.processBody(c, p.requestBody, p.requestEncoding, "MaskRequestBody", e.config.MaskRequestBody); ok {
 			bodies = append(bodies, attribute.KeyValue{Key: "apitally.request.body", Value: value})
 		}
-		if value, ok := e.processBody(c, p.responseBody, p.responseEncoding, "MaskResponseBody", e.config.MaskResponseBody); ok {
+		if value, ok := e.redaction.processBody(c, p.responseBody, p.responseEncoding, "MaskResponseBody", e.config.MaskResponseBody); ok {
 			bodies = append(bodies, attribute.KeyValue{Key: "apitally.response.body", Value: value})
 		}
 		c.attributes = append(c.attributes, bodies...)
 	}
 	return c, true
-}
-
-func (e *spanExporter) processBody(span sdktrace.ReadOnlySpan, body []byte, encoding, option string, mask func(sdktrace.ReadOnlySpan, []byte) []byte) (attribute.Value, bool) {
-	if body == nil {
-		return attribute.Value{}, false
-	}
-	return e.redaction.processBody(span, body, encoding, option, mask)
 }
 
 type spoolTraceClient struct {

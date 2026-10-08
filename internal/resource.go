@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"runtime/debug"
+	"strings"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -36,7 +37,8 @@ func newResource(env string) *resource.Resource {
 	return res
 }
 
-// moduleVersion returns the version of a module linked into the binary, or
+// moduleVersion returns the version of a module linked into the binary
+// without Go's "v" prefix, as the other Apitally SDKs report versions, or
 // "unknown" when the build embeds no module information.
 func moduleVersion(path string) string {
 	info, ok := debug.ReadBuildInfo()
@@ -44,11 +46,11 @@ func moduleVersion(path string) string {
 		return "unknown"
 	}
 	if info.Main.Path == path {
-		return info.Main.Version
+		return strings.TrimPrefix(info.Main.Version, "v")
 	}
 	for _, dep := range info.Deps {
 		if dep.Path == path {
-			return dep.Version
+			return strings.TrimPrefix(dep.Version, "v")
 		}
 	}
 	return "unknown"

@@ -2,10 +2,12 @@ package internal
 
 import (
 	"context"
-	"encoding/json"
 	"io"
 	"log/slog"
 	"runtime"
+	"slices"
+	"strconv"
+	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -54,7 +56,7 @@ func TestActivationEmitsStartupEventOnce(t *testing.T) {
 	assert.Equal(t, "apitally.app.startup", records[0].EventName)
 	assert.Empty(t, records[0].TraceId)
 	var body map[string]any
-	require.NoError(t, json.Unmarshal([]byte(records[0].Body.GetStringValue()), &body))
+	server.DecodeStartupEvent(t, &body)
 	assert.Equal(t, map[string]any{
 		"framework": "nethttp",
 		"versions":  map[string]any{"go": runtime.Version(), "nethttp": "unknown", "app": "1.2.3"},
@@ -92,6 +94,25 @@ func TestActivationIsSuppressedInTestBinariesWithoutTestHook(t *testing.T) {
 	require.NoError(t, Shutdown(context.Background()))
 
 	assert.Empty(t, server.Requests())
+}
+
+func TestActivationWarnsWhenNoSlogHandlerWasCreated(t *testing.T) {
+	for _, captureLogs := range []bool{true, false} {
+		t.Run(strconv.FormatBool(captureLogs), func(t *testing.T) {
+			server := testutils.NewOTLPServer(t)
+			SetUpTest(t)
+			setExportTransportForTest(t, server.Transport())
+			logs := testutils.RecordSlog(t)
+			cfg := root.NewConfig()
+			cfg.CaptureLogs = captureLogs
+			Register(cfg, testFramework, nil)
+
+			Activate()
+			require.NoError(t, Shutdown(context.Background()))
+
+			assert.Equal(t, captureLogs, slices.ContainsFunc(logs.Messages(slog.LevelWarn), func(msg string) bool { return strings.Contains(msg, "NewSlogHandler") }))
+		})
+	}
 }
 
 func TestIdleShutdownDeliversProcessGauges(t *testing.T) {

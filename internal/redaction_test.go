@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -28,12 +29,12 @@ func TestQueryParametersAreRedactedOnAllExportedSpans(t *testing.T) {
 	})
 	appURL := startTestApp(t, mux)
 
-	testutils.Get(t, appURL+"/items?access%5Ftoken=abc&Email=a@b.c&page=1&%zzpassword=x")
+	testutils.Get(t, appURL+"/items?access%5Ftoken=abc&Email=a@b.c&page=1&api%5Fkey%zz=x")
 	require.NoError(t, Shutdown(context.Background()))
 
 	spans := server.Spans(t)
 	require.Len(t, spans, 2)
-	assert.Equal(t, "access%5Ftoken=[REDACTED]&Email=[REDACTED]&page=1&%zzpassword=[REDACTED]", testutils.Attributes(findSpan(t, spans, "GET /items").Attributes)["url.query"])
+	assert.Equal(t, "access%5Ftoken=[REDACTED]&Email=[REDACTED]&page=1&api%5Fkey%zz=[REDACTED]", testutils.Attributes(findSpan(t, spans, "GET /items").Attributes)["url.query"])
 	assert.Equal(t, "https://upstream.example/v1?API_KEY=[REDACTED]&page=2", testutils.Attributes(findSpan(t, spans, "call upstream").Attributes)["url.full"])
 }
 
@@ -69,6 +70,7 @@ func TestCapturedHeadersAreRedacted(t *testing.T) {
 	assert.Equal(t, []any{"[REDACTED]"}, attrs["http.request.header.authorization"])
 	assert.Equal(t, []any{"[REDACTED]"}, attrs["http.request.header.x-internal"])
 	assert.Equal(t, []any{"application/json"}, attrs["http.request.header.accept"])
+	assert.Equal(t, []any{strings.TrimPrefix(appURL, "http://")}, attrs["http.request.header.host"])
 	assert.Equal(t, []any{"/items?token=[REDACTED]&page=2"}, attrs["http.response.header.location"])
 	assert.Equal(t, []any{"[REDACTED]"}, attrs["http.response.header.set-cookie"])
 	assert.Equal(t, []any{"[REDACTED]"}, testutils.Attributes(findSpan(t, spans, "call upstream").Attributes)["http.request.header.x_api_key"])

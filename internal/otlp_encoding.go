@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -41,23 +42,26 @@ func encodeLogs(res *resourcepb.Resource, records []*logRecord) *logspb.LogsData
 }
 
 func encodeLogRecord(r *logRecord) *logspb.LogRecord {
-	timestamp := unixNano(r.Record.Time)
+	timestamp := unixNano(r.record.Time)
 	if r.eventName != "" {
 		return &logspb.LogRecord{TimeUnixNano: timestamp, ObservedTimeUnixNano: timestamp, EventName: r.eventName, Body: encodeValue(r.eventBody)}
 	}
-	attrs := []attribute.KeyValue{
-		attribute.String("apitally.request.server_span_id", r.serverSpanID.String()),
-		attribute.String("code.function.name", r.codeFunction),
-		attribute.String("code.file.path", r.codeFile),
-		attribute.Int("code.line.number", r.codeLine),
+	attrs := []attribute.KeyValue{attribute.String("apitally.request.server_span_id", r.serverSpanID.String())}
+	// Records without a program counter have no code location.
+	if r.codeFunction != "" {
+		attrs = append(attrs,
+			attribute.String("code.function.name", r.codeFunction),
+			attribute.String("code.file.path", r.codeFile),
+			attribute.Int("code.line.number", r.codeLine),
+		)
 	}
 	return &logspb.LogRecord{
 		TimeUnixNano:         timestamp,
 		ObservedTimeUnixNano: timestamp,
-		SeverityNumber:       logspb.SeverityNumber(slogSeverityNumber(r.Record.Level)),
-		SeverityText:         r.Record.Level.String(),
-		Body:                 &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: r.Record.Message}},
-		Attributes:           encodeAttributes(append(attrs, slogAttributes(r.Record.Attrs)...)),
+		SeverityNumber:       logspb.SeverityNumber(slogSeverityNumber(r.record.Level)),
+		SeverityText:         r.record.Level.String(),
+		Body:                 &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: r.record.Message}},
+		Attributes:           encodeAttributes(append(attrs, slogAttributes(r.record.Attrs)...)),
 		TraceId:              r.traceID[:],
 		SpanId:               r.spanID[:],
 		Flags:                uint32(r.traceFlags),
@@ -186,7 +190,9 @@ func encodeArray[T any](items []T, toValue func(T) attribute.Value) *commonpb.An
 }
 
 // replaceInvalidUTF8 replaces invalid UTF-8 in every string field of m and
-// its nested messages, which OTLP requires to be valid UTF-8.
+// its nested messages, which OTLP requires to be valid UTF-8. It writes only
+// changed fields, because other goroutines encode the shared resource
+// concurrently.
 func replaceInvalidUTF8(m protoreflect.Message) {
 	m.Range(func(field protoreflect.FieldDescriptor, value protoreflect.Value) bool {
 		switch {
@@ -197,12 +203,14 @@ func replaceInvalidUTF8(m protoreflect.Message) {
 				case protoreflect.MessageKind:
 					replaceInvalidUTF8(list.Get(i).Message())
 				case protoreflect.StringKind:
-					list.Set(i, protoreflect.ValueOfString(strings.ToValidUTF8(list.Get(i).String(), "\uFFFD")))
+					if s := list.Get(i).String(); !utf8.ValidString(s) {
+						list.Set(i, protoreflect.ValueOfString(strings.ToValidUTF8(s, "\uFFFD")))
+					}
 				}
 			}
 		case field.Kind() == protoreflect.MessageKind:
 			replaceInvalidUTF8(value.Message())
-		case field.Kind() == protoreflect.StringKind:
+		case field.Kind() == protoreflect.StringKind && !utf8.ValidString(value.String()):
 			m.Set(field, protoreflect.ValueOfString(strings.ToValidUTF8(value.String(), "\uFFFD")))
 		}
 		return true

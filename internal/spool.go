@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"io"
@@ -34,12 +35,15 @@ var spoolSignals = []string{signalTraces, signalLogs, signalMetrics}
 // byte-identical.
 type spool struct {
 	mu                     sync.Mutex
-	inMemory               bool
+	isInMemory             bool
 	current                map[string]*spoolFile
 	closed                 []*spoolFile
 	filesClosedSinceRotate int
 	isWriteErrorLogged     bool
 	maxSize                int64
+	// isDeleted is set by the final cleanup at shutdown. Processors that are
+	// still draining after the shutdown deadline must not create new files.
+	isDeleted bool
 }
 
 type spoolFile struct {
@@ -47,6 +51,7 @@ type spoolFile struct {
 	path             string
 	memory           *bytes.Buffer
 	file             *os.File
+	fileBuffer       *bufio.Writer
 	gzip             *gzip.Writer
 	storedSize       int64
 	uncompressedSize int
@@ -58,7 +63,7 @@ func newSpool() *spool {
 	if isTempDirWritable() {
 		deleteOrphanedSpoolFiles()
 	} else {
-		s.inMemory, s.maxSize = true, maxSpoolSizeInMemory
+		s.isInMemory, s.maxSize = true, maxSpoolSizeInMemory
 		logWarn("Unable to create temporary files, Apitally buffers telemetry in memory (up to 10 MB)")
 	}
 	return s
@@ -83,6 +88,9 @@ func (s *spool) appendMessage(signal string, m proto.Message) {
 func (s *spool) append(signal string, payload []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.isDeleted {
+		return
+	}
 	f := s.current[signal]
 	if f != nil && f.uncompressedSize+len(payload) > maxUncompressedSpoolFileSize {
 		s.closeCurrentFileLocked(signal)
@@ -192,6 +200,7 @@ func (s *spool) touchFiles() {
 func (s *spool) deleteAll() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.isDeleted = true
 	for signal, f := range s.current {
 		delete(s.current, signal)
 		f.delete()
@@ -205,7 +214,7 @@ func (s *spool) deleteAll() {
 func (s *spool) createFile(signal string) (*spoolFile, error) {
 	f := &spoolFile{signal: signal}
 	var w io.Writer
-	if s.inMemory {
+	if s.isInMemory {
 		f.memory = &bytes.Buffer{}
 		w = f.memory
 	} else {
@@ -213,8 +222,9 @@ func (s *spool) createFile(signal string) (*spoolFile, error) {
 		if err != nil {
 			return nil, err
 		}
-		f.file, f.path = file, file.Name()
-		w = file
+		// gzip writes to its destination in small chunks.
+		f.file, f.path, f.fileBuffer = file, file.Name(), bufio.NewWriterSize(file, 64<<10)
+		w = f.fileBuffer
 	}
 	f.gzip = gzip.NewWriter(&countingWriter{w: w, n: &f.storedSize})
 	return f, nil
@@ -286,6 +296,9 @@ func (f *spoolFile) write(payload []byte) error {
 
 func (f *spoolFile) close() error {
 	err := f.gzip.Close()
+	if f.fileBuffer != nil && err == nil {
+		err = f.fileBuffer.Flush()
+	}
 	if f.file != nil {
 		if closeErr := f.file.Close(); err == nil {
 			err = closeErr

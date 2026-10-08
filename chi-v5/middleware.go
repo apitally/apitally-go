@@ -4,7 +4,6 @@ package apitally
 import (
 	"net/http"
 	"strings"
-	"sync"
 
 	"github.com/go-chi/chi/v5"
 
@@ -30,20 +29,13 @@ func Init(r chi.Router, cfg *Config) {
 // For an unmatched request below a mounted router, Chi reports the mount
 // pattern, such as "/api/*", which is not a route.
 func newRoutePattern(router chi.Router) func(*http.Request) string {
-	// Routes are registered before the first request.
-	routes := sync.OnceValue(func() map[internal.Route]bool {
-		routes := map[internal.Route]bool{}
-		for _, route := range listRoutes(router) {
-			routes[route] = true
-		}
-		return routes
-	})
+	isRegistered := internal.NewRouteSet(func() []internal.Route { return listRoutes(router) })
 	return func(r *http.Request) string {
 		rctx := chi.RouteContext(r.Context())
 		if rctx == nil {
 			return ""
 		}
-		if pattern := rctx.RoutePattern(); routes()[internal.Route{Method: r.Method, Path: pattern}] {
+		if pattern := rctx.RoutePattern(); isRegistered(internal.Route{Method: r.Method, Path: pattern}) {
 			return pattern
 		}
 		return ""

@@ -35,7 +35,7 @@ type sdkRuntime struct {
 	routeListers   []func() []Route
 
 	activateOnce sync.Once
-	active       atomic.Bool
+	isActive     atomic.Bool
 
 	resource          *resource.Resource
 	encodedResource   *resourcepb.Resource
@@ -48,7 +48,7 @@ type sdkRuntime struct {
 	spanProcessor     *spanProcessor
 	batchProcessor    sdktrace.SpanProcessor
 	provider          *sdktrace.TracerProvider
-	ownsProvider      bool
+	isProviderOwned   bool
 	isProviderPrivate bool
 	tracer            trace.Tracer
 
@@ -59,7 +59,9 @@ type sdkRuntime struct {
 	exportResourcesMu sync.Mutex
 	exportResources   map[*resource.Resource]*resource.Resource
 
-	cycleMu        sync.Mutex
+	// cycleLock serializes export cycles, flushes and shutdown. It is a channel,
+	// so Flush can stop waiting at its deadline.
+	cycleLock      chan struct{}
 	exportInterval time.Duration
 	stopExportLoop context.CancelFunc
 	exportLoopDone chan struct{}
@@ -78,7 +80,7 @@ func Register(cfg *root.Config, framework FrameworkInfo, listRoutes func() []Rou
 		for _, msg := range s.configErrors {
 			logError(msg)
 		}
-		r = &sdkRuntime{settings: s, framework: framework}
+		r = &sdkRuntime{settings: s, framework: framework, cycleLock: make(chan struct{}, 1)}
 		currentRuntime.Store(r)
 	} else if !r.settings.isEquivalent(s) {
 		logWarn("Apitally was initialized again with a different configuration, which is ignored")
@@ -117,8 +119,9 @@ func Shutdown(ctx context.Context) error {
 	if r == nil {
 		return nil
 	}
+	// Requests arriving after Shutdown must not activate Apitally again.
 	r.activateOnce.Do(func() {})
-	if !r.active.CompareAndSwap(true, false) {
+	if !r.isActive.CompareAndSwap(true, false) {
 		return nil
 	}
 	return r.shutdown(ctx)
@@ -129,7 +132,7 @@ func Shutdown(ctx context.Context) error {
 func SetUpTest(t testing.TB) {
 	isActivationAllowedInTests.Store(true)
 	t.Cleanup(func() {
-		if r := currentRuntime.Swap(nil); r != nil && r.active.CompareAndSwap(true, false) {
+		if r := currentRuntime.Swap(nil); r != nil && r.isActive.CompareAndSwap(true, false) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			_ = r.shutdown(ctx)
 			cancel()
@@ -142,7 +145,7 @@ func SetUpTest(t testing.TB) {
 }
 
 func (r *sdkRuntime) activate() {
-	if !r.settings.enabled || (testing.Testing() && !isActivationAllowedInTests.Load()) {
+	if !r.settings.isEnabled || (testing.Testing() && !isActivationAllowedInTests.Load()) {
 		return
 	}
 	defer recoverAndLogPanic("activation")
@@ -172,7 +175,7 @@ func (r *sdkRuntime) activate() {
 	r.exportInterval, r.stopExportLoop, r.exportLoopDone = defaultExportInterval, cancel, make(chan struct{})
 	go r.logs.run()
 	go r.runExportLoop(ctx)
-	r.active.Store(true)
+	r.isActive.Store(true)
 }
 
 func (r *sdkRuntime) shutdown(ctx context.Context) error {
@@ -182,9 +185,9 @@ func (r *sdkRuntime) shutdown(ctx context.Context) error {
 	case <-r.exportLoopDone:
 	case <-ctx.Done():
 	}
-	r.cycleMu.Lock()
-	defer r.cycleMu.Unlock()
-	r.registry.cutOff()
+	r.cycleLock <- struct{}{}
+	defer func() { <-r.cycleLock }()
+	r.registry.close()
 	r.tearDownTracerProvider(ctx)
 	_ = r.batchProcessor.Shutdown(ctx)
 	r.emitErrorEvents()

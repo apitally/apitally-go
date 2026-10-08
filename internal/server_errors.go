@@ -24,7 +24,6 @@ const (
 	maxExceptionMessage  = 2_048
 	maxExceptionStack    = 65_536
 	maxErrorPath         = 2_000
-	maxErrorConsumer     = 128
 )
 
 // capturedError holds the exception fields of a request's first captured
@@ -35,24 +34,33 @@ type capturedError struct {
 	stacktrace string
 }
 
-// CaptureError records err, returned through the framework's error channel,
-// as the request's error unless one was already captured. Returned errors
-// carry no stack trace.
-func (s *RequestState) CaptureError(err error) {
+// CaptureError captures err with the caller's stack trace. It does nothing
+// outside a monitored request.
+func CaptureError(ctx context.Context, err error) {
+	defer recoverAndLogPanic("CaptureError")
+	if s := requestStateFromContext(ctx); s != nil && err != nil {
+		s.captureError(err, callerStack())
+	}
+}
+
+// CaptureReturnedError records err, returned by the handler chain to the
+// framework, as the request's error unless one was already captured. Returned
+// errors carry no stack trace.
+func (s *RequestState) CaptureReturnedError(err error) {
 	if s == nil || err == nil {
 		return
 	}
 	s.mu.Lock()
-	if s.channelError == nil {
-		s.channelError = err
+	if s.returnedError == nil {
+		s.returnedError = err
 	}
 	s.mu.Unlock()
 	s.captureError(err, "")
 }
 
-// CapturePanic records a recovered panic value with the panicking
+// capturePanic records a recovered panic value with the panicking
 // goroutine's stack. Call it from the deferred function that recovered.
-func (s *RequestState) CapturePanic(recovered any) {
+func (s *RequestState) capturePanic(recovered any) {
 	if s == nil || recovered == nil || recovered == http.ErrAbortHandler {
 		return
 	}

@@ -39,7 +39,7 @@ func TestAttachesToGlobalSDKTracerProviderWithApitallyResourceOnExportCopies(t *
 	testutils.Get(t, appURL+"/items")
 	require.NoError(t, Shutdown(context.Background()))
 
-	assert.Len(t, userSpans.GetSpans(), 2)
+	require.Len(t, userSpans.GetSpans(), 2)
 	assert.Equal(t, userResource, userSpans.GetSpans()[0].Resource)
 	spans := server.Spans(t)
 	require.Len(t, spans, 2)

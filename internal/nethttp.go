@@ -18,7 +18,8 @@ func NetHTTPMiddleware(routePattern func(r *http.Request) string) func(http.Hand
 			o := BeginNetHTTP(w, r)
 			defer func() {
 				p := recover()
-				o.Finish(routePattern(o.Request), HostFromAddress(o.Request.RemoteAddr), o.Writer.StatusCode(), p)
+				clientAddress, _ := splitHostPort(o.Request.RemoteAddr)
+				o.Finish(routePattern(o.Request), clientAddress, o.Writer.StatusCode(), p)
 				if p != nil {
 					panic(p)
 				}
@@ -42,13 +43,13 @@ type NetHTTPObservation struct {
 // request body.
 func BeginNetHTTP(w http.ResponseWriter, r *http.Request) *NetHTTPObservation {
 	Activate()
-	info := NetHTTPRequestInfo(r)
-	state, ctx := BeginRequest(r.Context(), info)
+	info := netHTTPRequestInfo(r)
+	state, ctx := beginRequest(r.Context(), info)
 	o := &NetHTTPObservation{State: state, Request: r.WithContext(ctx), Writer: &ResponseWriter{ResponseWriter: w, state: state}}
 	if state != nil && r.Body != nil && r.Body != http.NoBody {
 		isCaptured := state.shouldCaptureRequestBody()
 		if isCaptured || r.ContentLength < 0 {
-			o.body = &requestBody{ReadCloser: r.Body}
+			o.body = &requestBody{bodyReader: bodyReader{reader: r.Body}, Closer: r.Body}
 			if isCaptured {
 				o.body.capture = newBodyCapture(r.ContentLength)
 			}
@@ -62,7 +63,7 @@ func BeginNetHTTP(w http.ResponseWriter, r *http.Request) *NetHTTPObservation {
 // started. recovered is the value of a panic unwinding the handler chain, or
 // nil.
 func (o *NetHTTPObservation) Finish(route, clientAddress string, status int, recovered any) {
-	o.State.CapturePanic(recovered)
+	o.State.capturePanic(recovered)
 	if status == 0 {
 		// A panic before the response started is assumed to become a 500.
 		status = http.StatusOK
@@ -86,45 +87,7 @@ func (o *NetHTTPObservation) Finish(route, clientAddress string, status int, rec
 	}
 	declared := declaredContentLength(result.ResponseHeader)
 	result.ResponseBody = o.Writer.capture.body(recovered == nil && !o.Writer.hasWriteError && (declared < 0 || declared == o.Writer.size))
-	o.State.FinishObservation(result)
-}
-
-// NetHTTPRequestInfo returns the request data of a net/http request.
-func NetHTTPRequestInfo(r *http.Request) RequestInfo {
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
-	}
-	return RequestInfo{
-		Method:        r.Method,
-		Scheme:        scheme,
-		Host:          r.Host,
-		Path:          r.URL.Path,
-		Query:         r.URL.RawQuery,
-		Header:        r.Header,
-		ContentLength: r.ContentLength,
-	}
-}
-
-// requestBody counts, and optionally captures, the bytes the application
-// reads from a request body. It never reads more itself.
-type requestBody struct {
-	io.ReadCloser
-	size    int64
-	isEOF   bool
-	capture *bodyCapture
-}
-
-func (b *requestBody) Read(p []byte) (int, error) {
-	n, err := b.ReadCloser.Read(p)
-	b.size += int64(n)
-	if b.capture != nil {
-		b.capture.write(p[:n])
-	}
-	if err == io.EOF {
-		b.isEOF = true
-	}
-	return n, err
+	o.State.finishObservation(result)
 }
 
 // ResponseWriter records the response status, counts the body bytes written
@@ -214,6 +177,23 @@ func (w *ResponseWriter) Unwrap() http.ResponseWriter {
 	return w.ResponseWriter
 }
 
+// netHTTPRequestInfo returns the request data of a net/http request.
+func netHTTPRequestInfo(r *http.Request) RequestInfo {
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	return RequestInfo{
+		Method:        r.Method,
+		Scheme:        scheme,
+		Host:          r.Host,
+		Path:          r.URL.Path,
+		Query:         r.URL.RawQuery,
+		Header:        r.Header,
+		ContentLength: r.ContentLength,
+	}
+}
+
 // startBody decides on body capture from the final response headers.
 func (w *ResponseWriter) startBody() {
 	if w.status == 0 {
@@ -233,6 +213,13 @@ func (w *ResponseWriter) recordWrite(p []byte, err error) {
 		w.capture.write(p)
 	}
 	w.hasWriteError = w.hasWriteError || err != nil
+}
+
+// requestBody counts, and optionally captures, the bytes the application
+// reads from a request body.
+type requestBody struct {
+	bodyReader
+	io.Closer
 }
 
 // writerOnly hides ResponseWriter.ReadFrom from io.Copy.

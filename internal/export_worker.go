@@ -17,9 +17,36 @@ const (
 	shutdownHookFlushTimeout = 5 * time.Second
 )
 
+// Flush delivers the telemetry released so far, within a fixed deadline,
+// and keeps Apitally running. Fiber's shutdown hooks call it, because they
+// receive no context.
+func Flush() {
+	r := currentRuntime.Load()
+	if r == nil || !r.isActive.Load() {
+		return
+	}
+	defer recoverAndLogPanic("flush")
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownHookFlushTimeout)
+	defer cancel()
+	select {
+	case r.cycleLock <- struct{}{}:
+	case <-ctx.Done():
+		return
+	}
+	defer func() { <-r.cycleLock }()
+	// Shutdown can complete while Flush waits.
+	if !r.isActive.Load() {
+		return
+	}
+	r.flushToSpool(ctx)
+	r.spool.closeCurrentFiles()
+	r.sendPendingFiles(ctx, -1)
+}
+
 // runExportLoop runs export cycles independently of request traffic until
 // ctx is canceled. Retry pacing comes only from the cycle schedule.
 func (r *sdkRuntime) runExportLoop(ctx context.Context) {
+	defer recoverAndLogPanic("export loop")
 	defer close(r.exportLoopDone)
 	timer := time.NewTimer(initialExportDelay)
 	defer timer.Stop()
@@ -37,34 +64,17 @@ func (r *sdkRuntime) runExportLoop(ctx context.Context) {
 
 func (r *sdkRuntime) runExportCycle(ctx context.Context) {
 	defer recoverAndLogPanic("export cycle")
-	r.cycleMu.Lock()
-	defer r.cycleMu.Unlock()
-	r.flushIntake(ctx)
+	r.cycleLock <- struct{}{}
+	defer func() { <-r.cycleLock }()
+	r.flushToSpool(ctx)
 	budget := maxBacklogSendsPerCycle + r.spool.rotateForExport()
 	r.spool.touchFiles()
 	r.sendPendingFiles(ctx, budget)
 }
 
-// Flush delivers the telemetry released so far, within a fixed deadline,
-// and keeps Apitally running. Fiber's shutdown hooks call it, because they
-// receive no context.
-func Flush() {
-	r := currentRuntime.Load()
-	if r == nil || !r.active.Load() {
-		return
-	}
-	defer recoverAndLogPanic("flush")
-	ctx, cancel := context.WithTimeout(context.Background(), shutdownHookFlushTimeout)
-	defer cancel()
-	r.cycleMu.Lock()
-	defer r.cycleMu.Unlock()
-	r.flushIntake(ctx)
-	r.spool.closeCurrentFiles()
-	r.sendPendingFiles(ctx, -1)
-}
-
-// flushIntake drains the error groups immediately before the log flush.
-func (r *sdkRuntime) flushIntake(ctx context.Context) {
+// flushToSpool moves all buffered telemetry into the spool. Error events are
+// log records, so they are emitted before the log flush.
+func (r *sdkRuntime) flushToSpool(ctx context.Context) {
 	r.emitErrorEvents()
 	r.logs.flush(ctx)
 	_ = r.batchProcessor.ForceFlush(ctx)
@@ -114,8 +124,8 @@ func (r *sdkRuntime) emitErrorEvents() {
 }
 
 func (r *sdkRuntime) currentExportInterval() time.Duration {
-	r.cycleMu.Lock()
-	defer r.cycleMu.Unlock()
+	r.cycleLock <- struct{}{}
+	defer func() { <-r.cycleLock }()
 	return r.exportInterval
 }
 

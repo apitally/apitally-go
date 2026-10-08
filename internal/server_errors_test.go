@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -35,9 +34,9 @@ func TestPanicIsRecordedAsExceptionEventAndServerErrorEvent(t *testing.T) {
 	mux.HandleFunc("GET /config", func(w http.ResponseWriter, r *http.Request) {
 		panic(fmt.Errorf("loading config: %w", &fs.PathError{Op: "open", Path: "app.yaml", Err: fs.ErrNotExist}))
 	})
-	appServer := httptestServer(t, recoverPanics(NetHTTPMiddleware(serveMuxRoute)(mux)))
+	appURL := testutils.Serve(t, recoverPanics(NetHTTPMiddleware(serveMuxRoute)(mux)))
 
-	resp := testutils.Get(t, appServer+"/config")
+	resp := testutils.Get(t, appURL+"/config")
 	require.NoError(t, Shutdown(context.Background()))
 
 	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
@@ -72,9 +71,9 @@ func TestOnlyFirstCapturedErrorIsKept(t *testing.T) {
 		CaptureError(r.Context(), errors.New("second"))
 		panic("third")
 	})
-	appServer := httptestServer(t, recoverPanics(NetHTTPMiddleware(serveMuxRoute)(mux)))
+	appURL := testutils.Serve(t, recoverPanics(NetHTTPMiddleware(serveMuxRoute)(mux)))
 
-	testutils.Get(t, appServer+"/items")
+	testutils.Get(t, appURL+"/items")
 	require.NoError(t, Shutdown(context.Background()))
 
 	spans := server.Spans(t)
@@ -124,7 +123,7 @@ func TestErrorWhoseErrorMethodPanicsIsNotCaptured(t *testing.T) {
 	registerForTest(t, server, nil)
 	appURL := startTestApp(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var err *nilPointerError
-		RequestStateFromContext(r.Context()).CaptureError(err)
+		requestStateFromContext(r.Context()).CaptureReturnedError(err)
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 
@@ -164,10 +163,4 @@ func TestExceptionTypeNameRemovesPointerAndSingleWrapping(t *testing.T) {
 	} {
 		assert.Equal(t, typeName, exceptionTypeName(value))
 	}
-}
-
-func httptestServer(t *testing.T, handler http.Handler) string {
-	server := httptest.NewServer(handler)
-	t.Cleanup(server.Close)
-	return server.URL
 }

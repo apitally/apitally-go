@@ -31,7 +31,7 @@ type fasthttpObservationKey struct{}
 // *fasthttp.RequestCtx, which closes the observation as a user value.
 func BeginFasthttp(ctx context.Context, requestCtx any, info RequestInfo) (*FasthttpObservation, context.Context) {
 	Activate()
-	state, ctx := BeginRequest(ctx, info)
+	state, ctx := beginRequest(ctx, info)
 	o := &FasthttpObservation{State: state}
 	if userValues, ok := requestCtx.(interface{ SetUserValue(key, value any) }); ok && state != nil {
 		userValues.SetUserValue(fasthttpObservationKey{}, o)
@@ -44,12 +44,10 @@ func BeginFasthttp(ctx context.Context, requestCtx any, info RequestInfo) (*Fast
 // or panicked. result holds the route, status, client address and a copy of
 // the response headers. request and response are the *fasthttp.Request and
 // *fasthttp.Response, read before Fiber reuses them. recovered is the value of
-// a panic unwinding the handler chain, or nil.
+// a panic unwinding the handler chain, or nil. Call it only when State is not
+// nil.
 func (o *FasthttpObservation) FinishHandler(result TransportResult, request, response any, recovered any) {
-	if o.State == nil {
-		return
-	}
-	o.State.CapturePanic(recovered)
+	o.State.capturePanic(recovered)
 	defer recoverAndLogPanic("request observation")
 	if recovered != nil {
 		// A fasthttp response is buffered, so a panicking handler sent nothing yet.
@@ -112,19 +110,6 @@ func (o *FasthttpObservation) Close() error {
 	return nil
 }
 
-func (o *FasthttpObservation) finish() {
-	o.finishOnce.Do(func() {
-		result := *o.result
-		if s := o.stream; s != nil {
-			if s.isEOF {
-				result.ResponseBodySize = s.size
-			}
-			result.ResponseBody = s.capture.body(s.isEOF)
-		}
-		o.State.FinishObservation(result)
-	})
-}
-
 // HeaderFromValues copies header values, such as those of Fiber's
 // GetReqHeaders, which may reference buffers Fiber reuses.
 func HeaderFromValues(values map[string][]string) http.Header {
@@ -135,6 +120,19 @@ func HeaderFromValues(values map[string][]string) http.Header {
 		}
 	}
 	return header
+}
+
+func (o *FasthttpObservation) finish() {
+	o.finishOnce.Do(func() {
+		result := *o.result
+		if s := o.stream; s != nil {
+			if s.isEOF {
+				result.ResponseBodySize = s.size
+			}
+			result.ResponseBody = s.capture.body(s.isEOF)
+		}
+		o.State.finishObservation(result)
+	})
 }
 
 func capturedCopy(body []byte) []byte {
@@ -160,35 +158,35 @@ func streamSize(stream io.Reader, header http.Header) int64 {
 	return -1
 }
 
-// bodyStreamFields maps a response type to the index of its bodyStream
-// field, or nil when the field is missing or not an io.Reader.
-var bodyStreamFields sync.Map
+var (
+	bodyStreamFieldOnce sync.Once
+	// bodyStreamFieldIndex is the index of the bodyStream field of
+	// fasthttp.Response, or nil when the field is missing or not an io.Reader.
+	bodyStreamFieldIndex []int
+)
 
 // replaceResponseBodyStream replaces the body stream of a *fasthttp.Response
 // with wrap's result. fasthttp has no public way to replace a stream without
 // closing it, so this writes the unexported bodyStream field, whose name and
-// type are checked once per process. It reports false when the layout
-// differs.
+// type are checked once per process, because a binary links one fasthttp
+// version. It reports false when the layout differs.
 func replaceResponseBodyStream(response any, wrap func(io.Reader) io.Reader) bool {
 	value := reflect.ValueOf(response)
 	if value.Kind() != reflect.Pointer || value.IsNil() || value.Elem().Kind() != reflect.Struct {
 		return false
 	}
-	index, isChecked := bodyStreamFields.Load(value.Type())
-	if !isChecked {
+	bodyStreamFieldOnce.Do(func() {
 		field, ok := value.Elem().Type().FieldByName("bodyStream")
 		if ok && field.Type == reflect.TypeFor[io.Reader]() {
-			index = field.Index
+			bodyStreamFieldIndex = field.Index
 		} else {
-			index = []int(nil)
 			logWarn("Apitally cannot observe streamed Fiber responses of unknown length with this fasthttp version, so their size and body are omitted")
 		}
-		bodyStreamFields.Store(value.Type(), index)
-	}
-	if index.([]int) == nil {
+	})
+	if bodyStreamFieldIndex == nil {
 		return false
 	}
-	stream := (*io.Reader)(unsafe.Pointer(value.Elem().FieldByIndex(index.([]int)).UnsafeAddr()))
+	stream := (*io.Reader)(unsafe.Pointer(value.Elem().FieldByIndex(bodyStreamFieldIndex).UnsafeAddr()))
 	*stream = wrap(*stream)
 	return true
 }
@@ -196,22 +194,7 @@ func replaceResponseBodyStream(response any, wrap func(io.Reader) io.Reader) boo
 // responseStream counts, and optionally captures, the bytes fasthttp reads
 // from a response stream while writing the response.
 type responseStream struct {
-	reader  io.Reader
-	size    int64
-	isEOF   bool
-	capture *bodyCapture
-}
-
-func (s *responseStream) Read(p []byte) (int, error) {
-	n, err := s.reader.Read(p)
-	s.size += int64(n)
-	if s.capture != nil {
-		s.capture.write(p[:n])
-	}
-	if err == io.EOF {
-		s.isEOF = true
-	}
-	return n, err
+	bodyReader
 }
 
 // wrap returns s with exactly the Close and CloseWithError methods of the

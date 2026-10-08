@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"io"
 	"net/http"
 	"slices"
 	"strings"
@@ -60,6 +61,27 @@ func (c *bodyCapture) body(isComplete bool) []byte {
 	return nil
 }
 
+// bodyReader counts, and optionally captures, the bytes read from a body. It
+// never reads more than its caller.
+type bodyReader struct {
+	reader  io.Reader
+	size    int64
+	isEOF   bool
+	capture *bodyCapture
+}
+
+func (b *bodyReader) Read(p []byte) (int, error) {
+	n, err := b.reader.Read(p)
+	b.size += int64(n)
+	if b.capture != nil {
+		b.capture.write(p[:n])
+	}
+	if err == io.EOF {
+		b.isEOF = true
+	}
+	return n, err
+}
+
 // isBodyCaptureAllowed decides from the headers alone whether a body can be
 // captured: its content type is allowed and its encoding can be decoded.
 func isBodyCaptureAllowed(header http.Header) bool {
@@ -74,15 +96,4 @@ func isSupportedContentEncoding(encoding string) bool {
 		return true
 	}
 	return false
-}
-
-// payloadStash holds a request's captured headers and raw bodies until the
-// span exporter redacts them on its own goroutine.
-type payloadStash struct {
-	requestHeader    http.Header
-	responseHeader   http.Header
-	requestBody      []byte
-	responseBody     []byte
-	requestEncoding  string
-	responseEncoding string
 }

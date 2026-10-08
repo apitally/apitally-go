@@ -39,23 +39,36 @@ func newRedaction(s *settings) *redaction {
 }
 
 // redactQuery replaces the values of parameters whose percent-decoded names
-// match in a raw query string. A malformed escape is matched undecoded.
+// match in a raw query string.
 func (red *redaction) redactQuery(query string) string {
 	pairs := strings.Split(query, "&")
 	for i, pair := range pairs {
 		name, _, hasValue := strings.Cut(pair, "=")
-		if !hasValue {
-			continue
-		}
-		decoded, err := url.QueryUnescape(name)
-		if err != nil {
-			decoded = name
-		}
-		if matchesAny(red.queryParams, decoded) {
+		if hasValue && matchesAny(red.queryParams, decodeQueryParamName(name)) {
 			pairs[i] = name + "=" + redactedValue
 		}
 	}
 	return strings.Join(pairs, "&")
+}
+
+// decodeQueryParamName decodes the valid percent escapes of a parameter name
+// and keeps malformed ones, so a malformed escape cannot hide the name from
+// redaction.
+func decodeQueryParamName(name string) string {
+	var escaped strings.Builder
+	for i := 0; i < len(name); i++ {
+		if name[i] == '%' && (i+2 >= len(name) || !isHexDigit(name[i+1]) || !isHexDigit(name[i+2])) {
+			escaped.WriteString("%25")
+		} else {
+			escaped.WriteByte(name[i])
+		}
+	}
+	decoded, _ := url.QueryUnescape(escaped.String())
+	return decoded
+}
+
+func isHexDigit(c byte) bool {
+	return '0' <= c && c <= '9' || 'a' <= c && c <= 'f' || 'A' <= c && c <= 'F'
 }
 
 // redactURLQuery redacts the query of a URL or request target.

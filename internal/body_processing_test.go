@@ -27,16 +27,17 @@ func TestCompressedResponseBodiesAreDecompressedBeforeRedaction(t *testing.T) {
 	_, _ = zlibWriter.Write(body)
 	_ = zlibWriter.Close()
 	for _, tc := range []struct {
+		name     string
 		encoding string
 		body     []byte
 		captured any
 	}{
-		{"gzip", gzipped.Bytes(), `{"password":"[REDACTED]","id":1}`},
-		{"deflate", deflated.Bytes(), `{"password":"[REDACTED]","id":1}`},
-		{"gzip", gzipped.Bytes()[:gzipped.Len()-4], "[REDACTED]"},
-		{"br", []byte("brotli"), nil},
+		{"gzip is decompressed", "gzip", gzipped.Bytes(), `{"password":"[REDACTED]","id":1}`},
+		{"deflate is decompressed", "deflate", deflated.Bytes(), `{"password":"[REDACTED]","id":1}`},
+		{"truncated gzip is redacted", "gzip", gzipped.Bytes()[:gzipped.Len()-4], "[REDACTED]"},
+		{"unsupported encoding is not captured", "br", []byte("brotli"), nil},
 	} {
-		t.Run(tc.encoding, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			server := testutils.NewOTLPServer(t)
 			cfg := root.NewConfig()
 			cfg.CaptureResponseBody = true

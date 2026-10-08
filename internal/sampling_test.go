@@ -38,13 +38,13 @@ func TestSamplingKeepsTracesWhoseLowTraceIDBitsFallUnderRate(t *testing.T) {
 
 func TestSampleOnRequestFailsOpenAndAbstentionFallsBackToSampleRate(t *testing.T) {
 	for _, tc := range []struct {
-		name       string
-		callback   func(sdktrace.ReadOnlySpan) (float64, bool)
-		isExported bool
+		name          string
+		callback      func(sdktrace.ReadOnlySpan) (float64, bool)
+		exportedSpans int
 	}{
-		{"abstain", func(sdktrace.ReadOnlySpan) (float64, bool) { return 1, false }, false},
-		{"invalid rate", func(sdktrace.ReadOnlySpan) (float64, bool) { return 2, true }, true},
-		{"panic", func(sdktrace.ReadOnlySpan) (float64, bool) { panic("bug") }, true},
+		{"abstain", func(sdktrace.ReadOnlySpan) (float64, bool) { return 1, false }, 0},
+		{"invalid rate", func(sdktrace.ReadOnlySpan) (float64, bool) { return 2, true }, 1},
+		{"panic", func(sdktrace.ReadOnlySpan) (float64, bool) { panic("bug") }, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server := testutils.NewOTLPServer(t)
@@ -58,7 +58,7 @@ func TestSampleOnRequestFailsOpenAndAbstentionFallsBackToSampleRate(t *testing.T
 			testutils.Get(t, appURL+"/items")
 			require.NoError(t, Shutdown(context.Background()))
 
-			assert.Equal(t, tc.isExported, len(server.Spans(t)) == 1)
+			assert.Len(t, server.Spans(t), tc.exportedSpans)
 		})
 	}
 }

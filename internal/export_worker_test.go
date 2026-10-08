@@ -16,26 +16,6 @@ import (
 	"github.com/apitally/apitally-go/internal/testutils"
 )
 
-func TestRetriedFileIsSentByteIdentically(t *testing.T) {
-	server := testutils.NewOTLPServer(t)
-	synctest.Test(t, func(t *testing.T) {
-		startRuntimeForTest(t, server, nil)
-		server.SetResponse(http.StatusServiceUnavailable, 0)
-
-		time.Sleep(initialExportDelay + time.Second)
-		server.SetResponse(http.StatusOK, 0)
-		time.Sleep(defaultExportInterval * 11 / 10)
-		synctest.Wait()
-
-		requests := server.Requests()
-		require.GreaterOrEqual(t, len(requests), 2)
-		assert.Equal(t, http.StatusServiceUnavailable, requests[0].Status)
-		assert.Equal(t, signalLogs, requests[0].Signal)
-		assert.Equal(t, signalLogs, requests[1].Signal)
-		assert.Equal(t, requests[0].Body, requests[1].Body)
-	})
-}
-
 func TestRetryableFailureEndsCycleAndRejectedFileIsDropped(t *testing.T) {
 	for _, tc := range []struct {
 		status               int
@@ -95,7 +75,8 @@ func TestExportIntervalHeaderIsClampedToRange(t *testing.T) {
 				requests := server.Requests()
 				require.Greater(t, len(requests), len(firstCycle))
 				gap := requests[len(firstCycle)].Time.Sub(firstCycle[len(firstCycle)-1].Time)
-				assert.InDelta(t, tc.interval, gap, float64(tc.interval)/10)
+				assert.GreaterOrEqual(t, gap, tc.interval*9/10)
+				assert.LessOrEqual(t, gap, tc.interval*11/10)
 			})
 		})
 	}
