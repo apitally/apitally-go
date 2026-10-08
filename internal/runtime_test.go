@@ -59,7 +59,7 @@ func TestActivationEmitsStartupEventOnce(t *testing.T) {
 	server.DecodeStartupEvent(t, &body)
 	assert.Equal(t, map[string]any{
 		"framework": "nethttp",
-		"versions":  map[string]any{"go": runtime.Version(), "nethttp": "unknown", "app": "1.2.3"},
+		"versions":  map[string]any{"go": strings.TrimPrefix(runtime.Version(), "go"), "nethttp": "unknown", "app": "1.2.3"},
 		"config": map[string]any{
 			"CaptureLogs":            true,
 			"CaptureRequestHeaders":  false,

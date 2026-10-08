@@ -214,6 +214,14 @@ Note: Confirmed (net/http writes the detected type only to the connection). Opti
 - **Problem:** the expected attribute map omits `http.response.header.content-type`, which Gin and Fiber include. net/http sniffs and sets `Content-Type` on first write, apparently after the wrapper read the headers. Python's `test_response_headers_include_headers_added_by_framework` requires it.
 - **Fix:** verify; if confirmed, read response headers after the underlying write has committed them and update the test.
 
+### L11. Go runtime version carries a `go` prefix
+
+Status: fixed
+Class: b (needs decision)
+Note: Raised during the decision review. `versions["go"]` is now `1.25.14` instead of `go1.25.14`, matching the bare runtime versions of the other SDKs and the module versions (L8).
+
+- **Where:** `internal/startup.go:49`.
+
 ## Structure and naming
 
 ### S1. `RequestState.CaptureError` and `internal.CaptureError` mean different things

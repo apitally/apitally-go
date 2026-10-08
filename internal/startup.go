@@ -3,6 +3,7 @@ package internal
 import (
 	"encoding/json"
 	"runtime"
+	"strings"
 	"sync"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -46,7 +47,7 @@ func NewRouteSet(listRoutes func() []Route) func(Route) bool {
 // version, and represents configured callbacks as true.
 func startupEventBody(s *settings, framework FrameworkInfo, routes []Route) attribute.Value {
 	c := s.config
-	versions := map[string]string{"go": runtime.Version(), framework.Name: moduleVersion(framework.ModulePath)}
+	versions := map[string]string{"go": strings.TrimPrefix(runtime.Version(), "go"), framework.Name: moduleVersion(framework.ModulePath)}
 	if c.AppVersion != "" {
 		versions["app"] = c.AppVersion
 	}
