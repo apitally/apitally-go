@@ -41,13 +41,16 @@ func (r *sdkRuntime) setUpTracerProvider() {
 		r.isProviderOwned = true
 		if global == initialTracerProvider {
 			otel.SetTracerProvider(r.provider)
+			// Go's default global propagator is a no-op. It is replaced only when
+			// Apitally sets up the application's tracing, so an application that
+			// chose its own provider keeps its outgoing headers unchanged.
+			if otel.GetTextMapPropagator() == initialPropagator {
+				otel.SetTextMapPropagator(defaultPropagator)
+			}
 		} else {
 			r.isProviderPrivate = true
 			logWarn("The global OpenTelemetry tracer provider is not an SDK tracer provider, so Apitally captures requests without their descendant spans. Register a go.opentelemetry.io/otel/sdk/trace TracerProvider with otel.SetTracerProvider before the first request to capture them.")
 		}
-	}
-	if otel.GetTextMapPropagator() == initialPropagator {
-		otel.SetTextMapPropagator(defaultPropagator)
 	}
 	r.tracer = r.provider.Tracer(r.framework.ScopeName, trace.WithInstrumentationVersion(sdkVersion))
 }
@@ -62,7 +65,7 @@ func (r *sdkRuntime) tearDownTracerProvider(ctx context.Context) {
 	}
 }
 
-// propagator returns the global propagator, which Apitally registers only
+// propagator returns the global propagator, or W3C TraceContext and Baggage
 // while it is unset, so an application-set propagator applies as-is.
 func propagator() propagation.TextMapPropagator {
 	if p := otel.GetTextMapPropagator(); p != initialPropagator {

@@ -176,7 +176,7 @@ The rules in `AGENTS.md` apply. This section fixes where tests live and what eac
 
 - Configuration: precedence, disable controls, token masking, sample-rate fallback, pattern compilation and invalid-pattern drop, first-configuration-wins comparison.
 - Runtime: activation once, test-binary suppression, startup event first and once, `Shutdown` deadline returning the context error, idle final drain delivering the uptime gauge.
-- Providers: attach to a global SDK provider, own provider when unset, private provider for foreign and noop providers, propagator registration only when unset.
+- Providers: attach to a global SDK provider, own provider when unset, private provider for foreign and noop providers, propagator registration only together with Apitally's own global provider, and only when unset.
 - Requests and span processing: root designation, reuse of an outer SERVER span, nested requests, duplicate SERVER spans exported as INTERNAL, release in both completion orders, late telemetry dropped, per-request caps, exclusions before sampling, deterministic sampling, callback abstain, panic and invalid-rate behavior.
 - Capture and redaction: content-type allowlist, cap sentinel, incomplete bodies omitted, gzip and deflate, Brotli skipped, body mask results, query, header and body-field redaction, flushing and hijacking through the writer wrapper, `sendfile` preserved when not capturing.
 - Errors, validation and consumers: first-error guard, recorded-500 rule, exception fields and stack format, validator recognition, aggregate bounds and drains, consumer normalization, attribute ordering, merge and LRU.

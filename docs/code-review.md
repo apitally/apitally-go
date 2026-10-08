@@ -113,8 +113,9 @@ Note: `listRoutes` includes the routers of `e.Routers()`, sorted by host. Added 
 
 ### L1. W3C propagator is registered globally in attach and private provider modes
 
-Status: open
+Status: fixed
 Class: b (needs decision)
+Note: Option 1, matching design.md and JavaScript: the propagator is registered only with Apitally's own global provider. Added `TestPropagatorStaysUnsetWhenApplicationSetTracerProvider`; the own-provider test now asserts the registration.
 
 - **Where:** `internal/providers.go:49-51`.
 - **Problem:** the propagator is registered whenever the global propagator is unset, regardless of provider mode. The design.md section 16 table registers it only when the provider is also unset, and section 8 says the middleware extracts with W3C "without registering it". `implementation-plan.md:179` says "propagator registration only when unset", which conflicts.
