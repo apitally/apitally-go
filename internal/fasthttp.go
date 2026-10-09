@@ -11,9 +11,9 @@ import (
 	"unsafe"
 )
 
-// FasthttpObservation observes a Fiber request until fasthttp finishes or
-// aborts writing its response. fasthttp closes io.Closer user values when it
-// resets the request context, which completes observation.
+// FasthttpObservation observes a Fiber request until its response stream
+// ends, or fasthttp finishes or aborts writing the response. fasthttp closes
+// io.Closer user values when it resets the request context.
 type FasthttpObservation struct {
 	State *RequestState
 
@@ -80,7 +80,7 @@ func (o *FasthttpObservation) FinishHandler(result TransportResult, request, res
 		} else if size := streamSize(resp.BodyStream(), result.ResponseHeader); size >= 0 {
 			result.ResponseBodySize = size
 		} else {
-			stream := &responseStream{}
+			stream := &responseStream{onEnd: o.Close}
 			if isCaptured {
 				stream.capture = newBodyCapture(-1)
 			}
@@ -93,7 +93,8 @@ func (o *FasthttpObservation) FinishHandler(result TransportResult, request, res
 	o.result = &result
 	// Only a wrapped stream is read after the handler returns. Everything else
 	// completes now, because adaptors such as adaptor.FiberApp and AWS Lambda
-	// proxies never reset the RequestCtx, so they never call Close.
+	// proxies never reset the RequestCtx, so they never call Close. They read
+	// the stream until it ends, which completes a wrapped stream.
 	isComplete := o.stream == nil || o.isClosed || !o.isCloseRegistered
 	o.mu.Unlock()
 	if isComplete {
@@ -101,8 +102,8 @@ func (o *FasthttpObservation) FinishHandler(result TransportResult, request, res
 	}
 }
 
-// Close completes observation of a wrapped response stream after fasthttp
-// wrote or aborted the response.
+// Close completes observation of a wrapped response stream when the stream
+// ended, or fasthttp wrote or aborted the response.
 func (o *FasthttpObservation) Close() error {
 	o.mu.Lock()
 	o.isClosed = true
@@ -199,6 +200,17 @@ func replaceResponseBodyStream(response any, wrap func(io.Reader) io.Reader) boo
 // from a response stream while writing the response.
 type responseStream struct {
 	bodyReader
+	onEnd func() error
+}
+
+// Read calls onEnd at the first error, including EOF, because fasthttp stops
+// reading a stream at its first error.
+func (s *responseStream) Read(p []byte) (int, error) {
+	n, err := s.bodyReader.Read(p)
+	if err != nil {
+		_ = s.onEnd()
+	}
+	return n, err
 }
 
 // wrap returns s with exactly the Close and CloseWithError methods of the

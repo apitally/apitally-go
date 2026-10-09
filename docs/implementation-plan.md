@@ -129,7 +129,7 @@ Behavior is specified in design.md; this section records implementation choices 
 
 ## 6. Framework integrations
 
-Common to all: `Init` calls `internal.Register`, installs middleware once per app (a per-app guard stored in an `internal` map keyed by the app pointer), and on Gin and Fiber logs the late-`Init` error when routes already exist. Middleware calls `internal.Activate`, `BeginRequest`, runs the chain, then `FinishObservation`; on Fiber, for a wrapped stream of unknown length, the completion closer calls `FinishObservation` when fasthttp finishes or aborts the response. Route listing functions follow design section 9.
+Common to all: `Init` calls `internal.Register`, installs middleware once per app (a per-app guard stored in an `internal` map keyed by the app pointer), and on Gin and Fiber logs the late-`Init` error when routes already exist. Middleware calls `internal.Activate`, `BeginRequest`, runs the chain, then `FinishObservation`; on Fiber, for a wrapped stream of unknown length, the stream wrapper or the completion closer calls `FinishObservation` when the stream ends or fasthttp aborts the response. Route listing functions follow design section 9.
 
 - **Chi:** `r.Use(internal.NetHTTPMiddleware(...))`. The route comes from `chi.RouteContext(r.Context()).RoutePattern()` after the handler returns. Route listing via `chi.Walk`.
 - **Gin:** `engine.Use`, after the application's recovery middleware, as with the other frameworks. A panic is recorded with the committed status, or an assumed 500 before the response started. `gin-v1/response_writer.go` implements `gin.ResponseWriter` over the shared counting and capture logic. Request state is also stored with `c.Set` under a namespaced key. Errors come from `c.Errors`.

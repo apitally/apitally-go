@@ -547,15 +547,21 @@ func TestRequestServedThroughAdaptorIsExported(t *testing.T) {
 	url := testutils.Serve(t, adaptor.FiberApp(app))
 
 	resp := testutils.Get(t, url+"/items/42")
+	// The adaptor never resets the request context, so the end of a stream of
+	// unknown length completes the request.
+	streamResp := testutils.Get(t, url+"/stream")
 	shutDown(t)
 
 	assert.Equal(t, "item 42", resp.Body)
+	assert.Equal(t, "chunk 0\nchunk 1\nchunk 2\n", streamResp.Body)
 	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	assert.Equal(t, "GET /items/:id", spans[0].Name)
-	points := testutils.HistogramPoints(server.Metrics(t), "http.server.request.duration")
-	require.Len(t, points, 1)
-	assert.Equal(t, uint64(1), points[0].Count)
+	require.Len(t, spans, 2)
+	sizes := map[string]any{}
+	for _, span := range spans {
+		sizes[span.Name] = testutils.Attributes(span.Attributes)["http.response.body.size"]
+	}
+	assert.Equal(t, map[string]any{"GET /items/:id": int64(7), "GET /stream": int64(24)}, sizes)
+	assert.Len(t, testutils.HistogramPoints(server.Metrics(t), "http.server.request.duration"), 2)
 }
 
 func TestListeningAppDeliversTelemetryOnShutdown(t *testing.T) {

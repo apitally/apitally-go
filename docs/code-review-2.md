@@ -97,8 +97,9 @@ Note: `listRoutes` repeats the wildcard removal. The shared Chi test router now 
 
 ### F1. Fiber streams of unknown length never complete on adaptor and Lambda
 
-Status: open
+Status: fixed
 Class: b (needs decision)
+Note: Decided option 1, refined: a wrapped stream completes at its first read error, including EOF, or at `Close`, whichever comes first. Every reader of a stream, including `Response.Body` in the adaptor and Lambda proxies, stops at its first error, so a stream that fails mid-read also completes. `TestRequestServedThroughAdaptorIsExported` (fiber-v2 and fiber-v3) also requests the unknown-length stream. Design sections 6 and 7 updated.
 
 - **Where:** `internal/fasthttp.go:97`. A wrapped stream completes only on `Close`.
 - **Problem:** this is the case H1 left open.
