@@ -80,10 +80,12 @@ func (o *NetHTTPObservation) Finish(route, clientAddress string, status int, rec
 		ResponseHeader:   o.Writer.observedHeader(),
 	}
 	if b := o.body; b != nil {
+		b.mu.Lock()
 		if result.RequestBodySize < 0 && b.isEOF {
 			result.RequestBodySize = b.size
 		}
 		result.RequestBody = b.capture.body(b.isEOF || b.size == o.Request.ContentLength)
+		b.mu.Unlock()
 	}
 	declared := declaredContentLength(result.ResponseHeader)
 	result.ResponseBody = o.Writer.capture.body(recovered == nil && !o.Writer.hasWriteError && (declared < 0 || declared == o.Writer.size))
@@ -149,14 +151,24 @@ func (w *ResponseWriter) StatusCode() int {
 // files, while the body is not captured. A captured body is copied through
 // Write, because io.Copy uses ReadFrom for any source, not only files.
 func (w *ResponseWriter) ReadFrom(src io.Reader) (int64, error) {
-	w.startBody(nil)
+	var started int64
+	if !w.isCaptureDecided {
+		// net/http also writes the first 512 bytes through Write, to detect the
+		// Content-Type.
+		n, err := io.Copy(writerOnly{w}, io.LimitReader(src, 512))
+		if err != nil || n < 512 {
+			return n, err
+		}
+		started = n
+	}
 	if readerFrom, ok := w.ResponseWriter.(io.ReaderFrom); ok && w.capture == nil {
 		n, err := readerFrom.ReadFrom(src)
 		w.size += n
 		w.hasWriteError = w.hasWriteError || err != nil
-		return n, err
+		return started + n, err
 	}
-	return io.Copy(writerOnly{w}, src)
+	n, err := io.Copy(writerOnly{w}, src)
+	return started + n, err
 }
 
 func (w *ResponseWriter) Flush() {

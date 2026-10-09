@@ -262,15 +262,20 @@ func TestStreamingResponseSizeAndBodyCaptured(t *testing.T) {
 func TestUnmatchedRequestHasNoRouteAndNoHistogramPoint(t *testing.T) {
 	server := setUp(t)
 	app := newApp(nil)
+	// Fiber's static middleware passes requests for missing files on.
+	app.Get("/assets/*", func(c fiber.Ctx) error { return c.Next() })
+	app.Use(func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNotFound) })
 
 	missing := send(t, app, http.MethodGet, "/missing", nil)
 	missingInGroup := send(t, app, http.MethodGet, "/api/v1/missing", nil)
+	missingAsset := send(t, app, http.MethodGet, "/assets/missing.js", nil)
 	shutDown(t)
 
 	assert.Equal(t, http.StatusNotFound, missing.StatusCode)
 	assert.Equal(t, http.StatusNotFound, missingInGroup.StatusCode)
+	assert.Equal(t, http.StatusNotFound, missingAsset.StatusCode)
 	spans := server.Spans(t)
-	require.Len(t, spans, 2)
+	require.Len(t, spans, 3)
 	for _, span := range spans {
 		assert.Equal(t, "GET", span.Name)
 		attrs := testutils.Attributes(span.Attributes)

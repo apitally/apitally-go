@@ -52,11 +52,14 @@ type TransportResult struct {
 
 // RequestState is the per-request state, stored in the request context.
 type RequestState struct {
-	runtime       *sdkRuntime
-	info          RequestInfo
-	startTime     time.Time
-	span          trace.Span
-	isSpanCreated bool
+	runtime *sdkRuntime
+	info    RequestInfo
+	// requestEncoding is read when the request begins, because decompression
+	// middleware removes the Content-Encoding header.
+	requestEncoding string
+	startTime       time.Time
+	span            trace.Span
+	isSpanCreated   bool
 	// requestAttributes are Apitally's attributes for a reused span, which
 	// only its export copy carries.
 	requestAttributes []attribute.KeyValue
@@ -142,7 +145,7 @@ func beginRequest(ctx context.Context, info RequestInfo) (state *RequestState, r
 	if info.Scheme != "https" {
 		info.Scheme = "http"
 	}
-	state = &RequestState{runtime: r, info: info, startTime: time.Now()}
+	state = &RequestState{runtime: r, info: info, requestEncoding: info.Header.Get("Content-Encoding"), startTime: time.Now()}
 	attrs := requestAttributes(&info)
 	ctx, state.span, state.isSpanCreated = r.startServerSpan(ctx, &info, attrs)
 	if !state.isSpanCreated {
@@ -183,7 +186,7 @@ func (s *RequestState) finishObservation(result TransportResult) {
 		payload := &payloadStash{
 			requestBody:      result.RequestBody,
 			responseBody:     result.ResponseBody,
-			requestEncoding:  s.info.Header.Get("Content-Encoding"),
+			requestEncoding:  s.requestEncoding,
 			responseEncoding: result.ResponseHeader.Get("Content-Encoding"),
 		}
 		if r.settings.config.CaptureRequestHeaders {

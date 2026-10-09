@@ -35,18 +35,24 @@ func newRoutePattern(router chi.Router) func(*http.Request) string {
 		if rctx == nil {
 			return ""
 		}
-		if pattern := rctx.RoutePattern(); isRegistered(internal.Route{Method: r.Method, Path: pattern}) {
+		// RouteMethod is the method Chi routed by, which middleware.GetHead sets to
+		// GET for HEAD requests.
+		if pattern := rctx.RoutePattern(); isRegistered(internal.Route{Method: rctx.RouteMethod, Path: pattern}) {
 			return pattern
 		}
 		return ""
 	}
 }
 
-// listRoutes reports routes as Chi's RoutePattern does, which trims the
-// trailing slash that Walk reports for the root route of a subrouter.
+// listRoutes reports routes as Chi's RoutePattern does. RoutePattern trims
+// the trailing slash that Walk reports for the root route of a subrouter, and
+// repeats the removal of mount wildcards, which Walk does once.
 func listRoutes(r chi.Router) []internal.Route {
 	var routes []internal.Route
 	_ = chi.Walk(r, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		for strings.Contains(route, "/*/") {
+			route = strings.ReplaceAll(route, "/*/", "/")
+		}
 		if route != "/" {
 			route = strings.TrimSuffix(strings.TrimSuffix(route, "//"), "/")
 		}

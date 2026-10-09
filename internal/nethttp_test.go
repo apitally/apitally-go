@@ -73,23 +73,24 @@ func TestReadFromUsesWrappedWriterUnlessBodyIsCaptured(t *testing.T) {
 			cfg := root.NewConfig()
 			cfg.CaptureResponseBody = isCaptured
 			registerForTest(t, server, cfg)
+			contents := strings.Repeat("x", 1000)
 			app := NetHTTPMiddleware(serveMuxRoute)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "text/plain")
-				_, _ = io.Copy(w, io.LimitReader(strings.NewReader("file contents"), 1024))
+				_, _ = io.Copy(w, io.LimitReader(strings.NewReader(contents), 1024))
 			}))
 			recorder := &readerFromRecorder{ResponseRecorder: httptest.NewRecorder()}
 
 			app.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/file", nil))
 			require.NoError(t, Shutdown(context.Background()))
 
-			assert.Equal(t, "file contents", recorder.Body.String())
+			assert.Equal(t, contents, recorder.Body.String())
 			assert.Equal(t, !isCaptured, recorder.isReadFromCalled)
 			spans := server.Spans(t)
 			require.Len(t, spans, 1)
 			attrs := testutils.Attributes(spans[0].Attributes)
-			assert.Equal(t, int64(13), attrs["http.response.body.size"])
+			assert.Equal(t, int64(1000), attrs["http.response.body.size"])
 			if isCaptured {
-				assert.Equal(t, "file contents", attrs["apitally.response.body"])
+				assert.Equal(t, contents, attrs["apitally.response.body"])
 			}
 		})
 	}
@@ -136,20 +137,29 @@ func TestDetectedContentTypeIsRecorded(t *testing.T) {
 	cfg.CaptureResponseBody = true
 	registerForTest(t, server, cfg)
 	headerAfterWrite := http.Header{}
-	appURL := startTestApp(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /write", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"id":1}`))
 		headerAfterWrite = w.Header().Clone()
-	}))
+	})
+	mux.HandleFunc("GET /copy", func(w http.ResponseWriter, r *http.Request) {
+		// io.Copy uses the writer's ReadFrom for a source without WriteTo.
+		_, _ = io.Copy(w, io.LimitReader(strings.NewReader(`{"id":1}`), 512))
+	})
+	appURL := startTestApp(t, mux)
 
-	testutils.Get(t, appURL+"/items")
+	testutils.Get(t, appURL+"/write")
+	testutils.Get(t, appURL+"/copy")
 	require.NoError(t, Shutdown(context.Background()))
 
 	assert.Empty(t, headerAfterWrite.Get("Content-Type"))
 	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	attrs := testutils.Attributes(spans[0].Attributes)
-	assert.Equal(t, []any{"text/plain; charset=utf-8"}, attrs["http.response.header.content-type"])
-	assert.Equal(t, `{"id":1}`, attrs["apitally.response.body"])
+	require.Len(t, spans, 2)
+	for _, span := range spans {
+		attrs := testutils.Attributes(span.Attributes)
+		assert.Equal(t, []any{"text/plain; charset=utf-8"}, attrs["http.response.header.content-type"], span.Name)
+		assert.Equal(t, `{"id":1}`, attrs["apitally.response.body"], span.Name)
+	}
 }
 
 // readerFromRecorder is a response writer implementing io.ReaderFrom, as

@@ -95,7 +95,8 @@ func callMaskCallback(option string, mask func(sdktrace.ReadOnlySpan, []byte) []
 // redactJSON parses body as one JSON value and serializes it compactly,
 // keeping the key order, with matching fields' string values redacted.
 func (red *redaction) redactJSON(body []byte) (string, bool) {
-	decoder := json.NewDecoder(bytes.NewReader(body))
+	// encoding/json rejects a leading UTF-8 byte order mark.
+	decoder := json.NewDecoder(bytes.NewReader(bytes.TrimPrefix(body, []byte("\xef\xbb\xbf"))))
 	decoder.UseNumber()
 	var out bytes.Buffer
 	encoder := json.NewEncoder(&out)

@@ -115,6 +115,10 @@ type pointerError struct{ message string }
 
 func (e *pointerError) Error() string { return e.message }
 
+type account struct{ id, email string }
+
+func (a *account) String() string { return "account " + a.id }
+
 func TestCapturedValuesAreConvertedAndTruncated(t *testing.T) {
 	server := testutils.NewOTLPServer(t)
 	var callbackMapKind slog.Kind
@@ -133,6 +137,7 @@ func TestCapturedValuesAreConvertedAndTruncated(t *testing.T) {
 			"error", errors.New("failed"),
 			"bytes", []byte("raw"),
 			"valuer", loginValuer{"alice"},
+			"stringer", &account{"7", "a@b.c"},
 			"long", strings.Repeat("x", maxLogTextLength+1),
 		)
 	}))
@@ -148,13 +153,14 @@ func TestCapturedValuesAreConvertedAndTruncated(t *testing.T) {
 	assert.Equal(t, "shop", attrs["service"])
 	assert.Equal(t, "<nil>", attrs["cause"])
 	assert.Equal(t, map[string]any{
-		"map":    map[string]any{"a": int64(1)},
-		"list":   []any{int64(1), "two"},
-		"struct": "{A:1}",
-		"error":  "failed",
-		"bytes":  []byte("raw"),
-		"valuer": "user alice",
-		"long":   strings.Repeat("x", maxLogTextLength),
+		"map":      map[string]any{"a": int64(1)},
+		"list":     []any{int64(1), "two"},
+		"struct":   "{A:1}",
+		"error":    "failed",
+		"bytes":    []byte("raw"),
+		"valuer":   "user alice",
+		"stringer": "account 7",
+		"long":     strings.Repeat("x", maxLogTextLength),
 	}, attrs["request"])
 }
 

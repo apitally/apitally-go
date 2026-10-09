@@ -137,6 +137,9 @@ func TestShutdownHonorsContextDeadline(t *testing.T) {
 		startRuntimeForTest(t, server, nil)
 		release := server.Hold()
 		defer release()
+		// A Fiber shutdown hook can still be flushing when the application calls Shutdown.
+		go Flush()
+		synctest.Wait()
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 

@@ -85,8 +85,11 @@ func newRouter(cfg *apitally.Config, middlewares ...func(http.Handler) http.Hand
 		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write([]byte("api"))
 		})
-		r.Get("/users/{userID}", func(w http.ResponseWriter, r *http.Request) {
-			_, _ = w.Write([]byte("user"))
+		// Modular apps mount routers at the root of a mounted router.
+		r.Route("/", func(r chi.Router) {
+			r.Get("/users/{userID}", func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte("user"))
+			})
 		})
 	})
 	return r
@@ -162,17 +165,20 @@ func TestHistogramAttributesAndLogCorrelation(t *testing.T) {
 
 func TestRouteIncludesGroupPrefix(t *testing.T) {
 	server := setUp(t)
-	appURL := testutils.Serve(t, newRouter(nil))
+	appURL := testutils.Serve(t, newRouter(nil, middleware.GetHead))
 
 	testutils.Get(t, appURL+"/api/v1/users/7")
 	testutils.Get(t, appURL+"/api/v1")
+	// GetHead serves HEAD requests with GET routes.
+	req, _ := http.NewRequest(http.MethodHead, appURL+"/api/v1/users/7", nil)
+	testutils.Do(t, http.DefaultClient.Do, req)
 	shutDown(t)
 
 	var routes []any
 	for _, span := range server.Spans(t) {
 		routes = append(routes, testutils.Attributes(span.Attributes)["http.route"])
 	}
-	assert.ElementsMatch(t, []any{"/api/v1/users/{userID}", "/api/v1"}, routes)
+	assert.ElementsMatch(t, []any{"/api/v1/users/{userID}", "/api/v1", "/api/v1/users/{userID}"}, routes)
 }
 
 func TestStartupEventPathsMatchRoutes(t *testing.T) {

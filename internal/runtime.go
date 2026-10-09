@@ -63,7 +63,10 @@ type sdkRuntime struct {
 	// so Flush can stop waiting at its deadline.
 	cycleLock      chan struct{}
 	exportInterval time.Duration
-	stopExportLoop context.CancelFunc
+	// exportContext is canceled when shutdown begins, which stops the export
+	// loop and any flush still delivering.
+	exportContext  context.Context
+	cancelExports  context.CancelFunc
 	exportLoopDone chan struct{}
 }
 
@@ -171,16 +174,16 @@ func (r *sdkRuntime) activate() {
 	if r.settings.config.CaptureLogs && !isSlogHandlerCreated.Load() {
 		logWarn("Apitally does not capture application logs, because no handler was created with NewSlogHandler. Wrap your slog handler with NewSlogHandler, or set Config.CaptureLogs to false.")
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	r.exportInterval, r.stopExportLoop, r.exportLoopDone = defaultExportInterval, cancel, make(chan struct{})
+	r.exportContext, r.cancelExports = context.WithCancel(context.Background())
+	r.exportInterval, r.exportLoopDone = defaultExportInterval, make(chan struct{})
 	go r.logs.run()
-	go r.runExportLoop(ctx)
+	go r.runExportLoop(r.exportContext)
 	r.isActive.Store(true)
 }
 
 func (r *sdkRuntime) shutdown(ctx context.Context) error {
 	defer recoverAndLogPanic("shutdown")
-	r.stopExportLoop()
+	r.cancelExports()
 	select {
 	case <-r.exportLoopDone:
 	case <-ctx.Done():

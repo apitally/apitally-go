@@ -19,7 +19,7 @@ import (
 	"github.com/apitally/apitally-go/internal/testutils"
 )
 
-func TestCompressedResponseBodiesAreDecompressed(t *testing.T) {
+func TestCompressedBodiesAreDecompressed(t *testing.T) {
 	body := []byte(`{"password":"secret","id":1}`)
 	var gzipped, deflated, gzippedLarge bytes.Buffer
 	gzipWriter := gzip.NewWriter(&gzipped)
@@ -46,21 +46,30 @@ func TestCompressedResponseBodiesAreDecompressed(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			server := testutils.NewOTLPServer(t)
 			cfg := root.NewConfig()
-			// The encoding is read from the response even when headers are not captured.
-			cfg.CaptureResponseBody, cfg.CaptureResponseHeaders = true, false
+			// The encodings are read even when headers are not captured.
+			cfg.CaptureRequestBody, cfg.CaptureResponseBody, cfg.CaptureResponseHeaders = true, true, false
 			registerForTest(t, server, cfg)
 			appURL := startTestApp(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// Request decompression middleware removes the Content-Encoding header.
+				r.Header.Del("Content-Encoding")
+				_, _ = io.ReadAll(r.Body)
 				w.Header().Set("Content-Type", "application/json")
 				w.Header().Set("Content-Encoding", tc.encoding)
 				_, _ = w.Write(tc.body)
 			}))
 
-			testutils.Get(t, appURL+"/items", "Accept-Encoding", tc.encoding)
+			req, _ := http.NewRequest(http.MethodPost, appURL+"/items", bytes.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Content-Encoding", tc.encoding)
+			req.Header.Set("Accept-Encoding", tc.encoding)
+			testutils.Do(t, http.DefaultClient.Do, req)
 			require.NoError(t, Shutdown(context.Background()))
 
 			spans := server.Spans(t)
 			require.Len(t, spans, 1)
-			assert.Equal(t, tc.captured, testutils.Attributes(spans[0].Attributes)["apitally.response.body"])
+			attrs := testutils.Attributes(spans[0].Attributes)
+			assert.Equal(t, tc.captured, attrs["apitally.request.body"])
+			assert.Equal(t, tc.captured, attrs["apitally.response.body"])
 		})
 	}
 }
@@ -113,7 +122,8 @@ func TestMaskCallbacksReplaceBodiesAndFailClosed(t *testing.T) {
 func TestNestedJSONBodyFieldsAreRedacted(t *testing.T) {
 	red := newRedaction(&settings{maskBodyFields: compileDefaultPatterns("^email$")})
 
-	redacted, ok := red.redactJSON([]byte(`{"z": 1, "items": [{"Card_Number": "4111", "email": "a@b.c", "auth": {"pwd": "x"}}], "note": "<b>&", "n": 1.50}`))
+	// Some clients, such as Windows PowerShell 5.1, start JSON with a UTF-8 byte order mark.
+	redacted, ok := red.redactJSON([]byte("\xef\xbb\xbf" + `{"z": 1, "items": [{"Card_Number": "4111", "email": "a@b.c", "auth": {"pwd": "x"}}], "note": "<b>&", "n": 1.50}`))
 
 	require.True(t, ok)
 	assert.Equal(t, `{"z":1,"items":[{"Card_Number":"[REDACTED]","email":"[REDACTED]","auth":{"pwd":"[REDACTED]"}}],"note":"<b>&","n":1.50}`, redacted)

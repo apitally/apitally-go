@@ -26,7 +26,7 @@ func Flush() {
 		return
 	}
 	defer recoverAndLogPanic("flush")
-	ctx, cancel := context.WithTimeout(context.Background(), shutdownHookFlushTimeout)
+	ctx, cancel := context.WithTimeout(r.exportContext, shutdownHookFlushTimeout)
 	defer cancel()
 	select {
 	case r.cycleLock <- struct{}{}:

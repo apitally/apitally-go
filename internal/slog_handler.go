@@ -232,9 +232,9 @@ func ownedAnyValue(value any, depth int) slog.Value {
 		return slog.AnyValue(nil)
 	case []byte:
 		return slog.AnyValue(bytes.Clone(value))
-	case error:
-		// fmt recovers panics of Error methods, such as on a typed nil error, as
-		// slog's own handlers do.
+	case error, fmt.Stringer:
+		// slog's TextHandler formats these values with their methods, also on
+		// pointer receivers, and fmt recovers their panics, such as on a typed nil.
 		return slog.StringValue(fmt.Sprint(value))
 	}
 	rv := reflect.ValueOf(value)

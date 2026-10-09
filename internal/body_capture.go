@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 )
 
 const maxBodySize = 50_000
@@ -64,7 +65,10 @@ func (c *bodyCapture) body(isComplete bool) []byte {
 // bodyReader counts, and optionally captures, the bytes read from a body. It
 // never reads more than its caller.
 type bodyReader struct {
-	reader  io.Reader
+	reader io.Reader
+	// mu guards the fields below, because httputil.ReverseProxy can still
+	// read a request body after the handler returns.
+	mu      sync.Mutex
 	size    int64
 	isEOF   bool
 	capture *bodyCapture
@@ -72,6 +76,8 @@ type bodyReader struct {
 
 func (b *bodyReader) Read(p []byte) (int, error) {
 	n, err := b.reader.Read(p)
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	b.size += int64(n)
 	if b.capture != nil {
 		b.capture.write(p[:n])
