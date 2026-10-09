@@ -197,8 +197,9 @@ Note: Accepted as a gap. It needs a response without Content-Type whose first wr
 
 ### R3. Chi: a router wrapped in middleware before `Mount` gets no route
 
-Status: open
+Status: rejected
 Class: b (needs decision)
+Note: Recorded as a known limitation in design section 8, which covers routes, with the walkable alternatives. The setup is uncommon, and accepting patterns under a mount wildcard would report routes absent from the startup list.
 
 - **Where:** `chi-v5/middleware.go:38,49`.
 - **Problem:** `chi.Walk` cannot see through an `http.Handler` wrapper. It lists only `/admin/*`, while requests report the inner router's full pattern, which the route set rejects.
