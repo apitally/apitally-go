@@ -101,7 +101,7 @@ func main() {
 
     cfg := apitally.NewConfig()
     cfg.WriteToken = "your-write-token" // or set APITALLY_WRITE_TOKEN
-    cfg.Env = "dev"                     // or "prod" etc.
+    cfg.Env = "dev"                     // or set APITALLY_ENV
     apitally.Init(r, cfg)
 
     // ... register your routes ...
@@ -126,7 +126,7 @@ func main() {
 
     cfg := apitally.NewConfig()
     cfg.WriteToken = "your-write-token" // or set APITALLY_WRITE_TOKEN
-    cfg.Env = "dev"                     // or "prod" etc.
+    cfg.Env = "dev"                     // or set APITALLY_ENV
     apitally.Init(e, cfg)
 
     // ... register your routes ...
@@ -151,7 +151,7 @@ func main() {
 
     cfg := apitally.NewConfig()
     cfg.WriteToken = "your-write-token" // or set APITALLY_WRITE_TOKEN
-    cfg.Env = "dev"                     // or "prod" etc.
+    cfg.Env = "dev"                     // or set APITALLY_ENV
     apitally.Init(app, cfg)
 
     // ... register your routes ...
@@ -178,7 +178,7 @@ func main() {
 
     cfg := apitally.NewConfig()
     cfg.WriteToken = "your-write-token" // or set APITALLY_WRITE_TOKEN
-    cfg.Env = "dev"                     // or "prod" etc.
+    cfg.Env = "dev"                     // or set APITALLY_ENV
     apitally.Init(r, cfg)
 
     // ... register your middleware and routes ...
