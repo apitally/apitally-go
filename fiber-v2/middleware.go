@@ -46,11 +46,13 @@ func Init(app *fiber.App, cfg *Config) {
 	})
 }
 
-// routeKey identifies a route by its first handler, whose slice element the
-// copies GetRoutes returns share with the routes Fiber matches, because a
-// middleware route and a route can have the same method and path.
+// routeKey identifies a route by its method, path and first handler, whose
+// slice element the copies GetRoutes returns share with the routes Fiber
+// matches. A middleware route and a route can have the same method and path,
+// and routes registered with one handler slice share their first handler.
 type routeKey struct {
 	method  string
+	path    string
 	handler *fiber.Handler
 }
 
@@ -61,7 +63,7 @@ func newMiddleware(app *fiber.App) fiber.Handler {
 		routes := map[routeKey]string{}
 		for _, route := range app.GetRoutes(true) {
 			if len(route.Handlers) > 0 {
-				routes[routeKey{route.Method, &route.Handlers[0]}] = routePath(app, route.Path)
+				routes[routeKey{route.Method, route.Path, &route.Handlers[0]}] = routePath(app, route.Path)
 			}
 		}
 		return routes
@@ -80,7 +82,7 @@ func newMiddleware(app *fiber.App) fiber.Handler {
 					ResponseHeader: internal.HeaderFromValues(c.GetRespHeaders()),
 				}
 				if route := c.Route(); len(route.Handlers) > 0 {
-					result.Route = routes()[routeKey{route.Method, &route.Handlers[0]}]
+					result.Route = routes()[routeKey{route.Method, route.Path, &route.Handlers[0]}]
 				}
 				o.FinishHandler(result, c.Request(), c.Response(), p)
 			}
