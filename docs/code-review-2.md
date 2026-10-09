@@ -167,8 +167,9 @@ Note: The route lookup uses `rctx.RouteMethod`. Covered by a HEAD request throug
 
 ### F2. Spans and logs from a stream writer are dropped when the response declares a Content-Length
 
-Status: open
+Status: fixed
 Class: b (needs decision)
+Note: Decided option 1: design section 6 now states the limitation. A stream of known size whose writer runs user code that logs or creates spans is rare, because generated content rarely has a size known before it is written, and wrapping sized streams would slow every sized download.
 
 - **Where:** `internal/fasthttp.go:80,97`.
 - **Problem:** with a known size, the stream isn't wrapped and observation completes at handler return. That is before fasthttp runs the writer, so telemetry produced inside the writer arrives after release and is dropped. Design section 6 says it "remains eligible".
