@@ -41,8 +41,7 @@ func TestValidationErrorsAreFilteredByStatus(t *testing.T) {
 	appURL := startTestApp(t, mux)
 
 	for _, path := range []string{"/items", "/items", "/teapots"} {
-		req, _ := http.NewRequest(http.MethodPost, appURL+path, nil)
-		testutils.Do(t, http.DefaultClient.Do, req)
+		testutils.Send(t, http.MethodPost, appURL+path, "")
 	}
 	require.NoError(t, Shutdown(context.Background()))
 

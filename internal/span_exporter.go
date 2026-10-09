@@ -110,33 +110,24 @@ func (e *spanExporter) ExportSpans(ctx context.Context, spans []sdktrace.ReadOnl
 	defer recoverAndLogPanic("span export")
 	processed := make([]sdktrace.ReadOnlySpan, 0, len(spans))
 	for _, span := range spans {
-		if c, ok := e.process(span); ok {
-			processed = append(processed, c)
+		if e.process(span) {
+			processed = append(processed, span)
 		}
 	}
-	for len(processed) > 0 {
-		n := min(len(processed), recordsPerEncodedChunk)
-		_ = e.otlp.ExportSpans(ctx, processed[:n])
-		processed = processed[n:]
+	for chunk := range slices.Chunk(processed, recordsPerEncodedChunk) {
+		_ = e.otlp.ExportSpans(ctx, chunk)
 	}
 	return nil
 }
 
 func (e *spanExporter) Shutdown(context.Context) error { return nil }
 
-// process drops a span whose redaction fails, so it never leaves the process
-// unredacted.
-func (e *spanExporter) process(span sdktrace.ReadOnlySpan) (_ sdktrace.ReadOnlySpan, ok bool) {
-	defer func() {
-		if p := recover(); p != nil {
-			logPanic("span redaction", p)
-			ok = false
-		}
-	}()
-	c, isCopy := span.(*exportSpan)
-	if !isCopy {
-		return nil, false
-	}
+// process redacts an export copy. It returns false when redaction fails, so
+// the span never leaves the process unredacted.
+func (e *spanExporter) process(span sdktrace.ReadOnlySpan) (ok bool) {
+	defer recoverAndLogPanic("span redaction")
+	// Request release passes only export copies to the batch processor.
+	c := span.(*exportSpan)
 	c.attributes = e.redaction.redactSpanAttributes(c.attributes)
 	if p := c.payload; p != nil {
 		c.payload = nil
@@ -153,7 +144,7 @@ func (e *spanExporter) process(span sdktrace.ReadOnlySpan) (_ sdktrace.ReadOnlyS
 		}
 		c.attributes = append(c.attributes, bodies...)
 	}
-	return c, true
+	return true
 }
 
 type spoolTraceClient struct {

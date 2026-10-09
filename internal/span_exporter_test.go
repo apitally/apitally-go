@@ -30,7 +30,7 @@ func TestCapturedPayloadsAreExportedOnlyToApitally(t *testing.T) {
 		_, _ = w.Write([]byte(`{"id":1}`))
 	}))
 
-	post(t, appURL+"/items", "application/json", `{"name":"x"}`)
+	testutils.Send(t, http.MethodPost, appURL+"/items", `{"name":"x"}`, "Content-Type", "application/json")
 	require.NoError(t, Shutdown(context.Background()))
 
 	require.Len(t, userSpans.GetSpans(), 1)
@@ -38,9 +38,8 @@ func TestCapturedPayloadsAreExportedOnlyToApitally(t *testing.T) {
 		assert.NotContains(t, []string{"apitally.request.body", "apitally.response.body"}, string(kv.Key))
 		assert.False(t, strings.HasPrefix(string(kv.Key), "http.request.header.") || strings.HasPrefix(string(kv.Key), "http.response.header."), "user span has captured header %s", kv.Key)
 	}
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	attrs := testutils.Attributes(spans[0].Attributes)
+	span := server.SingleSpan(t)
+	attrs := testutils.Attributes(span.Attributes)
 	assert.Equal(t, `{"name":"x"}`, attrs["apitally.request.body"])
 	assert.Equal(t, `{"id":1}`, attrs["apitally.response.body"])
 	assert.Equal(t, []any{"application/json"}, attrs["http.request.header.content-type"])

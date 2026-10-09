@@ -168,11 +168,9 @@ func isSDKFunction(function string) bool {
 }
 
 type serverErrorKey struct {
-	method     string
-	path       string
-	typeName   string
-	message    string
-	stacktrace string
+	method string
+	path   string
+	capturedError
 }
 
 func serverErrorEventBody(key serverErrorKey, counts map[string]uint64) attribute.Value {

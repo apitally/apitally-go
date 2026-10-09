@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -154,6 +155,15 @@ func (s *OTLPServer) Spans(t testing.TB) []Span {
 	return spans
 }
 
+// SingleSpan requires exactly one span received in successful requests and
+// returns it.
+func (s *OTLPServer) SingleSpan(t testing.TB) Span {
+	t.Helper()
+	spans := s.Spans(t)
+	require.Len(t, spans, 1)
+	return spans[0]
+}
+
 // LogRecords decodes all log records received in successful requests.
 func (s *OTLPServer) LogRecords(t testing.TB) []LogRecord {
 	var records []LogRecord
@@ -172,13 +182,7 @@ func (s *OTLPServer) LogRecords(t testing.TB) []LogRecord {
 // ApplicationLogRecords returns the log records captured from the
 // application's slog records, which are exported with the scope "slog".
 func (s *OTLPServer) ApplicationLogRecords(t testing.TB) []LogRecord {
-	var records []LogRecord
-	for _, record := range s.LogRecords(t) {
-		if record.Scope == "slog" {
-			records = append(records, record)
-		}
-	}
-	return records
+	return slices.DeleteFunc(s.LogRecords(t), func(record LogRecord) bool { return record.Scope != "slog" })
 }
 
 // DecodeStartupEvent requires exactly one exported startup event and decodes
@@ -192,13 +196,7 @@ func (s *OTLPServer) DecodeStartupEvent(t testing.TB, body any) {
 
 // Events returns the SDK event log records with the given event name.
 func (s *OTLPServer) Events(t testing.TB, eventName string) []LogRecord {
-	var events []LogRecord
-	for _, record := range s.LogRecords(t) {
-		if record.EventName == eventName {
-			events = append(events, record)
-		}
-	}
-	return events
+	return slices.DeleteFunc(s.LogRecords(t), func(record LogRecord) bool { return record.EventName != eventName })
 }
 
 // Metrics decodes all metrics received in successful requests.

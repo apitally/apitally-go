@@ -1,11 +1,11 @@
 package internal
 
 import (
+	"maps"
 	"net/http"
 	"net/url"
 	"regexp"
 	"slices"
-	"sort"
 	"strings"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -93,33 +93,28 @@ func (red *redaction) isBodyFieldRedacted(name string) bool {
 // headerAttributes returns captured headers as list-valued attributes with
 // lowercase names, sorted by name. A redacted header has one value.
 func (red *redaction) headerAttributes(prefix string, header http.Header) []attribute.KeyValue {
-	names := make([]string, 0, len(header))
-	for name := range header {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	attrs := make([]attribute.KeyValue, 0, len(names))
-	for _, name := range names {
-		values := make([]string, len(header[name]))
-		for i, value := range header[name] {
-			values[i] = red.redactHeaderValue(name, value)
-		}
-		if red.isHeaderRedacted(name) {
-			values = []string{redactedValue}
-		}
-		attrs = append(attrs, attribute.StringSlice(prefix+strings.ToLower(name), values))
+	attrs := make([]attribute.KeyValue, 0, len(header))
+	for _, name := range slices.Sorted(maps.Keys(header)) {
+		attrs = append(attrs, attribute.StringSlice(prefix+strings.ToLower(name), red.redactHeaderValues(name, header[name])))
 	}
 	return attrs
 }
 
-// redactHeaderValue redacts the query of Location and Content-Location
-// values, which are URLs.
-func (red *redaction) redactHeaderValue(name, value string) string {
+// redactHeaderValues returns one value for a redacted header, and redacts
+// the query of Location and Content-Location values, which are URLs.
+func (red *redaction) redactHeaderValues(name string, values []string) []string {
+	if red.isHeaderRedacted(name) {
+		return []string{redactedValue}
+	}
 	switch strings.ToLower(strings.ReplaceAll(name, "_", "-")) {
 	case "location", "content-location":
-		return red.redactURLQuery(value)
+		redacted := make([]string, len(values))
+		for i, value := range values {
+			redacted[i] = red.redactURLQuery(value)
+		}
+		return redacted
 	}
-	return value
+	return values
 }
 
 // redactSpanAttributes redacts query-bearing attributes and captured header
@@ -152,10 +147,8 @@ func (red *redaction) redactSpanAttribute(kv attribute.KeyValue) (attribute.Valu
 		original := kv.Value.AsString()
 		value := original
 		switch {
-		case isHeader && red.isHeaderRedacted(header):
-			value = redactedValue
 		case isHeader:
-			value = red.redactHeaderValue(header, value)
+			value = red.redactHeaderValues(header, []string{value})[0]
 		case key == "url.query":
 			value = red.redactQuery(value)
 		case key == "url.full" || key == "http.url" || key == "http.target":
@@ -163,20 +156,12 @@ func (red *redaction) redactSpanAttribute(kv attribute.KeyValue) (attribute.Valu
 		}
 		return attribute.StringValue(value), value != original
 	case attribute.STRINGSLICE:
+		if !isHeader {
+			return kv.Value, false
+		}
 		original := kv.Value.AsStringSlice()
-		if isHeader && red.isHeaderRedacted(header) {
-			return attribute.StringSliceValue([]string{redactedValue}), true
-		}
-		values := make([]string, len(original))
-		isChanged := false
-		for i, item := range original {
-			values[i] = item
-			if isHeader {
-				values[i] = red.redactHeaderValue(header, item)
-			}
-			isChanged = isChanged || values[i] != item
-		}
-		return attribute.StringSliceValue(values), isChanged
+		values := red.redactHeaderValues(header, original)
+		return attribute.StringSliceValue(values), !slices.Equal(values, original)
 	}
 	return kv.Value, false
 }

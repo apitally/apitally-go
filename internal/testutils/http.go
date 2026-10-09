@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -42,7 +43,14 @@ func Do(t testing.TB, roundTrip func(*http.Request) (*http.Response, error), req
 // given as name and value pairs.
 func Get(t testing.TB, url string, headers ...string) Response {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	return Send(t, http.MethodGet, url, "", headers...)
+}
+
+// Send sends a request with http.DefaultClient and the request headers given
+// as name and value pairs.
+func Send(t testing.TB, method, url, body string, headers ...string) Response {
+	t.Helper()
+	req, err := http.NewRequest(method, url, strings.NewReader(body))
 	require.NoError(t, err)
 	for i := 0; i+1 < len(headers); i += 2 {
 		req.Header.Set(headers[i], headers[i+1])

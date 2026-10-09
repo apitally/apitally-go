@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"math/rand/v2"
+	"net/http"
 	"strconv"
 	"time"
 )
@@ -58,7 +59,7 @@ func (r *sdkRuntime) runExportLoop(ctx context.Context) {
 		}
 		r.runExportCycle(ctx)
 		// Jitter keeps processes that started together from staying aligned.
-		timer.Reset(time.Duration(float64(r.currentExportInterval()) * (0.9 + 0.2*rand.Float64())))
+		timer.Reset(time.Duration(float64(r.exportInterval.Load()) * (0.9 + 0.2*rand.Float64())))
 	}
 }
 
@@ -90,27 +91,29 @@ func (r *sdkRuntime) sendPendingFiles(ctx context.Context, budget int) {
 		if ctx.Err() != nil || (budget >= 0 && sent >= budget) {
 			return
 		}
-		if budget >= 0 && sent > 0 && !sleep(ctx, time.Duration(100+rand.IntN(400))*time.Millisecond) {
-			return
+		if budget >= 0 && sent > 0 {
+			select {
+			case <-time.After(time.Duration(100+rand.IntN(400)) * time.Millisecond):
+			case <-ctx.Done():
+				return
+			}
 		}
 		body, ok := r.spool.readForSend(f)
 		if !ok {
 			continue
 		}
 		sent++
-		resp := r.client.post(ctx, f.signal, body)
-		if resp.interval > 0 {
-			r.exportInterval = resp.interval
+		status, interval := r.client.post(ctx, f.signal, body)
+		if interval > 0 {
+			r.exportInterval.Store(int64(interval))
 		}
-		switch resp.outcome {
-		case exportAccepted:
-			r.spool.delete(f)
-		case exportRejected:
-			warnOnce("export-rejected-"+strconv.Itoa(resp.status), "Apitally rejected buffered "+f.signal+" with HTTP status "+strconv.Itoa(resp.status)+" and they were dropped")
-			r.spool.delete(f)
-		default:
+		switch {
+		case status == 0 || status == http.StatusRequestTimeout || status == http.StatusTooManyRequests || status >= 500:
 			return
+		case status < 200 || status >= 300:
+			warnOnce("export-rejected-"+strconv.Itoa(status), "Apitally rejected buffered "+f.signal+" with HTTP status "+strconv.Itoa(status)+" and they were dropped")
 		}
+		r.spool.delete(f)
 	}
 }
 
@@ -120,22 +123,5 @@ func (r *sdkRuntime) emitErrorEvents() {
 	}
 	for key, counts := range r.serverErrors.drain() {
 		r.logs.emitEvent(serverErrorEventName, serverErrorEventBody(key, counts))
-	}
-}
-
-func (r *sdkRuntime) currentExportInterval() time.Duration {
-	r.cycleLock <- struct{}{}
-	defer func() { <-r.cycleLock }()
-	return r.exportInterval
-}
-
-func sleep(ctx context.Context, d time.Duration) bool {
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-	select {
-	case <-timer.C:
-		return true
-	case <-ctx.Done():
-		return false
 	}
 }

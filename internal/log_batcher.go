@@ -2,6 +2,8 @@ package internal
 
 import (
 	"context"
+	"runtime"
+	"slices"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -24,20 +26,9 @@ type logRecord struct {
 	record       root.LogRecord
 	eventName    string
 	eventBody    attribute.Value
-	traceID      trace.TraceID
-	spanID       trace.SpanID
-	traceFlags   trace.TraceFlags
+	spanContext  trace.SpanContext
 	serverSpanID trace.SpanID
-	codeFunction string
-	codeFile     string
-	codeLine     int
-}
-
-func (r *logRecord) scopeName() string {
-	if r.eventName != "" {
-		return sdkScopeName
-	}
-	return "slog"
+	frame        runtime.Frame
 }
 
 // logBatcher encodes log records on its own goroutine and appends them to
@@ -141,9 +132,7 @@ func (b *logBatcher) drainQueue(batch []*logRecord) []*logRecord {
 
 func (b *logBatcher) export(batch []*logRecord) {
 	defer recoverAndLogPanic("log export")
-	for len(batch) > 0 {
-		n := min(len(batch), recordsPerEncodedChunk)
-		b.spool.appendMessage(signalLogs, encodeLogs(b.resource, batch[:n]))
-		batch = batch[n:]
+	for chunk := range slices.Chunk(batch, recordsPerEncodedChunk) {
+		b.spool.appendMessage(signalLogs, encodeLogs(b.resource, chunk))
 	}
 }

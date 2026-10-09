@@ -10,7 +10,6 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
-	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 
 	root "github.com/apitally/apitally-go"
 )
@@ -18,6 +17,7 @@ import (
 const batchExportTimeout = 30 * time.Second
 
 var (
+	// registrationMu guards the creation of the runtime and its route listers.
 	registrationMu sync.Mutex
 	currentRuntime atomic.Pointer[sdkRuntime]
 	// Activation is suppressed in test binaries unless a test calls SetUpTest.
@@ -28,22 +28,18 @@ var (
 // sdkRuntime is the process-global Apitally runtime. The first registered
 // configuration wins; components are created once at activation.
 type sdkRuntime struct {
-	settings  *settings
-	framework FrameworkInfo
-
-	routeListersMu sync.Mutex
-	routeListers   []func() []Route
+	settings     *settings
+	framework    FrameworkInfo
+	routeListers []func() []Route
 
 	activateOnce sync.Once
 	isActive     atomic.Bool
 
 	resource          *resource.Resource
-	encodedResource   *resourcepb.Resource
 	spool             *spool
 	client            *exportClient
 	logs              *logBatcher
 	metrics           *metrics
-	redaction         *redaction
 	registry          *requestRegistry
 	spanProcessor     *spanProcessor
 	batchProcessor    sdktrace.SpanProcessor
@@ -61,8 +57,9 @@ type sdkRuntime struct {
 
 	// cycleLock serializes export cycles, flushes and shutdown. It is a channel,
 	// so Flush can stop waiting at its deadline.
-	cycleLock      chan struct{}
-	exportInterval time.Duration
+	cycleLock chan struct{}
+	// exportInterval holds a time.Duration.
+	exportInterval atomic.Int64
 	// exportContext is canceled when shutdown begins, which stops the export
 	// loop and any flush still delivering.
 	exportContext  context.Context
@@ -88,9 +85,7 @@ func Register(cfg *root.Config, framework FrameworkInfo, listRoutes func() []Rou
 	} else if !r.settings.isEquivalent(s) {
 		logWarn("Apitally was initialized again with a different configuration, which is ignored")
 	}
-	r.routeListersMu.Lock()
 	r.routeListers = append(r.routeListers, listRoutes)
-	r.routeListersMu.Unlock()
 }
 
 // InstallOnce calls install unless it was already called for app, so
@@ -153,17 +148,16 @@ func (r *sdkRuntime) activate() {
 	}
 	defer recoverAndLogPanic("activation")
 	r.resource = newResource(r.settings.config.Env)
-	r.encodedResource = encodeResource(r.resource)
+	encodedResource := encodeResource(r.resource)
 	r.exportResources = map[*resource.Resource]*resource.Resource{}
 	r.spool = newSpool()
 	r.client = newExportClient(r.settings)
-	r.logs = newLogBatcher(r.spool, r.encodedResource)
-	r.metrics = newMetrics(r.spool, r.encodedResource)
-	r.redaction = newRedaction(r.settings)
+	r.logs = newLogBatcher(r.spool, encodedResource)
+	r.metrics = newMetrics(r.spool, encodedResource)
 	r.registry = newRequestRegistry()
 	r.consumers = newConsumerUpdates()
 	r.spanProcessor = &spanProcessor{registry: r.registry}
-	r.batchProcessor = sdktrace.NewBatchSpanProcessor(newSpanExporter(r.redaction, r.settings, r.spool),
+	r.batchProcessor = sdktrace.NewBatchSpanProcessor(newSpanExporter(newRedaction(r.settings), r.settings, r.spool),
 		sdktrace.WithMaxQueueSize(batchQueueSize),
 		sdktrace.WithMaxExportBatchSize(batchMaxSize),
 		sdktrace.WithBatchTimeout(batchDelay),
@@ -175,7 +169,8 @@ func (r *sdkRuntime) activate() {
 		logWarn("Apitally does not capture application logs, because no handler was created with NewSlogHandler. Wrap your slog handler with NewSlogHandler, or set Config.CaptureLogs to false.")
 	}
 	r.exportContext, r.cancelExports = context.WithCancel(context.Background())
-	r.exportInterval, r.exportLoopDone = defaultExportInterval, make(chan struct{})
+	r.exportInterval.Store(int64(defaultExportInterval))
+	r.exportLoopDone = make(chan struct{})
 	go r.logs.run()
 	go r.runExportLoop(r.exportContext)
 	r.isActive.Store(true)
@@ -205,8 +200,8 @@ func (r *sdkRuntime) shutdown(ctx context.Context) error {
 
 // listRoutes returns the union of the routes of all registered apps.
 func (r *sdkRuntime) listRoutes() []Route {
-	r.routeListersMu.Lock()
-	defer r.routeListersMu.Unlock()
+	registrationMu.Lock()
+	defer registrationMu.Unlock()
 	var routes []Route
 	for _, listRoutes := range r.routeListers {
 		func() {

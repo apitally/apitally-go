@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -28,12 +29,13 @@ func encodeResource(res *resource.Resource) *resourcepb.Resource {
 func encodeLogs(res *resourcepb.Resource, records []*logRecord) *logspb.LogsData {
 	var scopes []*logspb.ScopeLogs
 	for _, r := range records {
-		scopeName := r.scopeName()
-		i := 0
-		for i < len(scopes) && scopes[i].Scope.Name != scopeName {
-			i++
+		scopeName := "slog"
+		if r.eventName != "" {
+			scopeName = sdkScopeName
 		}
-		if i == len(scopes) {
+		i := slices.IndexFunc(scopes, func(s *logspb.ScopeLogs) bool { return s.Scope.Name == scopeName })
+		if i < 0 {
+			i = len(scopes)
 			scopes = append(scopes, &logspb.ScopeLogs{Scope: &commonpb.InstrumentationScope{Name: scopeName}})
 		}
 		scopes[i].LogRecords = append(scopes[i].LogRecords, encodeLogRecord(r))
@@ -48,13 +50,14 @@ func encodeLogRecord(r *logRecord) *logspb.LogRecord {
 	}
 	attrs := []attribute.KeyValue{attribute.String("apitally.request.server_span_id", r.serverSpanID.String())}
 	// Records without a program counter have no code location.
-	if r.codeFunction != "" {
+	if r.frame.Function != "" {
 		attrs = append(attrs,
-			attribute.String("code.function.name", r.codeFunction),
-			attribute.String("code.file.path", r.codeFile),
-			attribute.Int("code.line.number", r.codeLine),
+			attribute.String("code.function.name", r.frame.Function),
+			attribute.String("code.file.path", r.frame.File),
+			attribute.Int("code.line.number", r.frame.Line),
 		)
 	}
+	traceID, spanID := r.spanContext.TraceID(), r.spanContext.SpanID()
 	return &logspb.LogRecord{
 		TimeUnixNano:         timestamp,
 		ObservedTimeUnixNano: timestamp,
@@ -62,30 +65,10 @@ func encodeLogRecord(r *logRecord) *logspb.LogRecord {
 		SeverityText:         r.record.Level.String(),
 		Body:                 &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: r.record.Message}},
 		Attributes:           encodeAttributes(append(attrs, slogAttributes(r.record.Attrs)...)),
-		TraceId:              r.traceID[:],
-		SpanId:               r.spanID[:],
-		Flags:                uint32(r.traceFlags),
+		TraceId:              traceID[:],
+		SpanId:               spanID[:],
+		Flags:                uint32(r.spanContext.TraceFlags()),
 	}
-}
-
-func encodeProcessGauges(res *resourcepb.Resource, start, end time.Time, values processMetricValues) *metricspb.MetricsData {
-	var metrics []*metricspb.Metric
-	gauge := func(name, unit string, point *metricspb.NumberDataPoint) {
-		point.StartTimeUnixNano, point.TimeUnixNano = unixNano(start), unixNano(end)
-		metrics = append(metrics, &metricspb.Metric{
-			Name: name,
-			Unit: unit,
-			Data: &metricspb.Metric_Gauge{Gauge: &metricspb.Gauge{DataPoints: []*metricspb.NumberDataPoint{point}}},
-		})
-	}
-	if values.hasCPUUtilization {
-		gauge("process.cpu.utilization", "1", &metricspb.NumberDataPoint{Value: &metricspb.NumberDataPoint_AsDouble{AsDouble: values.cpuUtilization}})
-	}
-	if values.hasMemoryUsage {
-		gauge("process.memory.usage", "By", &metricspb.NumberDataPoint{Value: &metricspb.NumberDataPoint_AsInt{AsInt: values.memoryUsage}})
-	}
-	gauge("process.uptime", "s", &metricspb.NumberDataPoint{Value: &metricspb.NumberDataPoint_AsDouble{AsDouble: values.uptime}})
-	return encodeMetrics(res, metrics)
 }
 
 func encodeRequestHistograms(res *resourcepb.Resource, start, end time.Time, keys []requestMetricKey, requests map[requestMetricKey]*requestMetricValues) *metricspb.MetricsData {
@@ -123,12 +106,10 @@ func encodeRequestHistograms(res *resourcepb.Resource, start, end time.Time, key
 		addPoint(requestBodySize, &values.requestBodySize, encoded)
 		addPoint(responseBodySize, &values.responseBodySize, encoded)
 	}
-	var metrics []*metricspb.Metric
-	for _, metric := range []*metricspb.Metric{duration, requestBodySize, responseBodySize} {
-		if len(metric.GetExponentialHistogram().DataPoints) > 0 {
-			metrics = append(metrics, metric)
-		}
-	}
+	metrics := []*metricspb.Metric{duration, requestBodySize, responseBodySize}
+	metrics = slices.DeleteFunc(metrics, func(metric *metricspb.Metric) bool {
+		return len(metric.GetExponentialHistogram().DataPoints) == 0
+	})
 	return encodeMetrics(res, metrics)
 }
 

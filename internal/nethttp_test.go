@@ -85,9 +85,8 @@ func TestReadFromUsesWrappedWriterUnlessBodyIsCaptured(t *testing.T) {
 
 			assert.Equal(t, contents, recorder.Body.String())
 			assert.Equal(t, !isCaptured, recorder.isReadFromCalled)
-			spans := server.Spans(t)
-			require.Len(t, spans, 1)
-			attrs := testutils.Attributes(spans[0].Attributes)
+			span := server.SingleSpan(t)
+			attrs := testutils.Attributes(span.Attributes)
 			assert.Equal(t, int64(1000), attrs["http.response.body.size"])
 			if isCaptured {
 				assert.Equal(t, contents, attrs["apitally.response.body"])

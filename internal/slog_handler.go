@@ -23,6 +23,7 @@ import (
 const (
 	maxLogTextLength          = 2_048
 	maxBufferedLogsPerRequest = 1000
+	maxSlogValueDepth         = 100
 )
 
 var (
@@ -70,7 +71,7 @@ func (h *slogHandler) Handle(ctx context.Context, record slog.Record) error {
 func (h *slogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	return &slogHandler{
 		next:       h.next.WithAttrs(attrs),
-		operations: append(slices.Clone(h.operations), slogHandlerOperation{attrs: ownedSlogAttrs(attrs)}),
+		operations: append(slices.Clone(h.operations), slogHandlerOperation{attrs: ownedSlogAttrs(attrs, 0)}),
 	}
 }
 
@@ -105,13 +106,9 @@ func (h *slogHandler) capture(ctx context.Context, record slog.Record) {
 	}
 	captured := &logRecord{
 		record:       root.LogRecord{Time: record.Time, Level: record.Level, Message: record.Message, Attrs: h.recordAttrs(record)},
-		traceID:      spanCtx.TraceID(),
-		spanID:       spanCtx.SpanID(),
-		traceFlags:   spanCtx.TraceFlags(),
+		spanContext:  spanCtx,
 		serverSpanID: state.span.SpanContext().SpanID(),
-		codeFunction: frame.Function,
-		codeFile:     frame.File,
-		codeLine:     frame.Line,
+		frame:        frame,
 	}
 	if mask := r.settings.config.MaskLogRecord; mask != nil && !callMaskLogRecord(mask, &captured.record) {
 		return
@@ -150,7 +147,7 @@ func (h *slogHandler) recordAttrs(record slog.Record) []slog.Attr {
 		attrs = append(attrs, a)
 		return true
 	})
-	attrs = ownedSlogAttrs(attrs)
+	attrs = ownedSlogAttrs(attrs, 0)
 	for i := len(h.operations) - 1; i >= 0; i-- {
 		if operation := h.operations[i]; operation.group != "" {
 			if len(attrs) > 0 {
@@ -189,15 +186,9 @@ func (s *RequestState) logEmitted(record *logRecord) {
 // application objects: maps become groups, slices and arrays become new
 // []any of converted items, byte slices are copied and other types become
 // strings. Strings are copied, because Fiber reuses the memory of request
-// strings.
-func ownedSlogAttrs(attrs []slog.Attr) []slog.Attr {
-	return ownedSlogAttrsAtDepth(attrs, 0)
-}
-
-// maxSlogValueDepth bounds the conversion of values that contain themselves.
-const maxSlogValueDepth = 100
-
-func ownedSlogAttrsAtDepth(attrs []slog.Attr, depth int) []slog.Attr {
+// strings. depth counts the enclosing values, so values that contain
+// themselves stop at maxSlogValueDepth.
+func ownedSlogAttrs(attrs []slog.Attr, depth int) []slog.Attr {
 	out := make([]slog.Attr, 0, len(attrs))
 	for _, a := range attrs {
 		a.Value = ownedSlogValue(a.Value, depth)
@@ -219,7 +210,7 @@ func ownedSlogValue(v slog.Value, depth int) slog.Value {
 	case slog.KindString:
 		return slog.StringValue(strings.Clone(v.String()))
 	case slog.KindGroup:
-		return slog.GroupValue(ownedSlogAttrsAtDepth(v.Group(), depth+1)...)
+		return slog.GroupValue(ownedSlogAttrs(v.Group(), depth+1)...)
 	case slog.KindAny:
 		return ownedAnyValue(v.Any(), depth)
 	}

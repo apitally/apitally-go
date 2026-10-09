@@ -38,13 +38,12 @@ func TestOuterServerSpanIsReused(t *testing.T) {
 		require.Len(t, userSpans.GetSpans(), 1)
 		userSpan := userSpans.GetSpans()[0]
 		assert.Empty(t, userSpan.Attributes)
-		spans := server.Spans(t)
-		require.Len(t, spans, 1)
-		assert.Equal(t, userSpan.SpanContext.SpanID().String(), trace.SpanID(spans[0].SpanId).String())
-		assert.Equal(t, "outer", spans[0].Name)
-		attrs := testutils.Attributes(spans[0].Attributes)
+		span := server.SingleSpan(t)
+		assert.Equal(t, userSpan.SpanContext.SpanID().String(), trace.SpanID(span.SpanId).String())
+		assert.Equal(t, "outer", span.Name)
+		attrs := testutils.Attributes(span.Attributes)
 		assert.Equal(t, "/items/{id}", attrs["http.route"])
 		assert.Equal(t, int64(200), attrs["http.response.status_code"])
-		assert.Equal(t, userSpan.EndTime.Add(time.Second).UnixNano(), int64(spans[0].EndTimeUnixNano))
+		assert.Equal(t, userSpan.EndTime.Add(time.Second).UnixNano(), int64(span.EndTimeUnixNano))
 	})
 }

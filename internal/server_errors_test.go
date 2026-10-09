@@ -46,11 +46,10 @@ func TestPanicIsRecordedAsServerError(t *testing.T) {
 
 	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
 	assert.Same(t, panicValue, <-recovered)
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	require.Len(t, spans[0].Events, 1)
-	event := testutils.Attributes(spans[0].Events[0].Attributes)
-	assert.Equal(t, "exception", spans[0].Events[0].Name)
+	span := server.SingleSpan(t)
+	require.Len(t, span.Events, 1)
+	event := testutils.Attributes(span.Events[0].Attributes)
+	assert.Equal(t, "exception", span.Events[0].Name)
 	assert.Equal(t, "fs.PathError", event["exception.type"])
 	assert.Equal(t, "loading config: open app.yaml: file does not exist", event["exception.message"])
 	assert.Contains(t, event["exception.stacktrace"], "net/http.HandlerFunc.ServeHTTP\n\t")
@@ -82,10 +81,9 @@ func TestOnlyFirstCapturedErrorIsKept(t *testing.T) {
 	testutils.Get(t, appURL+"/items")
 	require.NoError(t, Shutdown(context.Background()))
 
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	require.Len(t, spans[0].Events, 1)
-	assert.Equal(t, "first", testutils.Attributes(spans[0].Events[0].Attributes)["exception.message"])
+	span := server.SingleSpan(t)
+	require.Len(t, span.Events, 1)
+	assert.Equal(t, "first", testutils.Attributes(span.Events[0].Attributes)["exception.message"])
 	records := server.Events(t, serverErrorEventName)
 	require.Len(t, records, 1)
 	assert.Equal(t, "first", testutils.Value(records[0].Body).(map[string]any)["message"])
@@ -106,9 +104,8 @@ func TestPanicAfterResponseStartedKeepsStatus(t *testing.T) {
 	require.NoError(t, Shutdown(context.Background()))
 
 	assert.Equal(t, http.StatusAccepted, recorder.Code)
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	assert.Equal(t, int64(http.StatusAccepted), testutils.Attributes(spans[0].Attributes)["http.response.status_code"])
+	span := server.SingleSpan(t)
+	assert.Equal(t, int64(http.StatusAccepted), testutils.Attributes(span.Attributes)["http.response.status_code"])
 	assert.Empty(t, server.Events(t, serverErrorEventName))
 }
 
@@ -124,9 +121,8 @@ func TestAbortHandlerPanicIsNotCaptured(t *testing.T) {
 	app.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/items", nil))
 	require.NoError(t, Shutdown(context.Background()))
 
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	assert.Empty(t, spans[0].Events)
+	span := server.SingleSpan(t)
+	assert.Empty(t, span.Events)
 	assert.Empty(t, server.Events(t, serverErrorEventName))
 }
 
@@ -189,9 +185,8 @@ func TestErrorWhoseErrorMethodPanicsIsNotCaptured(t *testing.T) {
 	require.NoError(t, Shutdown(context.Background()))
 
 	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	assert.Empty(t, spans[0].Events)
+	span := server.SingleSpan(t)
+	assert.Empty(t, span.Events)
 }
 
 func TestServerErrorsAreCountedPerConsumerAndCapped(t *testing.T) {

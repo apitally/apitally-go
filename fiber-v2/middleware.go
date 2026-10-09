@@ -69,11 +69,6 @@ func newMiddleware(app *fiber.App) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		o, ctx := internal.BeginFasthttp(c.UserContext(), c.Context(), requestInfo(c))
 		c.SetUserContext(ctx)
-		if o.State != nil {
-			// Context.Value of fasthttp.RequestCtx resolves string keys to user values,
-			// which include Locals.
-			c.Locals(internal.RequestStateKey, o.State)
-		}
 		defer func() {
 			p := recover()
 			if o.State != nil {

@@ -27,18 +27,12 @@ func startBodyCaptureApp(t *testing.T, server *testutils.OTLPServer) string {
 	}))
 }
 
-func post(t *testing.T, url, contentType, body string) {
-	req, _ := http.NewRequest(http.MethodPost, url, strings.NewReader(body))
-	req.Header.Set("Content-Type", contentType)
-	testutils.Do(t, http.DefaultClient.Do, req)
-}
-
 func TestBodiesAreCapturedOnlyWithAllowedContentTypes(t *testing.T) {
 	server := testutils.NewOTLPServer(t)
 	appURL := startBodyCaptureApp(t, server)
 
-	post(t, appURL+"/json", "Application/JSON", `{"name":"x"}`)
-	post(t, appURL+"/binary", "application/octet-stream", "ping")
+	testutils.Send(t, http.MethodPost, appURL+"/json", `{"name":"x"}`, "Content-Type", "Application/JSON")
+	testutils.Send(t, http.MethodPost, appURL+"/binary", "ping", "Content-Type", "application/octet-stream")
 	require.NoError(t, Shutdown(context.Background()))
 
 	spans := server.Spans(t)
@@ -59,12 +53,11 @@ func TestBodiesOverLimitAreCapturedAsTooLarge(t *testing.T) {
 	large := `"` + strings.Repeat("x", maxBodySize) + `"`
 	appURL := startBodyCaptureApp(t, server)
 
-	post(t, appURL+"/items", "application/json", large)
+	testutils.Send(t, http.MethodPost, appURL+"/items", large, "Content-Type", "application/json")
 	require.NoError(t, Shutdown(context.Background()))
 
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	attrs := testutils.Attributes(spans[0].Attributes)
+	span := server.SingleSpan(t)
+	attrs := testutils.Attributes(span.Attributes)
 	assert.Equal(t, "[BODY_TOO_LARGE]", attrs["apitally.request.body"])
 	assert.Equal(t, "[BODY_TOO_LARGE]", attrs["apitally.response.body"])
 	assert.Equal(t, int64(len(large)), attrs["http.response.body.size"])

@@ -25,8 +25,7 @@ func TestCaptureErrorRecordsCallerStack(t *testing.T) {
 	testutils.Get(t, appURL+"/items")
 	shutDown(t)
 
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	require.Len(t, spans[0].Events, 1)
-	assert.Regexp(t, `^github.com/apitally/apitally-go/chi-v5_test.TestCaptureErrorRecordsCallerStack.func1\n\t\S+/chi-v5/sdk_test.go:\d+\n`, testutils.Attributes(spans[0].Events[0].Attributes)["exception.stacktrace"])
+	span := server.SingleSpan(t)
+	require.Len(t, span.Events, 1)
+	assert.Regexp(t, `^github.com/apitally/apitally-go/chi-v5_test.TestCaptureErrorRecordsCallerStack.func1\n\t\S+/chi-v5/sdk_test.go:\d+\n`, testutils.Attributes(span.Events[0].Attributes)["exception.stacktrace"])
 }

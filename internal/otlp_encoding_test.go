@@ -19,7 +19,6 @@ func TestInvalidUTF8IsReplacedInExportedTelemetry(t *testing.T) {
 	testutils.Get(t, appURL+"/items/%ff")
 	require.NoError(t, Shutdown(context.Background()))
 
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	assert.Equal(t, "/items/\uFFFD", testutils.Attributes(spans[0].Attributes)["url.path"])
+	span := server.SingleSpan(t)
+	assert.Equal(t, "/items/\uFFFD", testutils.Attributes(span.Attributes)["url.path"])
 }

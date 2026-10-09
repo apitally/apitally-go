@@ -51,9 +51,8 @@ func TestRequestAttributesAreSetOnServerSpan(t *testing.T) {
 	testutils.Get(t, appURL+"/items")
 	require.NoError(t, Shutdown(context.Background()))
 
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	attrs := testutils.Attributes(spans[0].Attributes)
+	span := server.SingleSpan(t)
+	attrs := testutils.Attributes(span.Attributes)
 	assert.Equal(t, "acme", attrs["tenant"])
 	assert.Equal(t, []any{"admin", "billing"}, attrs["roles"])
 }
@@ -125,9 +124,8 @@ func TestSpanEndingAfterReleaseIsDropped(t *testing.T) {
 	late.End()
 	require.NoError(t, Shutdown(context.Background()))
 
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	assert.Equal(t, "GET /items", spans[0].Name)
+	span := server.SingleSpan(t)
+	assert.Equal(t, "GET /items", span.Name)
 }
 
 func TestRequestBuffersAtMostThousandDescendantSpans(t *testing.T) {
@@ -164,14 +162,12 @@ func TestExcludedRequestsAreNotExportedOrSampled(t *testing.T) {
 	testutils.Get(t, appURL+"/healthz")
 	testutils.Get(t, appURL+"/Internal/stats")
 	testutils.Get(t, appURL+"/items", "User-Agent", "kube-probe/1.30")
-	req, _ := http.NewRequest(http.MethodOptions, appURL+"/items", nil)
-	testutils.Do(t, http.DefaultClient.Do, req)
+	testutils.Send(t, http.MethodOptions, appURL+"/items", "")
 	testutils.Get(t, appURL+"/items")
 	require.NoError(t, Shutdown(context.Background()))
 
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	assert.Equal(t, "/items", testutils.Attributes(spans[0].Attributes)["url.path"])
+	span := server.SingleSpan(t)
+	assert.Equal(t, "/items", testutils.Attributes(span.Attributes)["url.path"])
 	assert.Equal(t, 1, callbackCalls)
 }
 

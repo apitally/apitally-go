@@ -243,7 +243,7 @@ func (s *RequestState) recordRequestData(result *TransportResult, end time.Time,
 		r.validationErrors.add(validationErrorKey{method: method, path: path, validationDetail: detail}, consumerIdentifier)
 	}
 	if result.StatusCode == http.StatusInternalServerError && captured != nil {
-		r.serverErrors.add(serverErrorKey{method: method, path: path, typeName: captured.typeName, message: captured.message, stacktrace: captured.stacktrace}, consumerIdentifier)
+		r.serverErrors.add(serverErrorKey{method: method, path: path, capturedError: *captured}, consumerIdentifier)
 	}
 }
 

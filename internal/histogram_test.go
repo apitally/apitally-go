@@ -21,7 +21,7 @@ func TestHistogramIsExportedWithExponentialBuckets(t *testing.T) {
 
 	// At scale 3, a power of two 2^n falls into bucket 8n-1 and 3 into bucket 12.
 	for _, size := range []int{2, 0, 1, 4, 3} {
-		post(t, appURL+"/items", "text/plain", strings.Repeat("x", size))
+		testutils.Send(t, http.MethodPost, appURL+"/items", strings.Repeat("x", size))
 	}
 	require.NoError(t, Shutdown(context.Background()))
 

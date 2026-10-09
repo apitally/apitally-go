@@ -39,8 +39,7 @@ func TestExcludedAndSampledOutRequestsAreStillCounted(t *testing.T) {
 	testutils.Get(t, appURL+"/orders")
 	testutils.Get(t, appURL+"/healthz")
 	testutils.Get(t, appURL+"/missing")
-	req, _ := http.NewRequest(http.MethodOptions, appURL+"/items", nil)
-	testutils.Do(t, http.DefaultClient.Do, req)
+	testutils.Send(t, http.MethodOptions, appURL+"/items", "")
 	require.NoError(t, Shutdown(context.Background()))
 
 	assert.Empty(t, server.Spans(t))

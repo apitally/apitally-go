@@ -76,10 +76,9 @@ func TestOwnProviderIsRegisteredWithPropagator(t *testing.T) {
 	require.NoError(t, Shutdown(context.Background()))
 
 	assert.Equal(t, defaultPropagator, otel.GetTextMapPropagator())
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	assert.Equal(t, "0af7651916cd43dd8448eb211c80319c", trace.TraceID(spans[0].TraceId).String())
-	assert.Equal(t, "b7ad6b7169203331", trace.SpanID(spans[0].ParentSpanId).String())
+	span := server.SingleSpan(t)
+	assert.Equal(t, "0af7651916cd43dd8448eb211c80319c", trace.TraceID(span.TraceId).String())
+	assert.Equal(t, "b7ad6b7169203331", trace.SpanID(span.ParentSpanId).String())
 }
 
 func TestApplicationPropagatorIsKept(t *testing.T) {
@@ -93,9 +92,8 @@ func TestApplicationPropagatorIsKept(t *testing.T) {
 	require.NoError(t, Shutdown(context.Background()))
 
 	assert.Equal(t, empty, otel.GetTextMapPropagator())
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	assert.Empty(t, spans[0].ParentSpanId)
+	span := server.SingleSpan(t)
+	assert.Empty(t, span.ParentSpanId)
 }
 
 func TestApplicationProviderLeavesPropagatorUnset(t *testing.T) {
@@ -108,9 +106,8 @@ func TestApplicationProviderLeavesPropagatorUnset(t *testing.T) {
 	require.NoError(t, Shutdown(context.Background()))
 
 	assert.Equal(t, initialPropagator, otel.GetTextMapPropagator())
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	assert.Equal(t, "0af7651916cd43dd8448eb211c80319c", trace.TraceID(spans[0].TraceId).String())
+	span := server.SingleSpan(t)
+	assert.Equal(t, "0af7651916cd43dd8448eb211c80319c", trace.TraceID(span.TraceId).String())
 }
 
 func TestForeignTracerProviderGetsPrivateProvider(t *testing.T) {

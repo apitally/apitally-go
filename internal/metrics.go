@@ -1,12 +1,15 @@
 package internal
 
 import (
+	"maps"
 	"os"
 	"runtime"
+	"slices"
 	"sync"
 	"time"
 
 	"github.com/shirou/gopsutil/v4/process"
+	metricspb "go.opentelemetry.io/proto/otlp/metrics/v1"
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 )
 
@@ -49,14 +52,6 @@ type requestMetricValues struct {
 	duration         exponentialHistogram
 	requestBodySize  exponentialHistogram
 	responseBodySize exponentialHistogram
-}
-
-type processMetricValues struct {
-	cpuUtilization    float64
-	hasCPUUtilization bool
-	memoryUsage       int64
-	hasMemoryUsage    bool
-	uptime            float64
 }
 
 func newMetrics(sp *spool, res *resourcepb.Resource) *metrics {
@@ -104,36 +99,39 @@ func (m *metrics) collect() {
 	if isCapacityExceeded {
 		warnOnce("metrics-capacity", "Apitally recorded more than 50,000 combinations of method, route, status code and consumer in one interval, some request metrics are missing")
 	}
-	m.spool.appendMessage(signalMetrics, encodeProcessGauges(m.resource, start, end, m.observeProcess(end)))
-	keys := make([]requestMetricKey, 0, len(requests))
-	for key := range requests {
-		keys = append(keys, key)
-	}
-	for len(keys) > 0 {
-		n := min(len(keys), metricCombinationsPerRequest)
-		m.spool.appendMessage(signalMetrics, encodeRequestHistograms(m.resource, start, end, keys[:n], requests))
-		keys = keys[n:]
+	m.spool.appendMessage(signalMetrics, encodeMetrics(m.resource, m.observeProcess(start, end)))
+	for keys := range slices.Chunk(slices.Collect(maps.Keys(requests)), metricCombinationsPerRequest) {
+		m.spool.appendMessage(signalMetrics, encodeRequestHistograms(m.resource, start, end, keys, requests))
 	}
 }
 
-// observeProcess reports CPU utilization normalized across CPUs and the
-// resident set size, when the platform provides them.
-func (m *metrics) observeProcess(now time.Time) processMetricValues {
-	values := processMetricValues{uptime: now.Sub(m.startTime).Seconds()}
-	if m.process == nil {
-		return values
+// observeProcess returns the process gauges: CPU utilization normalized
+// across CPUs and the resident set size, when the platform provides them,
+// and the uptime.
+func (m *metrics) observeProcess(start, end time.Time) []*metricspb.Metric {
+	var gauges []*metricspb.Metric
+	gauge := func(name, unit string, point *metricspb.NumberDataPoint) {
+		point.StartTimeUnixNano, point.TimeUnixNano = unixNano(start), unixNano(end)
+		gauges = append(gauges, &metricspb.Metric{
+			Name: name,
+			Unit: unit,
+			Data: &metricspb.Metric_Gauge{Gauge: &metricspb.Gauge{DataPoints: []*metricspb.NumberDataPoint{point}}},
+		})
 	}
-	if cpuTime := processCPUTime(m.process); cpuTime >= 0 && m.lastCPUTime >= 0 {
-		if elapsed := now.Sub(m.lastTime).Seconds(); elapsed > 0 {
-			values.cpuUtilization = min(max((cpuTime-m.lastCPUTime)/(elapsed*float64(runtime.NumCPU())), 0), 1)
-			values.hasCPUUtilization = true
+	if m.process != nil {
+		if cpuTime := processCPUTime(m.process); cpuTime >= 0 && m.lastCPUTime >= 0 {
+			if elapsed := end.Sub(m.lastTime).Seconds(); elapsed > 0 {
+				utilization := min(max((cpuTime-m.lastCPUTime)/(elapsed*float64(runtime.NumCPU())), 0), 1)
+				gauge("process.cpu.utilization", "1", &metricspb.NumberDataPoint{Value: &metricspb.NumberDataPoint_AsDouble{AsDouble: utilization}})
+			}
+			m.lastCPUTime, m.lastTime = cpuTime, end
 		}
-		m.lastCPUTime, m.lastTime = cpuTime, now
+		if info, err := m.process.MemoryInfo(); err == nil {
+			gauge("process.memory.usage", "By", &metricspb.NumberDataPoint{Value: &metricspb.NumberDataPoint_AsInt{AsInt: int64(info.RSS)}})
+		}
 	}
-	if info, err := m.process.MemoryInfo(); err == nil {
-		values.memoryUsage, values.hasMemoryUsage = int64(info.RSS), true
-	}
-	return values
+	gauge("process.uptime", "s", &metricspb.NumberDataPoint{Value: &metricspb.NumberDataPoint_AsDouble{AsDouble: end.Sub(m.startTime).Seconds()}})
+	return gauges
 }
 
 func processCPUTime(p *process.Process) float64 {

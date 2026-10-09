@@ -17,27 +17,36 @@ import (
 type FasthttpObservation struct {
 	State *RequestState
 
-	mu                sync.Mutex
-	result            *TransportResult
-	stream            *responseStream
-	isClosed          bool
-	isCloseRegistered bool
-	finishOnce        sync.Once
+	mu         sync.Mutex
+	result     *TransportResult
+	stream     *responseStream
+	isClosed   bool
+	finishOnce sync.Once
 }
 
 type fasthttpObservationKey struct{}
 
 // BeginFasthttp activates Apitally and begins the request. requestCtx is the
-// *fasthttp.RequestCtx, which closes the observation as a user value.
-func BeginFasthttp(ctx context.Context, requestCtx any, info RequestInfo) (*FasthttpObservation, context.Context) {
+// *fasthttp.RequestCtx, which closes the observation as a user value. The
+// request state is also a user value, which Locals and the Value methods of
+// the RequestCtx and fiber.Ctx resolve.
+func BeginFasthttp(ctx context.Context, requestCtx interface{ SetUserValue(key, value any) }, info RequestInfo) (*FasthttpObservation, context.Context) {
 	Activate()
 	state, ctx := beginRequest(ctx, info)
 	o := &FasthttpObservation{State: state}
-	if userValues, ok := requestCtx.(interface{ SetUserValue(key, value any) }); ok && state != nil {
-		userValues.SetUserValue(fasthttpObservationKey{}, o)
-		o.isCloseRegistered = true
+	if state != nil {
+		requestCtx.SetUserValue(RequestStateKey, state)
+		requestCtx.SetUserValue(fasthttpObservationKey{}, o)
 	}
 	return o, ctx
+}
+
+// fasthttpMessage is the body methods of *fasthttp.Request and
+// *fasthttp.Response.
+type fasthttpMessage interface {
+	IsBodyStream() bool
+	BodyStream() io.Reader
+	Body() []byte
 }
 
 // FinishHandler records the response data after the handler chain returned
@@ -46,7 +55,7 @@ func BeginFasthttp(ctx context.Context, requestCtx any, info RequestInfo) (*Fast
 // *fasthttp.Response, read before Fiber reuses them. recovered is the value of
 // a panic unwinding the handler chain, or nil. Call it only when State is not
 // nil.
-func (o *FasthttpObservation) FinishHandler(result TransportResult, request, response any, recovered any) {
+func (o *FasthttpObservation) FinishHandler(result TransportResult, request, response fasthttpMessage, recovered any) {
 	o.State.capturePanic(recovered)
 	defer recoverAndLogPanic("request observation")
 	if recovered != nil {
@@ -54,11 +63,8 @@ func (o *FasthttpObservation) FinishHandler(result TransportResult, request, res
 		result.StatusCode = http.StatusInternalServerError
 	}
 	result.RequestBodySize = o.State.info.ContentLength
-	if req, ok := request.(interface {
-		IsBodyStream() bool
-		Body() []byte
-	}); ok && !req.IsBodyStream() {
-		body := req.Body()
+	if !request.IsBodyStream() {
+		body := request.Body()
 		result.RequestBodySize = int64(len(body))
 		if o.State.shouldCaptureRequestBody() {
 			result.RequestBody = capturedCopy(body)
@@ -66,27 +72,21 @@ func (o *FasthttpObservation) FinishHandler(result TransportResult, request, res
 	}
 	result.ResponseBodySize = -1
 	isCaptured := o.State.shouldCaptureResponseBody(result.ResponseHeader)
-	if resp, ok := response.(interface {
-		IsBodyStream() bool
-		BodyStream() io.Reader
-		Body() []byte
-	}); ok {
-		if !resp.IsBodyStream() {
-			body := resp.Body()
-			result.ResponseBodySize = int64(len(body))
-			if isCaptured {
-				result.ResponseBody = capturedCopy(body)
-			}
-		} else if size := streamSize(resp.BodyStream(), result.ResponseHeader); size >= 0 {
-			result.ResponseBodySize = size
-		} else {
-			stream := &responseStream{onEnd: o.Close}
-			if isCaptured {
-				stream.capture = newBodyCapture(-1)
-			}
-			if replaceResponseBodyStream(response, stream.wrap) {
-				o.stream = stream
-			}
+	if !response.IsBodyStream() {
+		body := response.Body()
+		result.ResponseBodySize = int64(len(body))
+		if isCaptured {
+			result.ResponseBody = capturedCopy(body)
+		}
+	} else if size := streamSize(response.BodyStream(), result.ResponseHeader); size >= 0 {
+		result.ResponseBodySize = size
+	} else {
+		stream := &responseStream{onEnd: o.Close}
+		if isCaptured {
+			stream.capture = newBodyCapture(-1)
+		}
+		if replaceResponseBodyStream(response, stream.wrap) {
+			o.stream = stream
 		}
 	}
 	o.mu.Lock()
@@ -95,7 +95,7 @@ func (o *FasthttpObservation) FinishHandler(result TransportResult, request, res
 	// completes now, because adaptors such as adaptor.FiberApp and AWS Lambda
 	// proxies never reset the RequestCtx, so they never call Close. They read
 	// the stream until it ends, which completes a wrapped stream.
-	isComplete := o.stream == nil || o.isClosed || !o.isCloseRegistered
+	isComplete := o.stream == nil || o.isClosed
 	o.mu.Unlock()
 	if isComplete {
 		o.finish()

@@ -54,13 +54,11 @@ type fieldError interface {
 // found by unwrapping err as errors.As does: a slice whose elements are field
 // errors. Other errors have none.
 func validationDetails(err error) []validationDetail {
+	if details := fieldErrorDetails(err); details != nil {
+		return details
+	}
 	switch wrapper := err.(type) {
-	case nil:
-		return nil
 	case interface{ Unwrap() error }:
-		if details := fieldErrorDetails(err); details != nil {
-			return details
-		}
 		return validationDetails(wrapper.Unwrap())
 	case interface{ Unwrap() []error }:
 		for _, inner := range wrapper.Unwrap() {
@@ -68,9 +66,8 @@ func validationDetails(err error) []validationDetail {
 				return details
 			}
 		}
-		return nil
 	}
-	return fieldErrorDetails(err)
+	return nil
 }
 
 func fieldErrorDetails(err error) []validationDetail {

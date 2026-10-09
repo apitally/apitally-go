@@ -18,14 +18,6 @@ const (
 	maxExportInterval    = 60 * time.Second
 )
 
-type exportOutcome int
-
-const (
-	exportAccepted exportOutcome = iota
-	exportRetryable
-	exportRejected
-)
-
 // exportTransportForTest replaces the network transport in tests that run in
 // testing/synctest bubbles, where idle network connections would block fake
 // time.
@@ -37,12 +29,6 @@ type exportClient struct {
 	client   *http.Client
 	endpoint string
 	header   http.Header
-}
-
-type exportResponse struct {
-	outcome  exportOutcome
-	status   int
-	interval time.Duration
 }
 
 func newExportClient(s *settings) *exportClient {
@@ -68,7 +54,9 @@ func newExportClient(s *settings) *exportClient {
 	}
 }
 
-func (c *exportClient) post(ctx context.Context, signal string, body []byte) exportResponse {
+// post returns the response status, or 0 when no response arrived, and the
+// export interval the response requests, or 0.
+func (c *exportClient) post(ctx context.Context, signal string, body []byte) (status int, interval time.Duration) {
 	resp, err := c.send(ctx, signal, body)
 	var netErr net.Error
 	if err != nil && ctx.Err() == nil && !(errors.As(err, &netErr) && netErr.Timeout()) {
@@ -77,23 +65,14 @@ func (c *exportClient) post(ctx context.Context, signal string, body []byte) exp
 	}
 	if err != nil {
 		logDebug("Apitally could not send buffered "+signal+", will retry", "error", err)
-		return exportResponse{outcome: exportRetryable}
+		return 0, 0
 	}
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
-	result := exportResponse{status: resp.StatusCode}
 	if seconds, err := strconv.Atoi(resp.Header.Get(exportIntervalHeader)); err == nil {
-		result.interval = min(max(time.Duration(seconds)*time.Second, minExportInterval), maxExportInterval)
+		interval = min(max(time.Duration(seconds)*time.Second, minExportInterval), maxExportInterval)
 	}
-	switch {
-	case resp.StatusCode >= 200 && resp.StatusCode < 300:
-		result.outcome = exportAccepted
-	case resp.StatusCode == http.StatusRequestTimeout || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
-		result.outcome = exportRetryable
-	default:
-		result.outcome = exportRejected
-	}
-	return result
+	return resp.StatusCode, interval
 }
 
 func (c *exportClient) send(ctx context.Context, signal string, body []byte) (*http.Response, error) {

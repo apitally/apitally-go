@@ -24,8 +24,8 @@ type FrameworkInfo struct {
 
 // Route is a registered method and route template.
 type Route struct {
-	Method string
-	Path   string
+	Method string `json:"method"`
+	Path   string `json:"path"`
 }
 
 // NewRouteSet returns a function reporting whether a route is registered.
@@ -74,16 +74,12 @@ func startupEventBody(s *settings, framework FrameworkInfo, routes []Route) attr
 			config[name] = true
 		}
 	}
-	type path struct {
-		Method string `json:"method"`
-		Path   string `json:"path"`
-	}
-	paths := []path{}
+	paths := []Route{}
 	seen := map[Route]bool{}
 	for _, route := range routes {
 		if route.Method != "HEAD" && route.Method != "OPTIONS" && !seen[route] {
 			seen[route] = true
-			paths = append(paths, path(route))
+			paths = append(paths, route)
 		}
 	}
 	body, _ := json.Marshal(map[string]any{

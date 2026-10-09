@@ -3,7 +3,6 @@ package apitally_test
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -112,7 +111,7 @@ func send(t *testing.T, app *fiber.App, method, url string, body io.Reader, head
 }
 
 func shutDown(t *testing.T) {
-	require.NoError(t, apitally.Shutdown(context.Background()))
+	require.NoError(t, apitally.Shutdown(t.Context()))
 }
 
 func TestRequestExportsSingleServerSpanWithStableSemconv(t *testing.T) {
@@ -123,11 +122,10 @@ func TestRequestExportsSingleServerSpanWithStableSemconv(t *testing.T) {
 	shutDown(t)
 
 	assert.Equal(t, "item 42", resp.Body)
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	assert.Equal(t, tracepb.Span_SPAN_KIND_SERVER, spans[0].Kind)
-	assert.Equal(t, "GET /items/:id", spans[0].Name)
-	assert.Equal(t, "github.com/apitally/apitally-go/fiber-v2", spans[0].Scope)
+	span := server.SingleSpan(t)
+	assert.Equal(t, tracepb.Span_SPAN_KIND_SERVER, span.Kind)
+	assert.Equal(t, "GET /items/:id", span.Name)
+	assert.Equal(t, "github.com/apitally/apitally-go/fiber-v2", span.Scope)
 	assert.Equal(t, map[string]any{
 		"http.request.method":               "GET",
 		"url.scheme":                        "http",
@@ -140,7 +138,7 @@ func TestRequestExportsSingleServerSpanWithStableSemconv(t *testing.T) {
 		"http.request.body.size":            int64(0),
 		"http.response.body.size":           int64(7),
 		"http.response.header.content-type": []any{"text/plain; charset=utf-8"},
-	}, testutils.Attributes(spans[0].Attributes))
+	}, testutils.Attributes(span.Attributes))
 }
 
 func TestClientAddressUsesFrameworkResolvedClientIP(t *testing.T) {
@@ -150,9 +148,8 @@ func TestClientAddressUsesFrameworkResolvedClientIP(t *testing.T) {
 	send(t, app, http.MethodGet, "/items/1", nil, "X-Forwarded-For", "203.0.113.7")
 	shutDown(t)
 
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	assert.Equal(t, "203.0.113.7", testutils.Attributes(spans[0].Attributes)["client.address"])
+	span := server.SingleSpan(t)
+	assert.Equal(t, "203.0.113.7", testutils.Attributes(span.Attributes)["client.address"])
 }
 
 func TestHistogramAttributesAndLogCorrelation(t *testing.T) {
@@ -162,8 +159,7 @@ func TestHistogramAttributesAndLogCorrelation(t *testing.T) {
 	send(t, app, http.MethodGet, "/items/42", nil)
 	shutDown(t)
 
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
+	span := server.SingleSpan(t)
 	points := testutils.HistogramPoints(server.Metrics(t), "http.server.request.duration")
 	require.Len(t, points, 1)
 	assert.Equal(t, uint64(1), points[0].Count)
@@ -171,8 +167,8 @@ func TestHistogramAttributesAndLogCorrelation(t *testing.T) {
 	logs := server.ApplicationLogRecords(t)
 	require.Len(t, logs, 1)
 	assert.Equal(t, "fetching item", logs[0].Body.GetStringValue())
-	assert.Equal(t, spans[0].TraceId, logs[0].TraceId)
-	assert.Equal(t, trace.SpanID(spans[0].SpanId).String(), testutils.Attributes(logs[0].Attributes)["apitally.request.server_span_id"])
+	assert.Equal(t, span.TraceId, logs[0].TraceId)
+	assert.Equal(t, trace.SpanID(span.SpanId).String(), testutils.Attributes(logs[0].Attributes)["apitally.request.server_span_id"])
 }
 
 func TestRouteIncludesGroupPrefix(t *testing.T) {
@@ -227,9 +223,8 @@ func TestRequestAndResponseBodiesCapturedAndRedacted(t *testing.T) {
 	shutDown(t)
 
 	assert.Equal(t, `{"id":1,"token":"abc"}`, resp.Body)
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	attrs := testutils.Attributes(spans[0].Attributes)
+	span := server.SingleSpan(t)
+	attrs := testutils.Attributes(span.Attributes)
 	assert.Equal(t, `{"name":"x","password":"[REDACTED]"}`, attrs["apitally.request.body"])
 	assert.Equal(t, `{"id":1,"token":"[REDACTED]"}`, attrs["apitally.response.body"])
 	assert.Equal(t, int64(35), attrs["http.request.body.size"])
@@ -246,9 +241,8 @@ func TestStreamingResponseSizeAndBodyCaptured(t *testing.T) {
 	shutDown(t)
 
 	assert.Equal(t, "chunk 0\nchunk 1\nchunk 2\n", resp.Body)
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	attrs := testutils.Attributes(spans[0].Attributes)
+	span := server.SingleSpan(t)
+	attrs := testutils.Attributes(span.Attributes)
 	assert.Equal(t, "chunk 0\nchunk 1\nchunk 2\n", attrs["apitally.response.body"])
 	assert.Equal(t, int64(24), attrs["http.response.body.size"])
 	points := testutils.HistogramPoints(server.Metrics(t), "http.server.response.body.size")
@@ -284,9 +278,8 @@ func TestSetConsumerReachesSpanAndHistogram(t *testing.T) {
 	send(t, app, http.MethodGet, "/api/v1/users/7", nil, "X-Consumer", "acme")
 	shutDown(t)
 
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	assert.Equal(t, "acme", testutils.Attributes(spans[0].Attributes)["apitally.consumer.identifier"])
+	span := server.SingleSpan(t)
+	assert.Equal(t, "acme", testutils.Attributes(span.Attributes)["apitally.consumer.identifier"])
 	points := testutils.HistogramPoints(server.Metrics(t), "http.server.request.duration")
 	require.Len(t, points, 1)
 	assert.Equal(t, "acme", testutils.Attributes(points[0].Attributes)["apitally.consumer.identifier"])
@@ -300,13 +293,12 @@ func TestUnhandledPanicRecordedOnServerSpan(t *testing.T) {
 	shutDown(t)
 
 	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	require.Len(t, spans[0].Events, 1)
-	attrs := testutils.Attributes(spans[0].Events[0].Attributes)
+	span := server.SingleSpan(t)
+	require.Len(t, span.Events, 1)
+	attrs := testutils.Attributes(span.Events[0].Attributes)
 	assert.Equal(t, "boom", attrs["exception.message"])
 	assert.Regexp(t, `^github.com/apitally/apitally-go/fiber-v2_test.newApp.func\d+\n\t\S+/middleware_test.go:\d+\n`, attrs["exception.stacktrace"])
-	assert.Equal(t, int64(500), testutils.Attributes(spans[0].Attributes)["http.response.status_code"])
+	assert.Equal(t, int64(500), testutils.Attributes(span.Attributes)["http.response.status_code"])
 }
 
 func TestValidationErrorReported(t *testing.T) {
@@ -344,10 +336,9 @@ func TestPreInstrumentedAppAdaptsWithoutDuplicateSpans(t *testing.T) {
 	shutDown(t)
 
 	require.Len(t, userSpans.GetSpans(), 1)
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	assert.Equal(t, userSpans.GetSpans()[0].SpanContext.SpanID(), trace.SpanID(spans[0].SpanId))
-	assert.Equal(t, "/items/:id", testutils.Attributes(spans[0].Attributes)["http.route"])
+	span := server.SingleSpan(t)
+	assert.Equal(t, userSpans.GetSpans()[0].SpanContext.SpanID(), trace.SpanID(span.SpanId))
+	assert.Equal(t, "/items/:id", testutils.Attributes(span.Attributes)["http.route"])
 }
 
 func TestInitTwiceDoesNotStackMiddleware(t *testing.T) {
@@ -395,9 +386,8 @@ func TestReturnedErrorIsDispatchedToErrorHandlerOnce(t *testing.T) {
 
 	assert.Equal(t, 1, errorHandlerCalls)
 	assert.Equal(t, "custom: failed", resp.Body)
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	assert.Equal(t, int64(500), testutils.Attributes(spans[0].Attributes)["http.response.status_code"])
+	span := server.SingleSpan(t)
+	assert.Equal(t, int64(500), testutils.Attributes(span.Attributes)["http.response.status_code"])
 	errors := server.Events(t, "apitally.request.server_error")
 	require.Len(t, errors, 1)
 	assert.Equal(t, "", testutils.Value(errors[0].Body).(map[string]any)["stacktrace"])
@@ -414,9 +404,8 @@ func TestFailingErrorHandlerFallsBackToStatus500(t *testing.T) {
 	shutDown(t)
 
 	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	assert.Equal(t, int64(500), testutils.Attributes(spans[0].Attributes)["http.response.status_code"])
+	span := server.SingleSpan(t)
+	assert.Equal(t, int64(500), testutils.Attributes(span.Attributes)["http.response.status_code"])
 }
 
 func TestStreamsOfKnownLengthReportSizeWithoutCapture(t *testing.T) {
@@ -433,9 +422,8 @@ func TestStreamsOfKnownLengthReportSizeWithoutCapture(t *testing.T) {
 	send(t, app, http.MethodGet, "/bytes", nil)
 	shutDown(t)
 
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	attrs := testutils.Attributes(spans[0].Attributes)
+	span := server.SingleSpan(t)
+	attrs := testutils.Attributes(span.Attributes)
 	assert.Equal(t, int64(5), attrs["http.response.body.size"])
 	assert.NotContains(t, attrs, "apitally.response.body")
 }
@@ -534,9 +522,8 @@ func TestAbortedStreamOmitsSize(t *testing.T) {
 	require.NoError(t, app.Shutdown())
 	shutDown(t)
 
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	attrs := testutils.Attributes(spans[0].Attributes)
+	span := server.SingleSpan(t)
+	attrs := testutils.Attributes(span.Attributes)
 	assert.NotContains(t, attrs, "http.response.body.size")
 	assert.Equal(t, int64(200), attrs["http.response.status_code"])
 }
@@ -587,9 +574,8 @@ func TestInitAfterRoutesLogsError(t *testing.T) {
 	shutDown(t)
 
 	assert.Len(t, logs.Messages(slog.LevelError), 1)
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	assert.Equal(t, "GET /late", spans[0].Name)
+	span := server.SingleSpan(t)
+	assert.Equal(t, "GET /late", span.Name)
 }
 
 // listen serves app on a local port until the test ends and returns its

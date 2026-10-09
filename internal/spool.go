@@ -91,30 +91,27 @@ func (s *spool) append(signal string, payload []byte) {
 	if s.isDeleted {
 		return
 	}
+	defer s.enforceSizeLimitLocked()
 	f := s.current[signal]
 	if f != nil && f.uncompressedSize+len(payload) > maxUncompressedSpoolFileSize {
 		s.closeCurrentFileLocked(signal)
 		f = nil
 	}
-	err := func() (err error) {
-		if f == nil {
-			if f, err = s.createFile(signal); err != nil {
-				return err
-			}
-			s.current[signal] = f
+	if f == nil {
+		var err error
+		if f, err = s.createFile(signal); err != nil {
+			s.logWriteError(signal, err)
+			return
 		}
-		return f.write(payload)
-	}()
-	if err != nil {
-		s.logWriteError(signal, err)
-		if f != nil {
-			delete(s.current, signal)
-			f.delete()
-		}
-	} else {
-		s.isWriteErrorLogged = false
+		s.current[signal] = f
 	}
-	s.enforceSizeLimitLocked()
+	if err := f.write(payload); err != nil {
+		s.logWriteError(signal, err)
+		delete(s.current, signal)
+		f.delete()
+		return
+	}
+	s.isWriteErrorLogged = false
 }
 
 // rotateForExport closes each signal's current file unless closed files of the

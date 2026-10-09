@@ -116,7 +116,6 @@ func TestSampleOnResponseDecidesOnFinalAttributes(t *testing.T) {
 	testutils.Get(t, appURL+"/missing")
 	require.NoError(t, Shutdown(context.Background()))
 
-	spans := server.Spans(t)
-	require.Len(t, spans, 1)
-	assert.Equal(t, "GET /items", spans[0].Name)
+	span := server.SingleSpan(t)
+	assert.Equal(t, "GET /items", span.Name)
 }
