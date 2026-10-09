@@ -181,8 +181,9 @@ Note: Decided option 1: design section 6 now states the limitation. A stream of 
 
 ### F4. Content-Type detection sniffs only the first write
 
-Status: open
+Status: rejected
 Class: b (needs decision)
+Note: Accepted as a gap. It needs a response without Content-Type whose first write cuts a type signature short, such as `<html` before a template action, and its effect is a wrong recorded Content-Type. Design section 7 already states that detection applies to the first write.
 
 - **Where:** `internal/nethttp.go:220`.
 - **Problem:** net/http sniffs all output buffered before the first flush, up to 2,048 bytes. Apitally sniffs only the first `Write` chunk. A short first chunk can produce a different type, which also changes whether the body is captured.
