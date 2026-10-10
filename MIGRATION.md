@@ -9,6 +9,8 @@ The Go SDK now uses OpenTelemetry to collect and send metrics, logs, and traces.
 
 ## Installation and setup
 
+The updated [setup guides](https://docs.apitally.io/sdk-reference/go/v1/overview#supported-frameworks) provide the installation steps and initialization code for each framework. Follow these to replace your existing SDK integration.
+
 The SDK now requires Go 1.25 or later. Upgrade the module for your framework:
 
 ```bash
@@ -60,10 +62,10 @@ The `RequestLoggingConfig` type and the `RequestLogging` field have been removed
 // Before
 config := apitally.NewConfig("your-client-id")
 config.RequestLogging = &apitally.RequestLoggingConfig{
-    Enabled:            true,
-    LogRequestBody:     true,
-    LogResponseBody:    true,
-    MaskHeaders:        []*regexp.Regexp{regexp.MustCompile(`(?i)^X-Internal-`)},
+    Enabled:         true,
+    LogRequestBody:  true,
+    LogResponseBody: true,
+    MaskHeaders:     []*regexp.Regexp{regexp.MustCompile(`(?i)^X-Internal-`)},
 }
 
 // After
@@ -75,6 +77,8 @@ cfg.MaskHeaders = []string{`^X-Internal-`}
 ```
 
 ### Changed options
+
+The following options have been changed:
 
 | Option | Change |
 | --- | --- |
@@ -88,28 +92,30 @@ cfg.MaskHeaders = []string{`^X-Internal-`}
 | `RequestLogging.MaskQueryParams` | Moved to `MaskQueryParams`, now `[]string`. |
 | `RequestLogging.MaskHeaders` | Moved to `MaskHeaders`, now `[]string`. |
 | `RequestLogging.MaskBodyFields` | Moved to `MaskBodyFields`, now `[]string`. |
-| `RequestLogging.ExcludePaths` | Moved to `ExcludePaths`, now `[]string`. |
-| `RequestLogging.MaskRequestBodyCallback` | Replaced by `MaskRequestBody` with new arguments. |
-| `RequestLogging.MaskResponseBodyCallback` | Replaced by `MaskResponseBody` with new arguments. |
+| `RequestLogging.ExcludePaths` | Moved to `ExcludePaths`, now `[]string`. Matches actual request paths instead of matched route patterns. |
+| `RequestLogging.MaskRequestBodyCallback` | Moved to `MaskRequestBody` with new arguments. |
+| `RequestLogging.MaskResponseBodyCallback` | Moved to `MaskResponseBody` with new arguments. |
 | `RequestLogging.ExcludeCallback` | Replaced by `SampleOnRequest` or `SampleOnResponse` with new arguments and return values. |
 
 Pattern options now take regular expressions as strings instead of `*regexp.Regexp` values. They are matched case-insensitively unless a pattern sets its own flags, such as `(?-i:...)`.
 
 ### Removed options
 
+These options have been removed:
+
 | Removed option | Migration |
 | --- | --- |
-| `RequestLogging` | Set its fields directly on `Config`, applying the changes above. |
-| `RequestLogging.Enabled` and `RequestLogging.CaptureTraces` | Request logging and tracing are now enabled by default. Use `SampleRate = 0` to disable request logs and traces. |
+| `RequestLogging` | Set its fields directly on `Config`, applying the changes above. Remove its `Enabled` flag. |
+| `RequestLogging.Enabled` and `RequestLogging.CaptureTraces` | Previously defaulted to `false`. Request logging and tracing are now enabled by default. Use `SampleRate = 0` to disable request logs and traces. |
 | `RequestLogging.LogQueryParams` | Query parameters are now always captured. To mask all values, use `MaskQueryParams = []string{".*"}`. |
 | `RequestLogging.LogPanic` | Panics are now always captured in request traces. |
 | `DisableSync` | Use the `Disabled` option or the `APITALLY_DISABLED` environment variable. Apitally is also disabled in `go test` binaries. |
 
 The [configuration reference](https://docs.apitally.io/sdk-reference/go/v1/configuration) lists all available options.
 
-## Request helpers
+## Consumer identification
 
-The request helpers now take a `context.Context` instead of the framework's request or context type. This changes the call sites on Echo, Fiber v2 and Chi:
+The request helpers, such as `SetConsumer()`, now take a `context.Context` instead of the framework's request or context type. This changes the call sites on Echo, Fiber v2 and Chi:
 
 | Framework | Before | After |
 | --- | --- | --- |
@@ -121,7 +127,7 @@ The request helpers now take a `context.Context` instead of the framework's requ
 
 The same applies to `CaptureValidationError`.
 
-`SetConsumerIdentifier` has been removed. Use `SetConsumer` with only the `Identifier` field set. The `Consumer` type has a new `Attributes` field for custom consumer attributes.
+`SetConsumerIdentifier` has been removed. Use `SetConsumer` with only the `Identifier` field set.
 
 ```go
 // Before
@@ -130,10 +136,6 @@ apitally.SetConsumerIdentifier(c, user.ID)
 // After
 apitally.SetConsumer(ctx, apitally.Consumer{Identifier: user.ID})
 ```
-
-The new `CaptureError` and `SetRequestAttributes` functions capture a handled error and attach custom attributes to the current request.
-
-The `ApitallyMiddleware`, `ApitallyConfig` and `ApitallyConsumer` aliases and the `Request` and `Response` types have been removed.
 
 ## Application logs
 
@@ -145,13 +147,15 @@ slog.SetDefault(slog.New(apitally.NewSlogHandler(slog.NewJSONHandler(os.Stdout, 
 slog.InfoContext(ctx, "Order created", "order_id", order.ID)
 ```
 
-Records logged without the request context are not linked to requests and are not captured. See the [README](README.md#logging) for the context to pass on each framework.
+Records logged without the request context are not linked to requests and are not captured. See the [README](README.md#identifying-consumers-and-more) for the context to pass on each framework.
 
 ## Body masking callbacks
 
-`MaskRequestBody` and `MaskResponseBody` now both receive `(span, body)`, rather than the `Request` and `Response` objects. The body is passed after decompression. Return the body to capture, or `nil` to capture `[REDACTED]`.
+`MaskRequestBodyCallback` and `MaskResponseBodyCallback` are now named `MaskRequestBody` and `MaskResponseBody`. Both receive `(span, body)`, rather than the `Request` and `Response` objects. The body is passed as `[]byte` after decompression.
 
 Callbacks may run later on another goroutine against an ended span. Request metadata is available through [`span.Attributes()`](https://docs.apitally.io/sdk-reference/go/v1/attributes).
+
+For example, a callback that masks bodies for admin routes becomes:
 
 ```go
 // Before
@@ -177,7 +181,7 @@ cfg.MaskRequestBody = func(span sdktrace.ReadOnlySpan, body []byte) []byte {
 
 Use sampling callbacks to exclude requests: `SampleOnRequest` for early decisions based on the request, or `SampleOnResponse` for decisions based on the response status or consumer. Both receive the span as their only argument.
 
-The callbacks return a keep probability and `true`: `1, true` captures the request, and `0, true` excludes it. Returning `ok == false` from `SampleOnRequest` applies `SampleRate`, and from `SampleOnResponse` preserves the earlier sampling decision. Note that the meaning is reversed from `ExcludeCallback`.
+The callbacks should return `1, true` to capture the request, and `0, true` to exclude it. Callbacks can also return any probability between 0 and 1. Returning `false` as the second value from `SampleOnRequest` applies `SampleRate`, and from `SampleOnResponse` preserves the earlier sampling decision.
 
 For example, to capture only error responses:
 
@@ -198,13 +202,25 @@ cfg.SampleOnResponse = func(span sdktrace.ReadOnlySpan) (float64, bool) {
 }
 ```
 
-Captured headers and bodies are not available in sampling callbacks. Sampling affects request logs and traces, but not metrics.
+Replace the `ExcludeCallback` option with the appropriate sampling callback. Note that captured headers and bodies are not available in sampling callbacks.
+
+Sampling affects request logs and traces, but not metrics.
+
+See [sampling](https://docs.apitally.io/sdk-reference/go/v1/sampling) for details.
 
 ### Path exclusions
 
-`ExcludePaths` matches request paths, not route patterns. If a pattern contains route parameters, update it to match concrete values. For example, replace `^/users/:id$` with `^/users/[^/]+$` to match `/users/123`.
+`ExcludePaths` now matches request paths rather than matched route patterns. If a pattern contains route parameters, update it to match concrete values. For example, replace `^/users/:id$` with `^/users/[^/]+$` to match `/users/123`.
+
+## Existing OpenTelemetry setups
+
+If your application registers a `go.opentelemetry.io/otel/sdk/trace` tracer provider with `otel.SetTracerProvider` before the first request, the SDK automatically adds its span processor. No manual registration is required.
+
+Review these settings when upgrading:
+
+- **Sampling:** Previously, your provider's sampler affected traces but not Apitally's request logs. It now affects both. Check that its sampling rate provides the request log coverage you want. Metrics remain unsampled.
 
 ## Other changes
 
 - **Network access:** The SDK now sends data to `otlp.apitally.io` instead of `hub.apitally.io`. Update firewall allowlists if necessary.
-- **Existing OpenTelemetry setups:** If your application registers a `go.opentelemetry.io/otel/sdk/trace` tracer provider with `otel.SetTracerProvider`, the SDK adds its span processor to it. Its sampler then also affects Apitally's request logs and traces.
+- **Removed types:** The `ApitallyMiddleware`, `ApitallyConfig` and `ApitallyConsumer` aliases and the `Request` and `Response` types have been removed from the public API.

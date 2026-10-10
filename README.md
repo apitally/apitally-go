@@ -28,38 +28,24 @@
 Apitally is a simple API monitoring and analytics tool that makes it easy to understand API usage, monitor performance, and troubleshoot issues.
 Get started in minutes by just adding a few lines of code. No infrastructure changes required, no dashboards to build.
 
-Learn more about Apitally on our 🌎 [website](https://apitally.io) or check out
-the 📚 [documentation](https://docs.apitally.io).
+The SDK is an [OpenTelemetry](https://opentelemetry.io) distribution and works alongside an existing OpenTelemetry setup.
+
+Learn more about Apitally on our 🌎 [website](https://apitally.io) or check out the 📚 [documentation](https://docs.apitally.io).
+
+> [!IMPORTANT]
+> **Upgrading from 0.x?** Version 1.0 is a full rewrite with a new setup API. See the [migration guide](MIGRATION.md) for a full 0.x to 1.x mapping.
 
 ## Key features
 
-### API analytics
-
-Track traffic, error and performance metrics for your API, each endpoint and
-individual API consumers, allowing you to make informed, data-driven engineering
-and product decisions.
-
-### Request logs
-
-Drill down from insights to individual API requests or use powerful search and filters to
-find specific requests. View correlated application logs and traces for a complete picture
-of each request, making troubleshooting faster and easier.
-
-### Error tracking
-
-Understand which validation rules in your endpoints cause client errors. Capture
-error details for 500 error responses, with stack traces for panics and errors
-captured with `CaptureError`.
-
-### API monitoring & alerts
-
-Get notified immediately if something isn't right using custom alerts, synthetic
-uptime checks and heartbeat monitoring. Alert notifications can be delivered via
-email, Slack and Microsoft Teams.
+- **API analytics**: Traffic, error and performance metrics for your API, each endpoint, and per API consumer. Drill down from metrics to individual API requests.
+- **Request logs and traces**: Every request as a searchable log entry, with optional capture of headers and request/response bodies. Requests are exported as OpenTelemetry spans, including spans from any other instrumentations you have.
+- **Application logs**: Logs written via `log/slog` are captured and correlated with the requests they belong to.
+- **Error tracking**: Validation errors, and server errors with stack traces for panics and errors captured with `CaptureError`.
+- **API monitoring & alerts**: Get notified if something isn't right using custom alerts, synthetic uptime checks and heartbeat monitoring. Alert notifications can be delivered via email, Slack and Microsoft Teams.
 
 ## Supported frameworks
 
-This SDK requires Go 1.25 or higher.
+The SDK supports **Go** `>= 1.25`.
 
 | Framework                                     | Supported versions | Setup guide                                                             |
 | --------------------------------------------- | ------------------ | ----------------------------------------------------------------------- |
@@ -68,7 +54,7 @@ This SDK requires Go 1.25 or higher.
 | [**Fiber**](https://github.com/gofiber/fiber) | `v2`, `v3`         | [Link](https://docs.apitally.io/sdk-reference/go/v1/setup-guides/fiber) |
 | [**Gin**](https://github.com/gin-gonic/gin)   | `v1`               | [Link](https://docs.apitally.io/sdk-reference/go/v1/setup-guides/gin)   |
 
-Apitally also supports many other web frameworks in [JavaScript](https://github.com/apitally/apitally-js), [Python](https://github.com/apitally/apitally-py), [.NET](https://github.com/apitally/apitally-dotnet) and [Java](https://github.com/apitally/apitally-java) via our other SDKs.
+Apitally also supports many other web frameworks in [JavaScript](https://github.com/apitally/apitally-js), [Python](https://github.com/apitally/apitally-py) and [.NET](https://github.com/apitally/apitally-dotnet) via our other SDKs.
 
 ## Getting started
 
@@ -83,7 +69,7 @@ go get github.com/apitally/apitally-go/fiber-v2  # for Fiber v2 (or fiber-v3)
 go get github.com/apitally/apitally-go/gin-v1    # for Gin
 ```
 
-Each module provides a package named `apitally`. Register your recovery middleware first, then call `Init`, then register other middleware, groups and routes. Routes registered before `Init` are not monitored.
+Each module provides a package named `apitally`. Register your recovery middleware first, then call `Init`, then register other middleware, groups and routes.
 
 See the [SDK reference](https://docs.apitally.io/sdk-reference/go/v1/configuration) for all available configuration options, including how to mask sensitive data, capture request and response payloads, and more.
 
@@ -110,6 +96,8 @@ func main() {
 }
 ```
 
+For further instructions, see our [setup guide for Gin](https://docs.apitally.io/sdk-reference/go/v1/setup-guides/gin).
+
 ### Echo
 
 ```go
@@ -135,6 +123,8 @@ func main() {
 }
 ```
 
+For further instructions, see our [setup guide for Echo](https://docs.apitally.io/sdk-reference/go/v1/setup-guides/echo).
+
 ### Fiber
 
 ```go
@@ -159,6 +149,8 @@ func main() {
     app.Listen(":8080")
 }
 ```
+
+For further instructions, see our [setup guide for Fiber](https://docs.apitally.io/sdk-reference/go/v1/setup-guides/fiber).
 
 ### Chi
 
@@ -187,6 +179,8 @@ func main() {
 }
 ```
 
+For further instructions, see our [setup guide for Chi](https://docs.apitally.io/sdk-reference/go/v1/setup-guides/chi).
+
 ## Graceful shutdown
 
 Apitally sends telemetry in the background at regular intervals. Call `apitally.Shutdown` when your application exits, after your HTTP server has stopped, so the remaining telemetry is delivered. Without it, up to one export interval of telemetry is lost at exit.
@@ -205,39 +199,9 @@ srv.Shutdown(shutdownCtx)      // with Fiber: app.ShutdownWithContext(shutdownCt
 apitally.Shutdown(shutdownCtx)
 ```
 
-`Shutdown` returns the context's error if the deadline expires before all telemetry is delivered.
-
-With Fiber's `Prefork` option, child processes serve the requests and exit as soon as the master process exits, without shutting down. Each child therefore loses up to one export interval of telemetry when the app stops, unless the child processes receive the stop signal themselves.
-
-## Logging
-
-Apitally captures application logs written with [`log/slog`](https://pkg.go.dev/log/slog) and links them to the request they were logged in. Wrap your handler with `apitally.NewSlogHandler`, which passes every record on to your handler unchanged:
-
-```go
-slog.SetDefault(slog.New(apitally.NewSlogHandler(slog.NewJSONHandler(os.Stdout, nil))))
-```
-
-Log with the request context, so Apitally can link the record to its request:
-
-```go
-slog.InfoContext(ctx, "Order created", "order_id", order.ID)
-```
-
-The table below lists the context to pass in handlers, which also applies to the request helpers in the next section. Logs without a request context are not captured.
-
-| Framework  | Context             |
-| ---------- | ------------------- |
-| Gin        | `c`                 |
-| Echo       | `c.Request().Context()` |
-| Fiber v3   | `c`                 |
-| Fiber v2   | `c.UserContext()` or `c.Context()` |
-| Chi        | `r.Context()`       |
-
-Wrap an independent handler, such as `slog.NewJSONHandler` or `slog.NewTextHandler`, when installing the logger with `slog.SetDefault`. Do not wrap the handler of the `slog` package's own default logger and install it with `slog.SetDefault`.
-
 ## Configuration
 
-The write token and environment can also be provided via the `APITALLY_WRITE_TOKEN` and `APITALLY_ENV` environment variables instead of the `WriteToken` and `Env` options. The environment defaults to `dev`. Passing a `nil` config is equivalent to `apitally.NewConfig()`.
+The write token and environment can also be provided via the `APITALLY_WRITE_TOKEN` and `APITALLY_ENV` environment variables instead of the `WriteToken` and `Env` options. The environment defaults to `dev`.
 
 By default, Apitally captures response headers but not request headers or request and response bodies. You can opt in with options:
 
@@ -248,13 +212,11 @@ cfg.CaptureRequestBody = true
 cfg.CaptureResponseBody = true
 ```
 
-Sensitive values in query parameters, headers, and body fields are masked automatically based on built-in patterns, and you can add your own regular expressions via the `MaskQueryParams`, `MaskHeaders`, and `MaskBodyFields` options. Patterns are case-insensitive unless they set their own flags, such as `(?-i:...)`.
+Sensitive values in query parameters, headers, and body fields are masked automatically based on built-in patterns, and you can add your own regular expressions via the `MaskQueryParams`, `MaskHeaders`, and `MaskBodyFields` options.
 
 On high-traffic applications you can capture logs and traces for only a fraction of requests by setting `SampleRate` (e.g. `0.1` for 10%), or decide per request with the `SampleOnRequest` and `SampleOnResponse` callbacks. Metrics always count every request, regardless of sampling.
 
-Use `MaskLogRecord` to transform or drop Apitally's captured copy of a log record, or opt out of log capture with `CaptureLogs = false`.
-
-Apitally is disabled in `go test` binaries, and when the `Disabled` option or the `APITALLY_DISABLED` or `OTEL_SDK_DISABLED` environment variable is set.
+Application logs written via `log/slog` are captured and correlated with requests once you wrap your handler (see [Logging](#logging)). Use `MaskLogRecord` to transform or drop Apitally's captured copy, or opt out with `CaptureLogs = false`.
 
 See the [SDK reference](https://docs.apitally.io/sdk-reference/go/v1/configuration) for all configuration options.
 
@@ -279,26 +241,55 @@ apitally.CaptureError(ctx, err)
 
 // Report validation errors from go-playground/validator
 apitally.CaptureValidationError(ctx, err)
-```
 
-Apitally also captures errors automatically: panics, errors returned to Echo and Fiber, and errors added with `c.Error` in Gin. Validation errors from [go-playground/validator](https://github.com/go-playground/validator) are reported automatically when they reach the framework with a 400 or 422 response, as with Gin's `c.Bind`.
-
-For further details, check out our [documentation](https://docs.apitally.io).
-
-## Tracing
-
-Apitally traces incoming requests with OpenTelemetry. To add your own spans to a request's trace, use the OpenTelemetry API with the request context (`c.Request.Context()` on Gin, `c.Context()` on Fiber v3, and the contexts in the table above on the other frameworks):
-
-```go
+// Create a custom span within the current request
 ctx, span := otel.Tracer("bookstore").Start(ctx, "search_books")
 defer span.End()
 ```
 
-Spans from OpenTelemetry instrumentation of outgoing calls, such as `otelhttp.NewTransport` or `otelsql`, are included the same way.
+The request context to pass depends on your framework:
+
+| Framework | Context                 |
+| --------- | ----------------------- |
+| Gin       | `c.Request.Context()`   |
+| Echo      | `c.Request().Context()` |
+| Fiber v3  | `c.Context()`           |
+| Fiber v2  | `c.UserContext()`       |
+| Chi       | `r.Context()`           |
+
+The handler's `c` on Gin and Fiber v3, and `c.Context()` on Fiber v2, also work for the request helpers and logs.
+
+Panics, errors returned to Echo and Fiber or added with `c.Error` in Gin, and [go-playground/validator](https://github.com/go-playground/validator) errors that reach the framework with a 400 or 422 response are captured automatically. Use the functions above for errors your handlers handle themselves.
+
+For further details, check out our [documentation](https://docs.apitally.io).
+
+## Logging
+
+Apitally captures application logs written with [`log/slog`](https://pkg.go.dev/log/slog) and links them to the request they were logged in. Wrap your handler with `apitally.NewSlogHandler`, which passes every record on to your handler unchanged:
+
+```go
+slog.SetDefault(slog.New(apitally.NewSlogHandler(slog.NewJSONHandler(os.Stdout, nil))))
+```
+
+Log with the request context (see [the table above](#identifying-consumers-and-more)), so Apitally can link the record to its request. Logs without a request context are not captured.
+
+```go
+slog.InfoContext(ctx, "Order created", "order_id", order.ID)
+```
+
+Wrapping `slog.Default().Handler()` and installing the result with `slog.SetDefault` deadlocks on the first log call, so wrap a handler such as `slog.NewJSONHandler` or `slog.NewTextHandler` instead.
+
+## Existing OpenTelemetry setup
+
+If your app doesn't already use OpenTelemetry, you don't need to know it's there. The Apitally SDK configures OpenTelemetry automatically. It traces incoming requests and includes spans started with the request context, such as from `otelhttp.NewTransport` or `otelsql`.
+
+If your app registers a `go.opentelemetry.io/otel/sdk/trace` tracer provider with `otel.SetTracerProvider` before the first request, Apitally adds its span processor to your provider, keeping your existing exporters.
+
+Your tracer provider's sampling settings also affect Apitally. Requests excluded by the sampler will not have request logs or traces in Apitally. Metrics still include all requests, regardless of sampling.
+
+### OpenTelemetry HTTP instrumentation
 
 If your app uses OpenTelemetry HTTP instrumentation, such as `otelgin` or `otelhttp`, register its middleware before `Init`, or wrap your handler with `otelhttp.NewHandler`. Apitally then adds its data to the instrumentation's request span instead of creating a second one.
-
-If your app doesn't use OpenTelemetry yet, Apitally registers its own tracer provider globally when the first request arrives. If your app registers a `go.opentelemetry.io/otel/sdk/trace` tracer provider with `otel.SetTracerProvider` before that, Apitally adds its span processor to your provider, keeping your existing exporters. Your provider's sampling settings then also affect Apitally: requests dropped by the sampler will not have request logs or traces in Apitally. Metrics still include all requests, regardless of sampling.
 
 ## Trusted proxies
 
@@ -306,9 +297,7 @@ If your application runs behind a reverse proxy or load balancer, configure trus
 
 ## Getting help
 
-If you need help please
-[create a new discussion](https://github.com/orgs/apitally/discussions/categories/q-a)
-on GitHub or email us at [support@apitally.io](mailto:support@apitally.io). We'll get back to you as soon as possible.
+If you need help please [create a new discussion](https://github.com/orgs/apitally/discussions/categories/q-a) on GitHub or email us at [support@apitally.io](mailto:support@apitally.io). We'll get back to you as soon as possible.
 
 ## License
 
