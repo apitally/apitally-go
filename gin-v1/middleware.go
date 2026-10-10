@@ -31,7 +31,19 @@ func Init(engine *gin.Engine, cfg *Config) {
 	})
 }
 
+// defaultErrorBodies are the bodies of Gin's default 404 and 405 responses.
+var defaultErrorBodies = map[int]string{
+	http.StatusNotFound:         "404 page not found",
+	http.StatusMethodNotAllowed: "405 method not allowed",
+}
+
 func middleware(c *gin.Context) {
+	// Gin runs the handler chain of an unmatched request with the 404 or 405
+	// status already set, and writes its default response after the chain.
+	unmatchedStatus := 0
+	if c.FullPath() == "" {
+		unmatchedStatus = c.Writer.Status()
+	}
 	o := internal.BeginNetHTTP(c.Writer, c.Request)
 	c.Request = o.Request
 	if o.State != nil {
@@ -54,6 +66,12 @@ func middleware(c *gin.Context) {
 		}
 	}()
 	c.Next()
+	// Writing Gin's default response here lets Apitally observe it; Gin then
+	// skips its own because the response is written.
+	if body, ok := defaultErrorBodies[unmatchedStatus]; ok && !c.Writer.Written() && c.Writer.Status() == unmatchedStatus {
+		c.Writer.Header()["Content-Type"] = []string{gin.MIMEPlain}
+		_, _ = c.Writer.WriteString(body)
+	}
 }
 
 func listRoutes(engine *gin.Engine) []internal.Route {

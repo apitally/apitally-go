@@ -230,17 +230,30 @@ func TestStreamingResponseSizeAndBodyCaptured(t *testing.T) {
 
 func TestUnmatchedRequestHasNoRouteAndNoHistogramPoint(t *testing.T) {
 	server := setUp(t)
-	appURL := testutils.Serve(t, newEngine(nil))
+	r := newEngine(nil)
+	r.HandleMethodNotAllowed = true
+	appURL := testutils.Serve(t, r)
 
-	resp := testutils.Get(t, appURL+"/missing")
+	missing := testutils.Get(t, appURL+"/missing")
+	notAllowed := testutils.Send(t, http.MethodDelete, appURL+"/items/1", "")
 	shutDown(t)
 
-	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
-	span := server.SingleSpan(t)
-	assert.Equal(t, "GET", span.Name)
-	attrs := testutils.Attributes(span.Attributes)
-	assert.NotContains(t, attrs, "http.route")
-	assert.Equal(t, int64(404), attrs["http.response.status_code"])
+	assert.Equal(t, http.StatusNotFound, missing.StatusCode)
+	assert.Equal(t, "404 page not found", missing.Body)
+	assert.Equal(t, http.StatusMethodNotAllowed, notAllowed.StatusCode)
+	assert.Equal(t, "405 method not allowed", notAllowed.Body)
+	spans := server.Spans(t)
+	require.Len(t, spans, 2)
+	responses := map[string][]any{}
+	for _, span := range spans {
+		attrs := testutils.Attributes(span.Attributes)
+		assert.NotContains(t, attrs, "http.route")
+		responses[span.Name] = []any{attrs["http.response.status_code"], attrs["http.response.header.content-type"], attrs["http.response.body.size"]}
+	}
+	assert.Equal(t, map[string][]any{
+		"GET":    {int64(404), []any{"text/plain"}, int64(18)},
+		"DELETE": {int64(405), []any{"text/plain"}, int64(22)},
+	}, responses)
 	assert.Empty(t, testutils.HistogramPoints(server.Metrics(t), "http.server.request.duration"))
 }
 
