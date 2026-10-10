@@ -1,7 +1,5 @@
 # Agent guidance
 
-The `v1` branch rewrites the SDK as an OpenTelemetry distribution, following the [Python](../apitally-py), [JavaScript](../apitally-js) and [.NET](../apitally-dotnet) SDKs, which have already been rewritten. It will eventually replace `main`, and the current `main` will continue as `v0`. `docs/design.md` records the Go design.
-
 ## Checks
 
 - Verify code changes with the Makefile targets, never with hand-picked subsets of them: `make check` (build, `go vet`, `gofmt`, `go mod verify` and `go mod tidy` in every module) and `make test` (`go test -race` in every module). Both cover the root module and every framework module; a change to the root module can break any of them.
