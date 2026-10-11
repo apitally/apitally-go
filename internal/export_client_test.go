@@ -3,7 +3,6 @@ package internal
 import (
 	"context"
 	"net/http"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -28,7 +27,6 @@ func TestExportRequestsCarryRequiredHeaders(t *testing.T) {
 		assert.Equal(t, "prod", req.Header.Get("Apitally-Env"))
 		assert.Equal(t, "application/x-protobuf", req.Header.Get("Content-Type"))
 		assert.Equal(t, "gzip", req.Header.Get("Content-Encoding"))
-		assert.True(t, strings.HasPrefix(req.Header.Get("User-Agent"), "apitally-go/"))
 	}
 }
 

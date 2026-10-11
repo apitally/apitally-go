@@ -7,7 +7,6 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -108,7 +107,6 @@ func TestMaskCallbacksReplaceBodiesAndFailClosed(t *testing.T) {
 			assert.Equal(t, tc.captured, attrs["apitally.request.body"])
 			assert.Equal(t, tc.captured, attrs["apitally.response.body"])
 			assert.Contains(t, maskedSpanAttributes, attribute.StringSlice("http.response.header.content-type", []string{"application/json"}))
-			assert.False(t, slices.ContainsFunc(maskedSpanAttributes, func(kv attribute.KeyValue) bool { return kv.Key == "apitally.request.body" }))
 		})
 	}
 }

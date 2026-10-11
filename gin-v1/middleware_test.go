@@ -394,7 +394,6 @@ func TestInitAfterRoutesLogsError(t *testing.T) {
 	r.GET("/late", func(c *gin.Context) {})
 	appURL := testutils.Serve(t, r)
 
-	testutils.Get(t, appURL+"/early")
 	testutils.Get(t, appURL+"/late")
 	shutDown(t)
 

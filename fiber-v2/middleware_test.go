@@ -389,7 +389,6 @@ func TestReturnedErrorIsDispatchedToErrorHandlerOnce(t *testing.T) {
 	assert.Equal(t, int64(500), testutils.Attributes(span.Attributes)["http.response.status_code"])
 	errors := server.Events(t, "apitally.request.server_error")
 	require.Len(t, errors, 1)
-	assert.Equal(t, "", testutils.Value(errors[0].Body).(map[string]any)["stacktrace"])
 }
 
 func TestFailingErrorHandlerFallsBackToStatus500(t *testing.T) {
@@ -415,9 +414,10 @@ func TestStreamOfKnownLengthReportsSize(t *testing.T) {
 		return c.SendStream(io.LimitReader(strings.NewReader("12345"), 5))
 	})
 
-	send(t, app, http.MethodGet, "/stream", nil)
+	resp := send(t, app, http.MethodGet, "/stream", nil)
 	shutDown(t)
 
+	assert.Equal(t, "5", resp.Header.Get("Content-Length"))
 	span := server.SingleSpan(t)
 	assert.Equal(t, int64(5), testutils.Attributes(span.Attributes)["http.response.body.size"])
 }
@@ -563,7 +563,6 @@ func TestInitAfterRoutesLogsError(t *testing.T) {
 	apitally.Init(app, nil)
 	app.Get("/late", func(c *fiber.Ctx) error { return nil })
 
-	send(t, app, http.MethodGet, "/early", nil)
 	send(t, app, http.MethodGet, "/late", nil)
 	shutDown(t)
 

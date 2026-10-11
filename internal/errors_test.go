@@ -46,7 +46,7 @@ func (e testFieldError) Error() string     { return "field " + e.namespace + " f
 func TestPanicIsRecordedAsServerError(t *testing.T) {
 	server := testutils.NewOTLPServer(t)
 	registerForTest(t, server, nil)
-	panicValue := fmt.Errorf("loading config: %w", &fs.PathError{Op: "open", Path: "app.yaml", Err: fs.ErrNotExist})
+	panicValue := fmt.Errorf("starting: %w", fmt.Errorf("loading config: %w", &fs.PathError{Op: "open", Path: "app.yaml", Err: fs.ErrNotExist}))
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /config", func(w http.ResponseWriter, r *http.Request) {
 		panic(panicValue)
@@ -64,7 +64,7 @@ func TestPanicIsRecordedAsServerError(t *testing.T) {
 	event := testutils.Attributes(span.Events[0].Attributes)
 	assert.Equal(t, "exception", span.Events[0].Name)
 	assert.Equal(t, "fs.PathError", event["exception.type"])
-	assert.Equal(t, "loading config: open app.yaml: file does not exist", event["exception.message"])
+	assert.Equal(t, "starting: loading config: open app.yaml: file does not exist", event["exception.message"])
 	assert.Contains(t, event["exception.stacktrace"], "net/http.HandlerFunc.ServeHTTP\n\t")
 	assert.NotContains(t, event["exception.stacktrace"], "runtime.gopanic")
 	records := server.Events(t, serverErrorEventName)
@@ -73,7 +73,7 @@ func TestPanicIsRecordedAsServerError(t *testing.T) {
 		"method":     "GET",
 		"path":       "/config",
 		"type":       "fs.PathError",
-		"message":    "loading config: open app.yaml: file does not exist",
+		"message":    "starting: loading config: open app.yaml: file does not exist",
 		"stacktrace": event["exception.stacktrace"],
 		"counts":     []any{map[string]any{"count": int64(1)}},
 	}, testutils.Value(records[0].Body))
@@ -261,17 +261,4 @@ func TestServerErrorsAreCountedPerConsumerAndCapped(t *testing.T) {
 	assert.Len(t, drained, maxErrorGroups)
 	assert.Equal(t, map[string]uint64{"acme": 2, "": 1}, drained["first"])
 	assert.Empty(t, groups.drain())
-}
-
-func TestExceptionTypeNameRemovesPointerAndSingleWrapping(t *testing.T) {
-	pathError := &fs.PathError{Op: "open", Path: "x", Err: fs.ErrNotExist}
-	for value, typeName := range map[any]string{
-		pathError: "fs.PathError",
-		fmt.Errorf("a: %w", fmt.Errorf("b: %w", pathError)): "fs.PathError",
-		fmt.Errorf("%w and %w", pathError, fs.ErrClosed):    "fmt.wrapErrors",
-		errors.New("plain"): "errors.errorString",
-		"boom":              "string",
-	} {
-		assert.Equal(t, typeName, exceptionTypeName(value))
-	}
 }

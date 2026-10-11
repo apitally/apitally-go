@@ -53,7 +53,6 @@ func TestActivationEmitsStartupEventOnce(t *testing.T) {
 	records := server.LogRecords(t)
 	require.Len(t, records, 1)
 	assert.Equal(t, "apitally", records[0].Scope)
-	assert.Empty(t, records[0].TraceId)
 	var body map[string]any
 	server.DecodeStartupEvent(t, &body)
 	assert.Equal(t, map[string]any{

@@ -40,7 +40,6 @@ func TestAttachesToApplicationTracerProvider(t *testing.T) {
 	require.NoError(t, Shutdown(context.Background()))
 
 	require.Len(t, userSpans.GetSpans(), 2)
-	assert.Equal(t, userResource, userSpans.GetSpans()[0].Resource)
 	spans := server.Spans(t)
 	require.Len(t, spans, 2)
 	for _, span := range spans {

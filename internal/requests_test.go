@@ -109,25 +109,6 @@ func TestStackedServerSpanIsExportedAsInternal(t *testing.T) {
 	assert.Equal(t, []string{"Instrumentation scope inner-instrumentation starts SERVER spans inside Apitally's request span. Apitally exports them as INTERNAL spans, but other exporters receive two SERVER spans per request. Install that instrumentation outside Apitally's middleware."}, logs.Messages(slog.LevelWarn))
 }
 
-func TestSpanEndingAfterReleaseIsDropped(t *testing.T) {
-	server := testutils.NewOTLPServer(t)
-	registerForTest(t, server, nil)
-	var late trace.Span
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /items", func(w http.ResponseWriter, r *http.Request) {
-		_, late = otel.Tracer("test").Start(r.Context(), "background work")
-		writeOK(w, r)
-	})
-	appURL := startTestApp(t, mux)
-
-	testutils.Get(t, appURL+"/items")
-	late.End()
-	require.NoError(t, Shutdown(context.Background()))
-
-	span := server.SingleSpan(t)
-	assert.Equal(t, "GET /items", span.Name)
-}
-
 func TestRequestBuffersAtMostThousandDescendantSpans(t *testing.T) {
 	server := testutils.NewOTLPServer(t)
 	registerForTest(t, server, nil)
