@@ -70,3 +70,26 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ${{ matrix.module }}/coverage.txt
+
+  pi-fix-ci:
+    needs:
+      - check
+      - test
+    if: |
+      always() &&
+      github.event_name == 'pull_request' &&
+      contains(needs.*.result, 'failure') &&
+      github.run_attempt == 1 &&
+      github.actor == 'renovate[bot]' &&
+      github.event.pull_request.user.login == 'renovate[bot]' &&
+      startsWith(github.event.pull_request.head.ref, 'renovate/') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Dispatch Pi Fix CI workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh workflow run pi-fix-ci.yaml --ref main -f run_id="$GITHUB_RUN_ID"
