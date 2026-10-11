@@ -9,11 +9,6 @@ on:
       - README.md
       - MIGRATION.md
   pull_request:
-    paths-ignore:
-      - .gitignore
-      - LICENSE
-      - README.md
-      - MIGRATION.md
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -71,14 +66,24 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ${{ matrix.module }}/coverage.txt
 
-  pi-fix-ci:
+  ci-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs:
       - check
       - test
+    if: always()
+    steps:
+      - name: Fail if any job failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
+
+  pi-fix-ci:
+    needs: ci-gate
     if: |
       always() &&
       github.event_name == 'pull_request' &&
-      contains(needs.*.result, 'failure') &&
+      needs.ci-gate.result == 'failure' &&
       github.run_attempt == 1 &&
       github.actor == 'renovate[bot]' &&
       github.event.pull_request.user.login == 'renovate[bot]' &&
