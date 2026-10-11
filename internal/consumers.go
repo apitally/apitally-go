@@ -25,8 +25,7 @@ const (
 	maxCachedConsumers       = 10_000
 )
 
-// SetConsumer merges consumer into the consumer of the request in ctx. It
-// does nothing outside a monitored request.
+// SetConsumer merges consumer into the consumer of the request in ctx.
 func SetConsumer(ctx context.Context, consumer root.Consumer) {
 	defer recoverAndLogPanic("SetConsumer")
 	if s := requestStateFromContext(ctx); s != nil {

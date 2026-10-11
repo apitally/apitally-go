@@ -17,25 +17,20 @@ import (
 )
 
 const (
-	serverErrorEventName = "apitally.request.server_error"
-	maxErrorGroups       = 100
-	maxStackFrames       = 128
-	maxExceptionType     = 256
-	maxExceptionMessage  = 2_048
-	maxExceptionStack    = 65_536
-	maxErrorPath         = 2_000
+	serverErrorEventName     = "apitally.request.server_error"
+	validationErrorEventName = "apitally.request.validation_error"
+	maxErrorGroups           = 100
+	maxErrorPath             = 2_000
+	maxStackFrames           = 128
+	maxExceptionType         = 256
+	maxExceptionMessage      = 2_048
+	maxExceptionStack        = 65_536
+	maxValidationField       = 2_048
+	maxValidationMessage     = 2_048
+	maxValidationType        = 128
 )
 
-// capturedError holds the exception fields of a request's first captured
-// error or panic.
-type capturedError struct {
-	typeName   string
-	message    string
-	stacktrace string
-}
-
-// CaptureError captures err with the caller's stack trace. It does nothing
-// outside a monitored request.
+// CaptureError captures err with the caller's stack trace.
 func CaptureError(ctx context.Context, err error) {
 	defer recoverAndLogPanic("CaptureError")
 	if s := requestStateFromContext(ctx); s != nil && err != nil {
@@ -68,24 +63,27 @@ func (s *RequestState) capturePanic(recovered any) {
 }
 
 // captureError keeps only the first captured error and records it as the
-// SERVER span's exception event. Cancellations are not errors of the
-// application.
+// SERVER span's exception event.
 func (s *RequestState) captureError(value any, stacktrace string) {
 	// Error and String methods of application types can panic, for example on
 	// a typed nil error.
 	defer recoverAndLogPanic("error capture")
-	if err, ok := value.(error); ok && errors.Is(err, context.Canceled) {
+	err, isError := value.(error)
+	if isError && errors.Is(err, context.Canceled) {
 		return
 	}
-	captured := &capturedError{
+	captured := &exception{
 		typeName:   truncateString(exceptionTypeName(value), maxExceptionType),
 		message:    strings.Clone(truncateString(strings.TrimSpace(exceptionMessage(value)), maxExceptionMessage)),
 		stacktrace: stacktrace,
 	}
 	s.mu.Lock()
-	isFirst := s.capturedError == nil
+	isFirst := s.exception == nil
 	if isFirst {
-		s.capturedError = captured
+		s.exception = captured
+		if isError {
+			s.capturedError = err
+		}
 	}
 	s.mu.Unlock()
 	if isFirst && s.span.IsRecording() {
@@ -95,6 +93,14 @@ func (s *RequestState) captureError(value any, stacktrace string) {
 			attribute.String("exception.stacktrace", captured.stacktrace),
 		))
 	}
+}
+
+// exception holds the exception fields of a request's first captured error
+// or panic.
+type exception struct {
+	typeName   string
+	message    string
+	stacktrace string
 }
 
 // exceptionTypeName returns the Go type name without one pointer level.
@@ -167,10 +173,82 @@ func isSDKFunction(function string) bool {
 	return pkg[:slash] == rootModulePath && !strings.HasSuffix(pkg, "_test")
 }
 
+// validationDetail is one normalized validation error of a request. Its
+// fields form the validation error identity together with method and path.
+type validationDetail struct {
+	field    string
+	message  string
+	typeName string
+}
+
+// fieldError is the method set of go-playground/validator's FieldError, so
+// validation errors are recognized without importing the validator.
+type fieldError interface {
+	Namespace() string
+	Field() string
+	Tag() string
+	Error() string
+}
+
+// validationDetails returns the details of go-playground/validator errors
+// found by unwrapping err as errors.As does: a slice whose elements are field
+// errors. Other errors have none.
+func validationDetails(err error) []validationDetail {
+	if details := fieldErrorDetails(err); details != nil {
+		return details
+	}
+	switch wrapper := err.(type) {
+	case interface{ Unwrap() error }:
+		return validationDetails(wrapper.Unwrap())
+	case interface{ Unwrap() []error }:
+		for _, inner := range wrapper.Unwrap() {
+			if details := validationDetails(inner); details != nil {
+				return details
+			}
+		}
+	}
+	return nil
+}
+
+func fieldErrorDetails(err error) []validationDetail {
+	value := reflect.ValueOf(err)
+	if value.Kind() != reflect.Slice || value.Len() == 0 {
+		return nil
+	}
+	details := make([]validationDetail, 0, value.Len())
+	for i := range value.Len() {
+		fe, ok := value.Index(i).Interface().(fieldError)
+		if !ok {
+			return nil
+		}
+		details = append(details, validationDetail{
+			field:    truncateString(namespaceWithoutStruct(fe.Namespace()), maxValidationField),
+			message:  truncateString(fe.Error(), maxValidationMessage),
+			typeName: truncateString(fe.Tag(), maxValidationType),
+		})
+	}
+	return details
+}
+
+// namespaceWithoutStruct removes the leading struct name from a field path
+// such as "User.Address.City".
+func namespaceWithoutStruct(namespace string) string {
+	if _, field, ok := strings.Cut(namespace, "."); ok {
+		return field
+	}
+	return namespace
+}
+
 type serverErrorKey struct {
 	method string
 	path   string
-	capturedError
+	exception
+}
+
+type validationErrorKey struct {
+	method string
+	path   string
+	validationDetail
 }
 
 func serverErrorEventBody(key serverErrorKey, counts map[string]uint64) attribute.Value {
@@ -180,6 +258,18 @@ func serverErrorEventBody(key serverErrorKey, counts map[string]uint64) attribut
 		attribute.String("type", key.typeName),
 		attribute.String("message", key.message),
 		attribute.String("stacktrace", key.stacktrace),
+		attribute.Slice("counts", errorCounts(counts)...),
+	)
+}
+
+func validationErrorEventBody(key validationErrorKey, counts map[string]uint64) attribute.Value {
+	return attribute.MapValue(
+		attribute.String("method", key.method),
+		attribute.String("path", key.path),
+		attribute.String("source", ""),
+		attribute.String("field", key.field),
+		attribute.String("message", key.message),
+		attribute.String("type", key.typeName),
 		attribute.Slice("counts", errorCounts(counts)...),
 	)
 }
@@ -228,18 +318,4 @@ func errorCounts(counts map[string]uint64) []attribute.Value {
 		values = append(values, attribute.MapValue(attrs...))
 	}
 	return values
-}
-
-// isValidErrorMethod matches the server's rule for error events: 2 to 12
-// uppercase letters or hyphens.
-func isValidErrorMethod(method string) bool {
-	if len(method) < 2 || len(method) > 12 {
-		return false
-	}
-	for _, c := range method {
-		if (c < 'A' || c > 'Z') && c != '-' {
-			return false
-		}
-	}
-	return true
 }

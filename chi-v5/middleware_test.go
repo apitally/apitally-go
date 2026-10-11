@@ -67,7 +67,7 @@ func newRouter(cfg *apitally.Config, middlewares ...func(http.Handler) http.Hand
 	})
 	r.Post("/validate", func(w http.ResponseWriter, r *http.Request) {
 		if err := validate.Struct(item{Name: "", Price: 5}); err != nil {
-			apitally.CaptureValidationError(r.Context(), err)
+			apitally.CaptureError(r.Context(), err)
 			w.WriteHeader(http.StatusUnprocessableEntity)
 		}
 	})

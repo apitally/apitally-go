@@ -30,6 +30,19 @@ func recoverPanics(next http.Handler, recovered chan<- any) http.Handler {
 	})
 }
 
+// fieldErrors has the method set of go-playground/validator's
+// ValidationErrors, which the root module does not import.
+type fieldErrors []testFieldError
+
+func (e fieldErrors) Error() string { return "validation failed" }
+
+type testFieldError struct{ namespace, tag string }
+
+func (e testFieldError) Namespace() string { return e.namespace }
+func (e testFieldError) Field() string     { return e.namespace }
+func (e testFieldError) Tag() string       { return e.tag }
+func (e testFieldError) Error() string     { return "field " + e.namespace + " failed on " + e.tag }
+
 func TestPanicIsRecordedAsServerError(t *testing.T) {
 	server := testutils.NewOTLPServer(t)
 	registerForTest(t, server, nil)
@@ -166,6 +179,51 @@ func TestServerErrorsAreFilteredByStatus(t *testing.T) {
 	body := testutils.Value(records[0].Body).(map[string]any)
 	assert.Equal(t, "/failed", body["path"])
 	assert.Equal(t, []any{map[string]any{"count": int64(2)}}, body["counts"])
+}
+
+func TestValidationErrorsAreFilteredByStatus(t *testing.T) {
+	server := testutils.NewOTLPServer(t)
+	registerForTest(t, server, nil)
+	validationErr := fmt.Errorf("binding: %w", fieldErrors{{"Item.Name", "required"}, {"Item.Price", "gt"}})
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /items", func(w http.ResponseWriter, r *http.Request) {
+		requestStateFromContext(r.Context()).CaptureReturnedError(validationErr)
+		w.WriteHeader(http.StatusBadRequest)
+	})
+	mux.HandleFunc("POST /teapots", func(w http.ResponseWriter, r *http.Request) {
+		requestStateFromContext(r.Context()).CaptureReturnedError(validationErr)
+		w.WriteHeader(http.StatusTeapot)
+	})
+	mux.HandleFunc("POST /orders", func(w http.ResponseWriter, r *http.Request) {
+		CaptureError(r.Context(), validationErr)
+		requestStateFromContext(r.Context()).CaptureReturnedError(validationErr)
+		w.WriteHeader(http.StatusUnprocessableEntity)
+	})
+	mux.HandleFunc("POST /reports", func(w http.ResponseWriter, r *http.Request) {
+		CaptureError(r.Context(), validationErr)
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	appURL := startTestApp(t, mux)
+
+	for _, path := range []string{"/items", "/items", "/teapots", "/orders", "/reports"} {
+		testutils.Send(t, http.MethodPost, appURL+path, "")
+	}
+	require.NoError(t, Shutdown(context.Background()))
+
+	var bodies []any
+	for _, record := range server.Events(t, validationErrorEventName) {
+		bodies = append(bodies, testutils.Value(record.Body))
+	}
+	event := func(path, field, tag string, count int64) map[string]any {
+		return map[string]any{
+			"method": "POST", "path": path, "source": "", "field": field, "type": tag,
+			"message": "field Item." + field + " failed on " + tag, "counts": []any{map[string]any{"count": count}},
+		}
+	}
+	assert.ElementsMatch(t, []any{
+		event("/items", "Name", "required", 2), event("/items", "Price", "gt", 2),
+		event("/orders", "Name", "required", 1), event("/orders", "Price", "gt", 1),
+	}, bodies)
 }
 
 type nilPointerError struct{ message string }
