@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"regexp"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -78,12 +77,14 @@ type RequestState struct {
 	isObserved          bool
 	isReleased          bool
 	consumer            *requestConsumer
-	capturedError       *capturedError
+	exception           *exception
+	// capturedError is the error that exception was formatted from, or nil
+	// for a panic value that is not an error.
+	capturedError error
 	// returnedError is the first error the handler chain returned to the
 	// framework.
-	returnedError     error
-	validationDetails []validationDetail
-	logs              []*logRecord
+	returnedError error
+	logs          []*logRecord
 }
 
 type requestStateKey struct{}
@@ -103,8 +104,8 @@ func requestStateFromContext(ctx context.Context) *RequestState {
 }
 
 // SetRequestAttributes sets attributes on the SERVER span of the request in
-// ctx. It does nothing outside a monitored request. String values are copied,
-// because Fiber reuses the memory of request strings.
+// ctx. String values are copied, because Fiber reuses the memory of request
+// strings.
 func SetRequestAttributes(ctx context.Context, attrs ...attribute.KeyValue) {
 	defer recoverAndLogPanic("SetRequestAttributes")
 	if s := requestStateFromContext(ctx); s != nil {
@@ -229,21 +230,20 @@ func (s *RequestState) recordRequestData(result *TransportResult, end time.Time,
 	}
 	key := requestMetricKey{method: method, route: result.Route, statusCode: result.StatusCode, scheme: s.info.Scheme, consumer: consumerIdentifier}
 	r.metrics.recordRequest(key, end.Sub(s.startTime), result.RequestBodySize, result.ResponseBodySize)
-	if !isValidErrorMethod(method) {
-		return
-	}
 	s.mu.Lock()
-	captured, returnedError, details := s.capturedError, s.returnedError, s.validationDetails
+	captured, requestError := s.exception, s.capturedError
+	if requestError == nil {
+		requestError = s.returnedError
+	}
 	s.mu.Unlock()
 	path := truncateString(result.Route, maxErrorPath)
 	if result.StatusCode == http.StatusBadRequest || result.StatusCode == http.StatusUnprocessableEntity {
-		details = append(slices.Clone(details), validationDetails(returnedError)...)
-	}
-	for _, detail := range details {
-		r.validationErrors.add(validationErrorKey{method: method, path: path, validationDetail: detail}, consumerIdentifier)
+		for _, detail := range validationDetails(requestError) {
+			r.validationErrors.add(validationErrorKey{method: method, path: path, validationDetail: detail}, consumerIdentifier)
+		}
 	}
 	if result.StatusCode == http.StatusInternalServerError && captured != nil {
-		r.serverErrors.add(serverErrorKey{method: method, path: path, capturedError: *captured}, consumerIdentifier)
+		r.serverErrors.add(serverErrorKey{method: method, path: path, exception: *captured}, consumerIdentifier)
 	}
 }
 
