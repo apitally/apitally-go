@@ -5,7 +5,7 @@ This guide is also available in the [Apitally documentation](https://docs.apital
 The Go SDK now uses OpenTelemetry to collect and send metrics, logs, and traces.
 
 > [!WARNING]
-> Request logging, tracing, and application log capture are now enabled by default. If you previously used the SDK for metrics only, set `SampleRate = 0` to keep that behavior.
+> Request logging and tracing are now enabled by default. If you previously used the SDK for metrics only, set `SampleRate = 0` to keep that behavior.
 
 ## Installation and setup
 
