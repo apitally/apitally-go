@@ -11,7 +11,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -27,8 +26,6 @@ const (
 )
 
 var (
-	// isSlogHandlerCreated lets activation warn when logs cannot be captured.
-	isSlogHandlerCreated atomic.Bool
 	// Request-logging middleware logs every request with the request context,
 	// which would duplicate the request log with unredacted query strings.
 	requestLoggerFunctionPrefixes = []string{
@@ -44,7 +41,6 @@ var (
 // context of a monitored request and forwards every record to next
 // unchanged.
 func NewSlogHandler(next slog.Handler) slog.Handler {
-	isSlogHandlerCreated.Store(true)
 	return &slogHandler{next: next}
 }
 
@@ -90,7 +86,7 @@ func (h *slogHandler) WithGroup(name string) slog.Handler {
 func (h *slogHandler) capture(ctx context.Context, record slog.Record) {
 	defer recoverAndLogPanic("log capture")
 	r := currentRuntime.Load()
-	if r == nil || !r.isActive.Load() || !r.settings.config.CaptureLogs {
+	if r == nil || !r.isActive.Load() {
 		return
 	}
 	state, spanCtx := r.logRequestState(ctx)

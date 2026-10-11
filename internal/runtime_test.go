@@ -5,8 +5,6 @@ import (
 	"io"
 	"log/slog"
 	"runtime"
-	"slices"
-	"strconv"
 	"strings"
 	"testing"
 	"testing/synctest"
@@ -62,7 +60,6 @@ func TestActivationEmitsStartupEventOnce(t *testing.T) {
 		"framework": "nethttp",
 		"versions":  map[string]any{"go": strings.TrimPrefix(runtime.Version(), "go"), "nethttp": "unknown", "app": "1.2.3"},
 		"config": map[string]any{
-			"CaptureLogs":            true,
 			"CaptureRequestHeaders":  false,
 			"CaptureRequestBody":     false,
 			"CaptureResponseHeaders": true,
@@ -96,25 +93,6 @@ func TestActivationIsSuppressedInTestBinaries(t *testing.T) {
 	require.NoError(t, Shutdown(context.Background()))
 
 	assert.Empty(t, server.Requests())
-}
-
-func TestActivationWarnsWhenNoSlogHandlerWasCreated(t *testing.T) {
-	for _, captureLogs := range []bool{true, false} {
-		t.Run(strconv.FormatBool(captureLogs), func(t *testing.T) {
-			server := testutils.NewOTLPServer(t)
-			SetUpTest(t)
-			setExportTransportForTest(t, server.Transport())
-			logs := testutils.RecordSlog(t)
-			cfg := root.NewConfig()
-			cfg.CaptureLogs = captureLogs
-			Register(cfg, testFramework, nil)
-
-			Activate()
-			require.NoError(t, Shutdown(context.Background()))
-
-			assert.Equal(t, captureLogs, slices.ContainsFunc(logs.Messages(slog.LevelWarn), func(msg string) bool { return strings.Contains(msg, "NewSlogHandler") }))
-		})
-	}
 }
 
 func TestIdleShutdownDeliversProcessGauges(t *testing.T) {

@@ -216,7 +216,7 @@ Sensitive values in query parameters, headers, and body fields are masked automa
 
 On high-traffic applications you can capture logs and traces for only a fraction of requests by setting `SampleRate` (e.g. `0.1` for 10%), or decide per request with the `SampleOnRequest` and `SampleOnResponse` callbacks. Metrics always count every request, regardless of sampling.
 
-Application logs written via `log/slog` are captured and correlated with requests once you wrap your handler (see [Logging](#logging)). Use `MaskLogRecord` to transform or drop Apitally's captured copy, or opt out with `CaptureLogs = false`.
+Application logs written via `log/slog` are captured and correlated with requests once you wrap your handler (see [Logging](#logging)). Use `MaskLogRecord` to transform or drop Apitally's captured copy.
 
 See the [SDK reference](https://docs.apitally.io/sdk-reference/go/v1/configuration) for all configuration options.
 

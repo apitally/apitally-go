@@ -52,7 +52,6 @@ func startupEventBody(s *settings, framework FrameworkInfo, routes []Route) attr
 		versions["app"] = c.AppVersion
 	}
 	config := map[string]any{
-		"CaptureLogs":            c.CaptureLogs,
 		"CaptureRequestHeaders":  c.CaptureRequestHeaders,
 		"CaptureRequestBody":     c.CaptureRequestBody,
 		"CaptureResponseHeaders": c.CaptureResponseHeaders,
