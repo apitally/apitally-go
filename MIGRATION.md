@@ -14,8 +14,8 @@ The updated [setup guides](https://docs.apitally.io/sdk-reference/go/v1/overview
 The SDK now requires Go 1.25 or later. Upgrade the module for your framework:
 
 ```bash
-go get github.com/apitally/apitally-go/chi-v5@v1    # or echo-v4, echo-v5, fiber-v2, fiber-v3
-go get github.com/apitally/apitally-go/gin-v1@v1    # replaces github.com/apitally/apitally-go/gin
+go get github.com/apitally/apitally-go/chi-v5@v1.0.0-beta.1    # or echo-v4, echo-v5, fiber-v2, fiber-v3
+go get github.com/apitally/apitally-go/gin-v1@v1.0.0-beta.1    # replaces github.com/apitally/apitally-go/gin
 ```
 
 The Gin module has been renamed from `github.com/apitally/apitally-go/gin` to `github.com/apitally/apitally-go/gin-v1`. Update your imports and remove the old module with `go mod tidy`.
