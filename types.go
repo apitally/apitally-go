@@ -32,10 +32,6 @@ type Config struct {
 	// 1, true or yes.
 	Disabled bool
 
-	// CaptureLogs captures request-scoped application logs written through a
-	// handler created with NewSlogHandler. Defaults to true.
-	CaptureLogs bool
-
 	// CaptureRequestHeaders captures request headers. Defaults to false.
 	CaptureRequestHeaders bool
 
@@ -108,7 +104,6 @@ type Config struct {
 // NewConfig returns a Config with the default settings.
 func NewConfig() *Config {
 	return &Config{
-		CaptureLogs:            true,
 		CaptureResponseHeaders: true,
 		SampleRate:             1,
 	}

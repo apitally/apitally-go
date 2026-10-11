@@ -5,7 +5,7 @@ This guide is also available in the [Apitally documentation](https://docs.apital
 The Go SDK now uses OpenTelemetry to collect and send metrics, logs, and traces.
 
 > [!WARNING]
-> Request logging, tracing, and application log capture are now enabled by default. If you previously used the SDK for metrics only, set `SampleRate = 0` to keep that behavior.
+> Request logging and tracing are now enabled by default. If you previously used the SDK for metrics only, set `SampleRate = 0` to keep that behavior.
 
 ## Installation and setup
 
@@ -84,7 +84,6 @@ The following options have been changed:
 | --- | --- |
 | `ClientID` | Replaced by `WriteToken`, which requires a new credential. |
 | `Env` | Can now also be set with the `APITALLY_ENV` environment variable. |
-| `RequestLogging.CaptureLogs` | Moved to `CaptureLogs`. Default changed from `false` to `true`. Logs are captured through `NewSlogHandler` (see below). |
 | `RequestLogging.LogRequestHeaders` | Renamed to `CaptureRequestHeaders`. |
 | `RequestLogging.LogRequestBody` | Renamed to `CaptureRequestBody`. |
 | `RequestLogging.LogResponseHeaders` | Renamed to `CaptureResponseHeaders`. |
@@ -108,6 +107,7 @@ These options have been removed:
 | `RequestLogging` | Set its fields directly on `Config`, applying the changes above. Remove its `Enabled` flag. |
 | `RequestLogging.Enabled` and `RequestLogging.CaptureTraces` | Previously defaulted to `false`. Request logging and tracing are now enabled by default. Use `SampleRate = 0` to disable request logs and traces. |
 | `RequestLogging.LogQueryParams` | Query parameters are now always captured. To mask all values, use `MaskQueryParams = []string{".*"}`. |
+| `RequestLogging.CaptureLogs` | Logs are captured when you wrap your `log/slog` handler with `NewSlogHandler` (see below). |
 | `RequestLogging.LogPanic` | Panics are now always captured in request traces. |
 | `DisableSync` | Use the `Disabled` option or the `APITALLY_DISABLED` environment variable. Apitally is also disabled in `go test` binaries. |
 
