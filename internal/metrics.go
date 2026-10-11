@@ -44,7 +44,6 @@ type requestMetricKey struct {
 	method     string
 	route      string
 	statusCode int
-	scheme     string
 	consumer   string
 }
 

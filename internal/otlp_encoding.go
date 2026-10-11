@@ -92,7 +92,6 @@ func encodeRequestHistograms(res *resourcepb.Resource, start, end time.Time, key
 			attribute.String("http.request.method", key.method),
 			attribute.String("http.route", key.route),
 			attribute.Int("http.response.status_code", key.statusCode),
-			attribute.String("url.scheme", key.scheme),
 		}
 		if key.consumer != "" {
 			attrs = append(attrs, attribute.String("apitally.consumer.identifier", key.consumer))
