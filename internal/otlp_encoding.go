@@ -2,7 +2,6 @@ package internal
 
 import (
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -95,9 +94,6 @@ func encodeRequestHistograms(res *resourcepb.Resource, start, end time.Time, key
 		}
 		if key.consumer != "" {
 			attrs = append(attrs, attribute.String("apitally.consumer.identifier", key.consumer))
-		}
-		if key.statusCode >= 500 {
-			attrs = append(attrs, attribute.String("error.type", strconv.Itoa(key.statusCode)))
 		}
 		encoded := encodeAttributes(attrs)
 		values := requests[key]
