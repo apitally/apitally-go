@@ -148,7 +148,7 @@ slog.SetDefault(slog.New(apitally.NewSlogHandler(handler)))
 slog.InfoContext(ctx, "Order created", "order_id", order.ID)
 ```
 
-Records logged without the request context are not linked to requests and are not captured. See the [README](README.md#identifying-consumers-and-more) for the context to pass on each framework.
+Records logged without the request context are not linked to requests and are not captured. See [Consumer identification](#consumer-identification) for the context to pass on each framework.
 
 ## Body masking callbacks
 

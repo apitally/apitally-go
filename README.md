@@ -40,7 +40,7 @@ Learn more about Apitally on our 🌎 [website](https://apitally.io) or check ou
 - **API analytics**: Traffic, error and performance metrics for your API, each endpoint, and per API consumer. Drill down from metrics to individual API requests.
 - **Request logs and traces**: Every request as a searchable log entry, with optional capture of headers and request/response bodies. Requests are exported as OpenTelemetry spans, including spans from any other instrumentations you have.
 - **Application logs**: Logs written via `log/slog` can be captured and correlated with the requests they belong to.
-- **Error tracking**: Validation errors, and server errors with stack traces for panics and errors captured with `CaptureError`.
+- **Error tracking**: Validation errors, and server errors with stack traces for panics and errors captured with `apitally.CaptureError`.
 - **API monitoring & alerts**: Get notified if something isn't right using custom alerts, synthetic uptime checks and heartbeat monitoring. Alert notifications can be delivered via email, Slack and Microsoft Teams.
 
 ## Supported frameworks
@@ -60,10 +60,6 @@ Apitally also supports many other web frameworks in [JavaScript](https://github.
 
 If you don't have an Apitally account yet, first [sign up here](https://app.apitally.io/?signup). Then create an app in the Apitally dashboard. You'll see detailed setup instructions with code snippets you can copy and paste. These also include your write token.
 
-The SDK provides a separate module for each framework, each with a package named `apitally`. Install and set up the module for your framework as shown below.
-
-See the [SDK reference](https://docs.apitally.io/sdk-reference/go/v1/configuration) for all available configuration options, including how to mask sensitive data, capture request and response payloads, and more.
-
 ### Gin
 
 Add the Apitally module to your dependencies:
@@ -72,7 +68,7 @@ Add the Apitally module to your dependencies:
 go get github.com/apitally/apitally-go/gin-v1
 ```
 
-Call `apitally.Init` right after `gin.Default()`, then register other middleware, groups and routes.
+Call `apitally.Init` right after `gin.Default()`, then register other middleware, groups and routes:
 
 ```go
 import (
@@ -105,7 +101,7 @@ Add the Apitally module to your dependencies:
 go get github.com/apitally/apitally-go/echo-v4 # or echo-v5
 ```
 
-Register Echo's `Recover` middleware first, then call `apitally.Init`, then register other middleware, groups and routes.
+Register Echo's `Recover` middleware first, then call `apitally.Init`, then register other middleware, groups and routes:
 
 ```go
 import (
@@ -140,7 +136,7 @@ Add the Apitally module to your dependencies:
 go get github.com/apitally/apitally-go/fiber-v2 # or fiber-v3
 ```
 
-Register Fiber's `recover` middleware first, then call `apitally.Init`, then register other middleware, groups and routes.
+Register Fiber's `recover` middleware first, then call `apitally.Init`, then register other middleware, groups and routes:
 
 ```go
 import (
@@ -175,7 +171,7 @@ Add the Apitally module to your dependencies:
 go get github.com/apitally/apitally-go/chi-v5
 ```
 
-Register Chi's `Recoverer` middleware first, then call `apitally.Init`, then register other middleware, groups and routes.
+Register Chi's `Recoverer` middleware first, then call `apitally.Init`, then register other middleware, groups and routes:
 
 ```go
 import (
@@ -196,31 +192,13 @@ func main() {
     cfg.Env = "dev"                     // or set APITALLY_ENV
     apitally.Init(r, cfg)
 
-    // ... register your middleware and routes ...
+    // ... register your routes ...
 
     http.ListenAndServe(":8080", r)
 }
 ```
 
 For further instructions, see our [setup guide for Chi](https://docs.apitally.io/sdk-reference/go/v1/setup-guides/chi).
-
-## Graceful shutdown
-
-Apitally sends telemetry in the background at regular intervals. Call `apitally.Shutdown` when your application exits, after your HTTP server has stopped, so the remaining telemetry is delivered. Without it, up to one export interval of telemetry is lost at exit.
-
-```go
-ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-defer stop()
-
-srv := &http.Server{Addr: ":8080", Handler: r}
-go srv.ListenAndServe()
-<-ctx.Done()
-
-shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-defer cancel()
-srv.Shutdown(shutdownCtx)      // with Fiber: app.ShutdownWithContext(shutdownCtx)
-apitally.Shutdown(shutdownCtx)
-```
 
 ## Configuration
 
@@ -241,50 +219,20 @@ On high-traffic applications you can capture logs and traces for only a fraction
 
 See the [SDK reference](https://docs.apitally.io/sdk-reference/go/v1/configuration) for all configuration options.
 
-## Identifying consumers and more
+## Identifying consumers
 
-The package provides functions you can call from anywhere in your request handling code, with the request context:
+Use `apitally.SetConsumer` to identify the API consumer making the request, for example in your authentication middleware:
 
 ```go
-// Associate the current request with an API consumer, with custom attributes
 apitally.SetConsumer(ctx, apitally.Consumer{
     Identifier: user.ID,
     Name:       user.Name,
     Group:      user.Group,
     Attributes: map[string]string{"plan": user.Plan},
 })
-
-// Attach custom attributes to the current request
-apitally.SetRequestAttributes(ctx, attribute.String("tenant", tenantID))
-
-// Capture a handled error for the current request
-apitally.CaptureError(ctx, err)
-
-// Report validation errors from go-playground/validator
-apitally.CaptureValidationError(ctx, err)
-
-// Create a custom span within the current request
-ctx, span := otel.Tracer("bookstore").Start(ctx, "search_books")
-defer span.End()
 ```
 
-The request context to pass depends on your framework:
-
-| Framework | Context                 |
-| --------- | ----------------------- |
-| Gin       | `c.Request.Context()`   |
-| Echo      | `c.Request().Context()` |
-| Fiber v3  | `c.Context()`           |
-| Fiber v2  | `c.UserContext()`       |
-| Chi       | `r.Context()`           |
-
-The handler's `c` on Gin and Fiber v3, and `c.Context()` on Fiber v2, also work for the request helpers and logs.
-
-Panics, errors returned to Echo and Fiber or added with `c.Error` in Gin, and [go-playground/validator](https://github.com/go-playground/validator) errors that reach the framework with a 400 or 422 response are captured automatically. Use the functions above for errors your handlers handle themselves.
-
-For further details, check out our [documentation](https://docs.apitally.io).
-
-## Logging
+## Capturing application logs
 
 Apitally can capture application logs written with [`log/slog`](https://pkg.go.dev/log/slog) and link them to the request they were logged in. To enable this, wrap your handler with `apitally.NewSlogHandler`, which passes every record on to your handler unchanged:
 
@@ -293,15 +241,31 @@ handler := slog.NewJSONHandler(os.Stdout, nil)
 slog.SetDefault(slog.New(apitally.NewSlogHandler(handler)))
 ```
 
-Log with the request context (see [the table above](#identifying-consumers-and-more)), so Apitally can link the record to its request. Logs without a request context are not captured.
+Log with the request context, so Apitally can link the record to its request. Logs without a request context are not captured.
 
 ```go
 slog.InfoContext(ctx, "Order created", "order_id", order.ID)
 ```
 
-Don't wrap `slog.Default().Handler()`. Installing it with `slog.SetDefault` deadlocks on the first log call. Wrap a new handler such as `slog.NewJSONHandler` instead.
+To modify or drop captured log records before they are sent to Apitally, set the `MaskLogRecord` option.
 
-To modify or drop captured log records before they are sent to Apitally, set the `MaskLogRecord` option. Your application's own log output is not affected.
+## Graceful shutdown
+
+Apitally sends telemetry in the background at regular intervals. Call `apitally.Shutdown` when your application exits, after your HTTP server has stopped, so the remaining telemetry is delivered. Without it, up to one export interval of telemetry is lost at exit.
+
+```go
+ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+defer stop()
+
+srv := &http.Server{Addr: ":8080", Handler: r}
+go srv.ListenAndServe()
+<-ctx.Done()
+
+shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+defer cancel()
+srv.Shutdown(shutdownCtx)      // with Fiber: app.ShutdownWithContext(shutdownCtx)
+apitally.Shutdown(shutdownCtx)
+```
 
 ## Existing OpenTelemetry setup
 
