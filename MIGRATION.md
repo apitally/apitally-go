@@ -142,7 +142,8 @@ apitally.SetConsumer(ctx, apitally.Consumer{Identifier: user.ID})
 Log capture now works with `log/slog`. Wrap your handler with `NewSlogHandler` and log with the request context, for example with `slog.InfoContext`:
 
 ```go
-slog.SetDefault(slog.New(apitally.NewSlogHandler(slog.NewJSONHandler(os.Stdout, nil))))
+handler := slog.NewJSONHandler(os.Stdout, nil)
+slog.SetDefault(slog.New(apitally.NewSlogHandler(handler)))
 
 slog.InfoContext(ctx, "Order created", "order_id", order.ID)
 ```

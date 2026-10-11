@@ -37,7 +37,8 @@ func Shutdown(ctx context.Context) error {
 // a request's context for Apitally and passes every record to next
 // unchanged, for example:
 //
-//	slog.SetDefault(slog.New(apitally.NewSlogHandler(slog.NewJSONHandler(os.Stdout, nil))))
+//	handler := slog.NewJSONHandler(os.Stdout, nil)
+//	slog.SetDefault(slog.New(apitally.NewSlogHandler(handler)))
 //
 // Pass the request context when logging, such as with slog.InfoContext, to
 // link records to the request. next must not be the handler of the default
