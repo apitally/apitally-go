@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"unicode/utf8"
 
 	"go.opentelemetry.io/otel/attribute"
 
@@ -16,13 +15,10 @@ import (
 )
 
 const (
-	consumerUpdateEventName  = "apitally.consumer.update"
-	maxConsumerIdentifier    = 128
-	maxConsumerName          = 64
-	maxConsumerAttributeKey  = 64
-	maxConsumerAttributeText = 1_024
-	maxConsumerAttributes    = 10
-	maxCachedConsumers       = 10_000
+	consumerUpdateEventName = "apitally.consumer.update"
+	maxConsumerIdentifier   = 128
+	maxConsumerName         = 64
+	maxCachedConsumers      = 10_000
 )
 
 // SetConsumer merges consumer into the consumer of the request in ctx.
@@ -77,12 +73,9 @@ func mergeConsumer(current *requestConsumer, c root.Consumer) *requestConsumer {
 	}
 	slices.SortFunc(attributes, func(a, b consumerAttribute) int { return strings.Compare(a.key, b.key) })
 	for _, a := range attributes {
-		if a.key == "" || utf8.RuneCountInString(a.key) > maxConsumerAttributeKey || utf8.RuneCountInString(a.value) > maxConsumerAttributeText {
-			continue
-		}
 		if i := slices.IndexFunc(merged.attributes, func(existing consumerAttribute) bool { return existing.key == a.key }); i >= 0 {
 			merged.attributes[i].value = a.value
-		} else if len(merged.attributes) < maxConsumerAttributes {
+		} else {
 			merged.attributes = append(merged.attributes, a)
 		}
 	}

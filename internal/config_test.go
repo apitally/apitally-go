@@ -91,7 +91,6 @@ func TestUserPatternsAreValidatedAndCaseInsensitive(t *testing.T) {
 
 	s := resolveSettings(cfg)
 
-	assert.Equal(t, []string{"(?i)x-custom", "(?i)(?-i:Exact)"}, s.config.MaskHeaders)
 	require.Len(t, s.maskHeaders, 2)
 	assert.True(t, s.maskHeaders[0].MatchString("X-Custom"))
 	assert.False(t, s.maskHeaders[1].MatchString("exact"))

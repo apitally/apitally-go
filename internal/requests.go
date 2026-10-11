@@ -141,11 +141,6 @@ func beginRequest(ctx context.Context, info RequestInfo) (state *RequestState, r
 			state, requestCtx = nil, ctx
 		}
 	}()
-	// Fiber reports the X-Forwarded-Proto value of untrusted clients, and the
-	// scheme is part of the request metric combinations.
-	if info.Scheme != "https" {
-		info.Scheme = "http"
-	}
 	state = &RequestState{runtime: r, info: info, requestEncoding: info.Header.Get("Content-Encoding"), startTime: time.Now()}
 	attrs := requestAttributes(&info)
 	ctx, state.span, state.isSpanCreated = r.startServerSpan(ctx, &info, attrs)
@@ -228,7 +223,7 @@ func (s *RequestState) recordRequestData(result *TransportResult, end time.Time,
 	if result.Route == "" || method == http.MethodOptions {
 		return
 	}
-	key := requestMetricKey{method: method, route: result.Route, statusCode: result.StatusCode, scheme: s.info.Scheme, consumer: consumerIdentifier}
+	key := requestMetricKey{method: method, route: result.Route, statusCode: result.StatusCode, consumer: consumerIdentifier}
 	r.metrics.recordRequest(key, end.Sub(s.startTime), result.RequestBodySize, result.ResponseBodySize)
 	s.mu.Lock()
 	captured, requestError := s.exception, s.capturedError
@@ -236,14 +231,13 @@ func (s *RequestState) recordRequestData(result *TransportResult, end time.Time,
 		requestError = s.returnedError
 	}
 	s.mu.Unlock()
-	path := truncateString(result.Route, maxErrorPath)
 	if result.StatusCode == http.StatusBadRequest || result.StatusCode == http.StatusUnprocessableEntity {
 		for _, detail := range validationDetails(requestError) {
-			r.validationErrors.add(validationErrorKey{method: method, path: path, validationDetail: detail}, consumerIdentifier)
+			r.validationErrors.add(validationErrorKey{method: method, path: result.Route, validationDetail: detail}, consumerIdentifier)
 		}
 	}
 	if result.StatusCode == http.StatusInternalServerError && captured != nil {
-		r.serverErrors.add(serverErrorKey{method: method, path: path, exception: *captured}, consumerIdentifier)
+		r.serverErrors.add(serverErrorKey{method: method, path: result.Route, exception: *captured}, consumerIdentifier)
 	}
 }
 

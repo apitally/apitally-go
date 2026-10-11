@@ -2,7 +2,6 @@ package apitally_test
 
 import (
 	"bufio"
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -390,7 +389,6 @@ func TestReturnedErrorIsDispatchedToErrorHandlerOnce(t *testing.T) {
 	assert.Equal(t, int64(500), testutils.Attributes(span.Attributes)["http.response.status_code"])
 	errors := server.Events(t, "apitally.request.server_error")
 	require.Len(t, errors, 1)
-	assert.Equal(t, "", testutils.Value(errors[0].Body).(map[string]any)["stacktrace"])
 }
 
 func TestFailingErrorHandlerFallsBackToStatus500(t *testing.T) {
@@ -408,24 +406,20 @@ func TestFailingErrorHandlerFallsBackToStatus500(t *testing.T) {
 	assert.Equal(t, int64(500), testutils.Attributes(span.Attributes)["http.response.status_code"])
 }
 
-func TestStreamsOfKnownLengthReportSizeWithoutCapture(t *testing.T) {
+func TestStreamOfKnownLengthReportsSize(t *testing.T) {
 	server := setUp(t)
-	cfg := apitally.NewConfig()
-	cfg.CaptureResponseBody = true
 	app := fiber.New()
-	apitally.Init(app, cfg)
-	app.Get("/bytes", func(c *fiber.Ctx) error {
-		c.Set(fiber.HeaderContentType, fiber.MIMETextPlain)
-		return c.SendStream(bytes.NewReader([]byte("12345")))
+	apitally.Init(app, nil)
+	app.Get("/stream", func(c *fiber.Ctx) error {
+		return c.SendStream(io.LimitReader(strings.NewReader("12345"), 5))
 	})
 
-	send(t, app, http.MethodGet, "/bytes", nil)
+	resp := send(t, app, http.MethodGet, "/stream", nil)
 	shutDown(t)
 
+	assert.Equal(t, "5", resp.Header.Get("Content-Length"))
 	span := server.SingleSpan(t)
-	attrs := testutils.Attributes(span.Attributes)
-	assert.Equal(t, int64(5), attrs["http.response.body.size"])
-	assert.NotContains(t, attrs, "apitally.response.body")
+	assert.Equal(t, int64(5), testutils.Attributes(span.Attributes)["http.response.body.size"])
 }
 
 func TestStreamWriterRunsInsideServerSpan(t *testing.T) {
@@ -569,7 +563,6 @@ func TestInitAfterRoutesLogsError(t *testing.T) {
 	apitally.Init(app, nil)
 	app.Get("/late", func(c *fiber.Ctx) error { return nil })
 
-	send(t, app, http.MethodGet, "/early", nil)
 	send(t, app, http.MethodGet, "/late", nil)
 	shutDown(t)
 

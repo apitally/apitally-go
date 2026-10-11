@@ -49,7 +49,7 @@ func TestExcludedAndSampledOutRequestsAreStillCounted(t *testing.T) {
 		points = append(points, []any{testutils.Attributes(point.Attributes), point.Count})
 	}
 	point := func(route string, count uint64, statusAttributes map[string]any) []any {
-		attrs := map[string]any{"http.request.method": "GET", "http.route": route, "url.scheme": "http"}
+		attrs := map[string]any{"http.request.method": "GET", "http.route": route}
 		maps.Copy(attrs, statusAttributes)
 		return []any{attrs, count}
 	}
@@ -95,7 +95,7 @@ func TestMetricCombinationsAreCappedAndSplit(t *testing.T) {
 	m := currentRuntime.Load().metrics
 
 	for i := range maxMetricCombinations + 1 {
-		m.recordRequest(requestMetricKey{method: "GET", route: "/items/" + strconv.Itoa(i), statusCode: 200, scheme: "http"}, time.Millisecond, 0, 2)
+		m.recordRequest(requestMetricKey{method: "GET", route: "/items/" + strconv.Itoa(i), statusCode: 200}, time.Millisecond, 0, 2)
 	}
 	require.NoError(t, Shutdown(context.Background()))
 

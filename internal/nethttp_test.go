@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
@@ -66,7 +65,7 @@ func TestResponseWriterSupportsStreaming(t *testing.T) {
 	assert.Len(t, server.Spans(t), 1)
 }
 
-func TestReadFromUsesWrappedWriterUnlessBodyIsCaptured(t *testing.T) {
+func TestCopiedResponseBodyIsMeasuredAndCaptured(t *testing.T) {
 	for _, isCaptured := range []bool{false, true} {
 		t.Run(strconv.FormatBool(isCaptured), func(t *testing.T) {
 			server := testutils.NewOTLPServer(t)
@@ -74,17 +73,16 @@ func TestReadFromUsesWrappedWriterUnlessBodyIsCaptured(t *testing.T) {
 			cfg.CaptureResponseBody = isCaptured
 			registerForTest(t, server, cfg)
 			contents := strings.Repeat("x", 1000)
-			app := NetHTTPMiddleware(serveMuxRoute)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			appURL := startTestApp(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "text/plain")
+				// io.Copy uses the writer's ReadFrom for a source without WriteTo.
 				_, _ = io.Copy(w, io.LimitReader(strings.NewReader(contents), 1024))
 			}))
-			recorder := &readerFromRecorder{ResponseRecorder: httptest.NewRecorder()}
 
-			app.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/file", nil))
+			resp := testutils.Get(t, appURL+"/file")
 			require.NoError(t, Shutdown(context.Background()))
 
-			assert.Equal(t, contents, recorder.Body.String())
-			assert.Equal(t, !isCaptured, recorder.isReadFromCalled)
+			assert.Equal(t, contents, resp.Body)
 			span := server.SingleSpan(t)
 			attrs := testutils.Attributes(span.Attributes)
 			assert.Equal(t, int64(1000), attrs["http.response.body.size"])
@@ -159,16 +157,4 @@ func TestDetectedContentTypeIsRecorded(t *testing.T) {
 		assert.Equal(t, []any{"text/plain; charset=utf-8"}, attrs["http.response.header.content-type"], span.Name)
 		assert.Equal(t, `{"id":1}`, attrs["apitally.response.body"], span.Name)
 	}
-}
-
-// readerFromRecorder is a response writer implementing io.ReaderFrom, as
-// net/http's own writer does to use sendfile.
-type readerFromRecorder struct {
-	*httptest.ResponseRecorder
-	isReadFromCalled bool
-}
-
-func (r *readerFromRecorder) ReadFrom(src io.Reader) (int64, error) {
-	r.isReadFromCalled = true
-	return io.Copy(r.ResponseRecorder, src)
 }

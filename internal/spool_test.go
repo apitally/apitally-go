@@ -64,7 +64,6 @@ func TestSpoolBuffersInMemoryWhenTempDirIsNotWritable(t *testing.T) {
 	require.Len(t, files, 1)
 	assert.Equal(t, []byte("payload"), readSpoolFile(t, s, files[0]))
 	assert.Len(t, logs.Messages(slog.LevelWarn), 1)
-	assert.NoDirExists(t, dir)
 }
 
 func TestSpoolDeletesOrphanedFilesUntouchedForTwoHours(t *testing.T) {

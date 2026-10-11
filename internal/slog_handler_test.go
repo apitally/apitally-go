@@ -79,8 +79,6 @@ func TestMaskLogRecordEditsAndDropsCapturedRecordsOnly(t *testing.T) {
 			return false
 		case "panic":
 			panic("bug")
-		case "empty":
-			record.Message = ""
 		}
 		record.Attrs = slices.DeleteFunc(record.Attrs, func(a slog.Attr) bool { return a.Key == "password" })
 		return true
@@ -89,7 +87,7 @@ func TestMaskLogRecordEditsAndDropsCapturedRecordsOnly(t *testing.T) {
 	var output bytes.Buffer
 	logger := slog.New(NewSlogHandler(slog.NewTextHandler(&output, nil)))
 	appURL := startTestApp(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		for _, message := range []string{"login", "drop", "panic", "empty"} {
+		for _, message := range []string{"login", "drop", "panic"} {
 			logger.InfoContext(r.Context(), message, "password", "secret", "user", "alice")
 		}
 	}))
@@ -97,7 +95,7 @@ func TestMaskLogRecordEditsAndDropsCapturedRecordsOnly(t *testing.T) {
 	testutils.Get(t, appURL+"/login")
 	require.NoError(t, Shutdown(context.Background()))
 
-	assert.Equal(t, 4, strings.Count(output.String(), "password=secret"))
+	assert.Equal(t, 3, strings.Count(output.String(), "password=secret"))
 	var bodies []string
 	for _, record := range server.ApplicationLogRecords(t) {
 		bodies = append(bodies, record.Body.GetStringValue())

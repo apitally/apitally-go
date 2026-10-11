@@ -1,7 +1,6 @@
 package internal
 
 import (
-	"bytes"
 	"context"
 	"io"
 	"net/http"
@@ -152,13 +151,8 @@ func streamSize(stream io.Reader, header http.Header) int64 {
 	if size := declaredContentLength(header); size >= 0 {
 		return size
 	}
-	switch stream := stream.(type) {
-	case *io.LimitedReader:
+	if stream, ok := stream.(*io.LimitedReader); ok {
 		return max(stream.N, 0)
-	case *bytes.Reader:
-		return int64(stream.Len())
-	case *bytes.Buffer:
-		return int64(stream.Len())
 	}
 	return -1
 }

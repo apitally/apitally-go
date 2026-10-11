@@ -109,10 +109,6 @@ func (h *slogHandler) capture(ctx context.Context, record slog.Record) {
 	if mask := r.settings.config.MaskLogRecord; mask != nil && !callMaskLogRecord(mask, &captured.record) {
 		return
 	}
-	// The server drops records without a message.
-	if captured.record.Message == "" {
-		return
-	}
 	captured.record.Message = strings.Clone(truncateString(captured.record.Message, maxLogTextLength))
 	state.logEmitted(captured)
 }
@@ -129,7 +125,7 @@ func (r *sdkRuntime) logRequestState(ctx context.Context) (*RequestState, trace.
 			return state, spanCtx
 		}
 	}
-	if state := requestStateFromContext(ctx); state != nil && state.isMonitored && state.runtime == r {
+	if state := requestStateFromContext(ctx); state != nil && state.isMonitored {
 		return state, state.span.SpanContext()
 	}
 	return nil, trace.SpanContext{}

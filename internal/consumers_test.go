@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -15,21 +14,13 @@ import (
 )
 
 func TestConsumerIsNormalizedAndMerged(t *testing.T) {
-	attributes := map[string]string{" plan ": " pro ", "region": "", "": "x", "long": strings.Repeat("x", 1025)}
-	for i := range 9 {
-		attributes["k"+strconv.Itoa(i)] = "v"
-	}
-
-	consumer := mergeConsumer(nil, root.Consumer{Identifier: " acme ", Name: " Acme Corp ", Attributes: attributes})
+	consumer := mergeConsumer(nil, root.Consumer{Identifier: " acme ", Name: " Acme Corp ", Attributes: map[string]string{" plan ": " pro ", "region": ""}})
 	consumer = mergeConsumer(consumer, root.Consumer{Identifier: "acme", Group: "enterprise", Attributes: map[string]string{"plan": "free", "zone": "1"}})
 
 	assert.Equal(t, "acme", consumer.identifier)
 	assert.Equal(t, "Acme Corp", consumer.name)
 	assert.Equal(t, "enterprise", consumer.group)
-	assert.Equal(t, []consumerAttribute{
-		{"k0", "v"}, {"k1", "v"}, {"k2", "v"}, {"k3", "v"}, {"k4", "v"}, {"k5", "v"}, {"k6", "v"}, {"k7", "v"}, {"k8", "v"},
-		{"plan", "free"},
-	}, consumer.attributes)
+	assert.Equal(t, []consumerAttribute{{"plan", "free"}, {"region", ""}, {"zone", "1"}}, consumer.attributes)
 	assert.Equal(t, &requestConsumer{identifier: "globex"}, mergeConsumer(consumer, root.Consumer{Identifier: "globex"}))
 }
 

@@ -44,7 +44,6 @@ type requestMetricKey struct {
 	method     string
 	route      string
 	statusCode int
-	scheme     string
 	consumer   string
 }
 
@@ -111,7 +110,7 @@ func (m *metrics) collect() {
 func (m *metrics) observeProcess(start, end time.Time) []*metricspb.Metric {
 	var gauges []*metricspb.Metric
 	gauge := func(name, unit string, point *metricspb.NumberDataPoint) {
-		point.StartTimeUnixNano, point.TimeUnixNano = unixNano(start), unixNano(end)
+		point.StartTimeUnixNano, point.TimeUnixNano = uint64(start.UnixNano()), uint64(end.UnixNano())
 		gauges = append(gauges, &metricspb.Metric{
 			Name: name,
 			Unit: unit,
