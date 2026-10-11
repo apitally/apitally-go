@@ -185,13 +185,6 @@ func (w *ResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	return nil, nil, errors.New("http.Hijacker is not supported by the wrapped response writer")
 }
 
-func (w *ResponseWriter) Push(target string, opts *http.PushOptions) error {
-	if pusher, ok := w.ResponseWriter.(http.Pusher); ok {
-		return pusher.Push(target, opts)
-	}
-	return http.ErrNotSupported
-}
-
 // Unwrap supports http.ResponseController.
 func (w *ResponseWriter) Unwrap() http.ResponseWriter {
 	return w.ResponseWriter

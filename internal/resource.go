@@ -25,15 +25,12 @@ var (
 // OTEL_RESOURCE_ATTRIBUTES, with the Apitally-owned keys merged on top, so the
 // environment always matches the Apitally-Env export header.
 func newResource(env string) *resource.Resource {
-	res, err := resource.Merge(resource.Default(), resource.NewSchemaless(
+	res, _ := resource.Merge(resource.Default(), resource.NewSchemaless(
 		attribute.String("service.instance.id", instanceID),
 		attribute.String("deployment.environment.name", env),
 		attribute.String("telemetry.distro.name", distroName),
 		attribute.String("telemetry.distro.version", sdkVersion),
 	))
-	if err != nil {
-		logDebug("Apitally resource merge reported an error", "error", err)
-	}
 	return res
 }
 
@@ -44,9 +41,6 @@ func moduleVersion(path string) string {
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
 		return "unknown"
-	}
-	if info.Main.Path == path {
-		return strings.TrimPrefix(info.Main.Version, "v")
 	}
 	for _, dep := range info.Deps {
 		if dep.Path == path {

@@ -16,9 +16,6 @@ func isTraceIDSampled(id trace.TraceID, rate float64) bool {
 	if rate >= 1 {
 		return true
 	}
-	if !(rate > 0) {
-		return false
-	}
 	return binary.BigEndian.Uint64(id[8:]) < uint64(math.Round(math.Ldexp(rate, 64)))
 }
 

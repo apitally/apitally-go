@@ -236,14 +236,13 @@ func (s *RequestState) recordRequestData(result *TransportResult, end time.Time,
 		requestError = s.returnedError
 	}
 	s.mu.Unlock()
-	path := truncateString(result.Route, maxErrorPath)
 	if result.StatusCode == http.StatusBadRequest || result.StatusCode == http.StatusUnprocessableEntity {
 		for _, detail := range validationDetails(requestError) {
-			r.validationErrors.add(validationErrorKey{method: method, path: path, validationDetail: detail}, consumerIdentifier)
+			r.validationErrors.add(validationErrorKey{method: method, path: result.Route, validationDetail: detail}, consumerIdentifier)
 		}
 	}
 	if result.StatusCode == http.StatusInternalServerError && captured != nil {
-		r.serverErrors.add(serverErrorKey{method: method, path: path, exception: *captured}, consumerIdentifier)
+		r.serverErrors.add(serverErrorKey{method: method, path: result.Route, exception: *captured}, consumerIdentifier)
 	}
 }
 

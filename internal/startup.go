@@ -74,10 +74,8 @@ func startupEventBody(s *settings, framework FrameworkInfo, routes []Route) attr
 		}
 	}
 	paths := []Route{}
-	seen := map[Route]bool{}
 	for _, route := range routes {
-		if route.Method != "HEAD" && route.Method != "OPTIONS" && !seen[route] {
-			seen[route] = true
+		if route.Method != "HEAD" && route.Method != "OPTIONS" {
 			paths = append(paths, route)
 		}
 	}

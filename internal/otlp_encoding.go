@@ -44,7 +44,7 @@ func encodeLogs(res *resourcepb.Resource, records []*logRecord) *logspb.LogsData
 }
 
 func encodeLogRecord(r *logRecord) *logspb.LogRecord {
-	timestamp := unixNano(r.record.Time)
+	timestamp := uint64(r.record.Time.UnixNano())
 	if r.eventName != "" {
 		return &logspb.LogRecord{TimeUnixNano: timestamp, ObservedTimeUnixNano: timestamp, EventName: r.eventName, Body: encodeValue(r.eventBody)}
 	}
@@ -83,7 +83,7 @@ func encodeRequestHistograms(res *resourcepb.Resource, start, end time.Time, key
 	addPoint := func(metric *metricspb.Metric, h *exponentialHistogram, attrs []*commonpb.KeyValue) {
 		if h.count > 0 {
 			point := h.dataPoint()
-			point.StartTimeUnixNano, point.TimeUnixNano, point.Attributes = unixNano(start), unixNano(end), attrs
+			point.StartTimeUnixNano, point.TimeUnixNano, point.Attributes = uint64(start.UnixNano()), uint64(end.UnixNano()), attrs
 			metric.GetExponentialHistogram().DataPoints = append(metric.GetExponentialHistogram().DataPoints, point)
 		}
 	}
@@ -196,11 +196,4 @@ func replaceInvalidUTF8(m protoreflect.Message) {
 		}
 		return true
 	})
-}
-
-func unixNano(t time.Time) uint64 {
-	if t.IsZero() {
-		return 0
-	}
-	return uint64(t.UnixNano())
 }

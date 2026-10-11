@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"net/http"
 	"reflect"
 	"runtime"
@@ -20,14 +19,12 @@ const (
 	serverErrorEventName     = "apitally.request.server_error"
 	validationErrorEventName = "apitally.request.validation_error"
 	maxErrorGroups           = 100
-	maxErrorPath             = 2_000
 	maxStackFrames           = 128
 	maxExceptionType         = 256
 	maxExceptionMessage      = 2_048
 	maxExceptionStack        = 65_536
 	maxValidationField       = 2_048
 	maxValidationMessage     = 2_048
-	maxValidationType        = 128
 )
 
 // CaptureError captures err with the caller's stack trace.
@@ -224,7 +221,7 @@ func fieldErrorDetails(err error) []validationDetail {
 		details = append(details, validationDetail{
 			field:    truncateString(namespaceWithoutStruct(fe.Namespace()), maxValidationField),
 			message:  truncateString(fe.Error(), maxValidationMessage),
-			typeName: truncateString(fe.Tag(), maxValidationType),
+			typeName: fe.Tag(),
 		})
 	}
 	return details
@@ -311,7 +308,7 @@ func (g *errorGroups[K]) drain() map[K]map[string]uint64 {
 func errorCounts(counts map[string]uint64) []attribute.Value {
 	values := make([]attribute.Value, 0, len(counts))
 	for consumer, count := range counts {
-		attrs := []attribute.KeyValue{attribute.Int64("count", int64(min(count, math.MaxUint32)))}
+		attrs := []attribute.KeyValue{attribute.Int64("count", int64(count))}
 		if consumer != "" {
 			attrs = append([]attribute.KeyValue{attribute.String("consumer", consumer)}, attrs...)
 		}

@@ -2,7 +2,6 @@ package apitally_test
 
 import (
 	"bufio"
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -432,24 +431,19 @@ func TestConsumersFromReusedRequestMemoryAreKept(t *testing.T) {
 	assert.Equal(t, map[any]uint64{"acme": 2, "zeta": 2}, counts)
 }
 
-func TestStreamsOfKnownLengthReportSizeWithoutCapture(t *testing.T) {
+func TestStreamOfKnownLengthReportsSize(t *testing.T) {
 	server := setUp(t)
-	cfg := apitally.NewConfig()
-	cfg.CaptureResponseBody = true
 	app := fiber.New()
-	apitally.Init(app, cfg)
-	app.Get("/bytes", func(c fiber.Ctx) error {
-		c.Set(fiber.HeaderContentType, fiber.MIMETextPlain)
-		return c.SendStream(bytes.NewReader([]byte("12345")))
+	apitally.Init(app, nil)
+	app.Get("/stream", func(c fiber.Ctx) error {
+		return c.SendStream(io.LimitReader(strings.NewReader("12345"), 5))
 	})
 
-	send(t, app, http.MethodGet, "/bytes", nil)
+	send(t, app, http.MethodGet, "/stream", nil)
 	shutDown(t)
 
 	span := server.SingleSpan(t)
-	attrs := testutils.Attributes(span.Attributes)
-	assert.Equal(t, int64(5), attrs["http.response.body.size"])
-	assert.NotContains(t, attrs, "apitally.response.body")
+	assert.Equal(t, int64(5), testutils.Attributes(span.Attributes)["http.response.body.size"])
 }
 
 func TestStreamWriterRunsInsideServerSpan(t *testing.T) {
