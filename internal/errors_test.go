@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	root "github.com/apitally/apitally-go"
 	"github.com/apitally/apitally-go/internal/testutils"
 )
 
@@ -49,6 +50,7 @@ func TestPanicIsRecordedAsServerError(t *testing.T) {
 	panicValue := fmt.Errorf("starting: %w", fmt.Errorf("loading config: %w", &fs.PathError{Op: "open", Path: "app.yaml", Err: fs.ErrNotExist}))
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /config", func(w http.ResponseWriter, r *http.Request) {
+		SetConsumer(r.Context(), root.Consumer{Identifier: "acme"})
 		panic(panicValue)
 	})
 	recovered := make(chan any, 1)
@@ -75,7 +77,7 @@ func TestPanicIsRecordedAsServerError(t *testing.T) {
 		"type":       "fs.PathError",
 		"message":    "starting: loading config: open app.yaml: file does not exist",
 		"stacktrace": event["exception.stacktrace"],
-		"counts":     []any{map[string]any{"count": int64(1)}},
+		"counts":     []any{map[string]any{"consumer": "acme", "count": int64(1)}},
 	}, testutils.Value(records[0].Body))
 }
 

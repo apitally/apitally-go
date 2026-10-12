@@ -115,10 +115,10 @@ func TestNestedJSONBodyFieldsAreRedacted(t *testing.T) {
 	red := newRedaction(&settings{maskBodyFields: compileDefaultPatterns("^email$")})
 
 	// Some clients, such as Windows PowerShell 5.1, start JSON with a UTF-8 byte order mark.
-	redacted, ok := red.redactJSON([]byte("\xef\xbb\xbf" + `{"z": 1, "items": [{"Card_Number": "4111", "email": "a@b.c", "auth": {"pwd": "x"}}], "note": "<b>&", "n": 1.50}`))
+	redacted, ok := red.redactJSON([]byte("\xef\xbb\xbf" + `{"z": 1, "items": [{"Card_Number": "4111", "email": "a@b.c", "auth": {"pwd": "x"}}, 2], "note": "<b>&", "n": 1.50}`))
 
 	require.True(t, ok)
-	assert.Equal(t, `{"z":1,"items":[{"Card_Number":"[REDACTED]","email":"[REDACTED]","auth":{"pwd":"[REDACTED]"}}],"note":"<b>&","n":1.50}`, redacted)
+	assert.Equal(t, `{"z":1,"items":[{"Card_Number":"[REDACTED]","email":"[REDACTED]","auth":{"pwd":"[REDACTED]"}},2],"note":"<b>&","n":1.50}`, redacted)
 	_, ok = red.redactJSON([]byte("{\"a\":1}\n{\"b\":2}"))
 	assert.False(t, ok)
 }
