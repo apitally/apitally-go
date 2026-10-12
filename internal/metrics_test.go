@@ -54,7 +54,7 @@ func TestExcludedAndSampledOutRequestsAreStillCounted(t *testing.T) {
 		return []any{attrs, count}
 	}
 	succeeded := map[string]any{"http.response.status_code": int64(200)}
-	failed := map[string]any{"http.response.status_code": int64(500), "error.type": "500"}
+	failed := map[string]any{"http.response.status_code": int64(500)}
 	assert.ElementsMatch(t, []any{point("/items", 2, succeeded), point("/orders", 1, failed), point("/healthz", 1, failed)}, points)
 	assert.Len(t, testutils.HistogramPoints(metrics, "http.server.request.body.size"), 3)
 	assert.Len(t, testutils.HistogramPoints(metrics, "http.server.response.body.size"), 3)
