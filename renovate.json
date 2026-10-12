@@ -1,5 +1,14 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["github>apitally/renovate-config"],
-  "enabledManagers": ["github-actions"]
+  "gomod": {
+    "enabled": false
+  },
+  "packageRules": [
+    {
+      "matchManagers": ["github-actions"],
+      "matchDepNames": ["go"],
+      "enabled": false
+    }
+  ]
 }

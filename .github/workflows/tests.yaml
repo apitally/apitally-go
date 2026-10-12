@@ -9,8 +9,12 @@ on:
       - README.md
       - MIGRATION.md
   pull_request:
+  schedule:
+    - cron: "0 0,12 * * *"
+  workflow_dispatch:
+
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -77,24 +81,3 @@ jobs:
       - name: Fail if any job failed or was cancelled
         if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
         run: exit 1
-
-  pi-fix-ci:
-    needs: ci-gate
-    if: |
-      always() &&
-      github.event_name == 'pull_request' &&
-      needs.ci-gate.result == 'failure' &&
-      github.run_attempt == 1 &&
-      github.actor == 'renovate[bot]' &&
-      github.event.pull_request.user.login == 'renovate[bot]' &&
-      startsWith(github.event.pull_request.head.ref, 'renovate/') &&
-      github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write
-    steps:
-      - name: Dispatch Pi Fix CI workflow
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: gh workflow run pi-fix-ci.yaml --ref main -f run_id="$GITHUB_RUN_ID"
