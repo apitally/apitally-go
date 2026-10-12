@@ -245,6 +245,8 @@ Metrics always include all requests. See our [documentation on sampling](https:/
 
 The following functions add context to the current request. Call them while handling a request, for example in a handler, middleware, or authentication code. Their first argument is the request context, which is `c` in Gin and Fiber, `c.Request().Context()` in Echo, and `r.Context()` in Chi.
 
+### Consumers
+
 To associate the request with the API consumer making it, call `SetConsumer`. Only `Identifier` is required.
 
 ```go
@@ -256,6 +258,8 @@ apitally.SetConsumer(ctx, apitally.Consumer{
 })
 ```
 
+### Custom attributes
+
 To attach custom data to the request's trace, call `SetRequestAttributes`. The `SampleOnResponse`, `MaskRequestBody`, and `MaskResponseBody` callbacks can also read these attributes.
 
 ```go
@@ -264,6 +268,10 @@ import "go.opentelemetry.io/otel/attribute"
 apitally.SetRequestAttributes(ctx, attribute.String("tenant.id", tenantID))
 ```
 
+See our [documentation on attributes](https://docs.apitally.io/sdk-reference/go/v1/attributes#set-custom-attributes) for details.
+
+### Handled errors
+
 To capture an error that your code handles itself, call `CaptureError`. Panics and errors passed to the framework are captured automatically.
 
 ```go
@@ -271,8 +279,6 @@ if err := processOrder(ctx); err != nil {
     apitally.CaptureError(ctx, err)
 }
 ```
-
-See our documentation on [custom attributes](https://docs.apitally.io/sdk-reference/go/v1/attributes#set-custom-attributes) and [handled errors](https://docs.apitally.io/sdk-reference/go/v1/tracing#capture-handled-errors) for details.
 
 ## Capturing application logs
 
