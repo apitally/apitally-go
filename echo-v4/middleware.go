@@ -16,11 +16,9 @@ var framework = internal.FrameworkInfo{
 	ScopeName:  "github.com/apitally/apitally-go/echo-v4",
 }
 
-// Init instruments the Echo instance with Apitally. Register recovery
-// middleware first, then call Init, then register other middleware and
-// routes. A nil cfg is equivalent to NewConfig(). Init copies cfg, so later
-// changes to it have no effect. Calling Init again for the same Echo instance
-// does nothing.
+// Init adds the Apitally middleware to the Echo instance. Call it after
+// registering recovery middleware, such as middleware.Recover, and before
+// registering other middleware and routes. A nil cfg uses the defaults.
 func Init(e *echo.Echo, cfg *Config) {
 	internal.Register(cfg, framework, func() []internal.Route { return listRoutes(e) })
 	internal.InstallOnce(e, func() { e.Use(newMiddleware(e)) })

@@ -16,10 +16,9 @@ var framework = internal.FrameworkInfo{
 	ScopeName:  "github.com/apitally/apitally-go/chi-v5",
 }
 
-// Init instruments the router with Apitally. Register recovery middleware
-// first, then call Init, then register other middleware and routes. A nil cfg
-// is equivalent to NewConfig(). Init copies cfg, so later changes to it have
-// no effect. Calling Init again for the same router does nothing.
+// Init adds the Apitally middleware to the router. Call it after registering
+// recovery middleware, such as middleware.Recoverer, and before registering
+// other middleware and routes. A nil cfg uses the defaults.
 func Init(r chi.Router, cfg *Config) {
 	internal.Register(cfg, framework, func() []internal.Route { return listRoutes(r) })
 	internal.InstallOnce(r, func() { r.Use(internal.NetHTTPMiddleware(newRoutePattern(r))) })

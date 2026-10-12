@@ -16,14 +16,9 @@ var framework = internal.FrameworkInfo{
 	ScopeName:  "github.com/apitally/apitally-go/fiber-v3",
 }
 
-// Init instruments the app with Apitally. Register recovery middleware
-// first, then call Init, then register other middleware, groups and routes.
-// Routes registered before Init are not monitored. A nil cfg is equivalent
-// to NewConfig(). Init copies cfg, so later changes to it have no effect.
-// Calling Init again for the same app does nothing.
-//
-// Shutting down the app delivers the telemetry recorded so far, waiting at
-// most 5 seconds. Call Shutdown when the application exits.
+// Init adds the Apitally middleware to the app. Call it after registering
+// recovery middleware, such as recover.New, and before registering other
+// middleware and routes. A nil cfg uses the defaults.
 func Init(app *fiber.App, cfg *Config) {
 	internal.Register(cfg, framework, func() []internal.Route { return listRoutes(app) })
 	internal.InstallOnce(app, func() {

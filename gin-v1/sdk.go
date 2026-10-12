@@ -10,14 +10,15 @@ import (
 	"github.com/apitally/apitally-go/internal"
 )
 
-// Config configures Apitally. Create it with [NewConfig].
+// Config configures Apitally. Create it with [NewConfig], which sets the
+// defaults.
 type Config = root.Config
 
 // Consumer identifies the API consumer making a request.
 type Consumer = root.Consumer
 
-// LogRecord is a captured application log record passed to
-// Config.MaskLogRecord.
+// LogRecord is a log record captured by the handler from NewSlogHandler, as
+// passed to Config.MaskLogRecord.
 type LogRecord = root.LogRecord
 
 // NewConfig returns a Config with the default settings.
@@ -25,46 +26,47 @@ func NewConfig() *Config {
 	return root.NewConfig()
 }
 
-// Shutdown exports the remaining telemetry and stops Apitally. Call it when
-// the application shuts down, after the HTTP server has stopped. It returns
-// the context's error if the context ends before all telemetry is delivered.
-// Without it, telemetry from up to the last export interval is lost at exit.
+// Shutdown sends the remaining telemetry and stops Apitally. Call it after
+// the HTTP server has stopped.
 func Shutdown(ctx context.Context) error {
 	return internal.Shutdown(ctx)
 }
 
-// NewSlogHandler returns a slog.Handler that captures the records logged with
-// a request's context for Apitally and passes every record to next
-// unchanged, for example:
+// NewSlogHandler returns a slog.Handler that captures log records for
+// Apitally and passes every record to next unchanged:
 //
 //	handler := slog.NewJSONHandler(os.Stdout, nil)
 //	slog.SetDefault(slog.New(apitally.NewSlogHandler(handler)))
 //
-// Pass the request context when logging, such as with slog.InfoContext, to
-// link records to the request. next must not be the handler of the default
-// logger created by the slog package itself.
+// Only records logged with the request context, such as with
+// slog.InfoContext, are captured, and only for requests included in request
+// logs.
+//
+// Do not wrap slog.Default().Handler() before slog.SetDefault has been
+// called. Setting the result as the default logger then causes a deadlock.
 func NewSlogHandler(next slog.Handler) slog.Handler {
 	return internal.NewSlogHandler(next)
 }
 
-// SetConsumer identifies the API consumer making the request, for example
-// in authentication middleware. ctx is the request context, or a context
-// derived from it. The consumer's name, group and attributes update the
-// consumer in Apitally.
+// SetConsumer sets the API consumer making the request, for example in
+// authentication middleware. ctx is the request context or a context derived
+// from it.
 func SetConsumer(ctx context.Context, consumer Consumer) {
 	internal.SetConsumer(ctx, consumer)
 }
 
-// SetRequestAttributes sets attributes on the request's span, for example to
-// use in Config.SampleOnResponse. ctx is the request context, or a context
-// derived from it.
+// SetRequestAttributes sets attributes on the request's span. They are sent
+// with the request's trace and are available to the SampleOnResponse,
+// MaskRequestBody and MaskResponseBody callbacks. ctx is the request context
+// or a context derived from it.
 func SetRequestAttributes(ctx context.Context, attrs ...attribute.KeyValue) {
 	internal.SetRequestAttributes(ctx, attrs...)
 }
 
 // CaptureError captures err as the request's error, with the caller's stack
-// trace. Only the first error captured for a request is kept. ctx is the
-// request context, or a context derived from it.
+// trace. Use it for errors the application handles itself; panics and errors
+// returned to the framework are captured automatically. ctx is the request
+// context or a context derived from it.
 func CaptureError(ctx context.Context, err error) {
 	internal.CaptureError(ctx, err)
 }
