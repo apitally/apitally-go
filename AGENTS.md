@@ -46,7 +46,7 @@
 
 ### What gets tested
 
-- A test may only fail when user-observable behavior regresses against a contract. Documented gaps, internal mechanisms, and constants are never pinned; decisions without a user-observable failure mode are enforced in review, not tests.
+- A test may only fail when user-observable behavior regresses against a contract. Documented gaps, internal mechanisms, and constants are never pinned; decisions without a user-observable failure mode are enforced in review, not tests. A test never fails because the code improves.
 - Every test needs an important reason to exist: it pins a spec requirement, a settled design decision, or a behavior a plausible change would silently break. Tests that restate the implementation, or assert theoretical edge cases no real deployment hits, do not get written.
 - Test only the SDK's own code. Never write tests that assert what OpenTelemetry, a framework, or the standard library does on its own; dependencies appear in tests only as the environment the SDK's behavior is observed in.
 - Never replace the SDK's own types or functions with test doubles. Substitute only process boundaries: export to a local stub OTLP endpoint (`httptest.Server`), or read exported payloads in-process.
