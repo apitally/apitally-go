@@ -19,7 +19,6 @@ concurrency:
 
 jobs:
   check:
-    name: Check build, vet, formatting and modules
     runs-on: ubuntu-latest
     env:
       GOTOOLCHAIN: local
@@ -33,7 +32,7 @@ jobs:
         run: make check
 
   test:
-    name: ${{ matrix.module }} (Go ${{ matrix.setup.go-version }}, ${{ matrix.setup.dependencies }} dependencies)
+    name: ${{ matrix.module }} (Go ${{ matrix.setup.go-version }}, ${{ matrix.setup.dependencies }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
