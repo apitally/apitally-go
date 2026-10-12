@@ -21,6 +21,7 @@ func TestConsumerIsNormalizedAndMerged(t *testing.T) {
 	assert.Equal(t, "Acme Corp", consumer.name)
 	assert.Equal(t, "enterprise", consumer.group)
 	assert.Equal(t, []consumerAttribute{{"plan", "free"}, {"region", ""}, {"zone", "1"}}, consumer.attributes)
+	assert.Same(t, consumer, mergeConsumer(consumer, root.Consumer{Identifier: " "}))
 	assert.Equal(t, &requestConsumer{identifier: "globex"}, mergeConsumer(consumer, root.Consumer{Identifier: "globex"}))
 }
 
@@ -28,7 +29,7 @@ func TestConsumerUpdateIsEmittedWhenPayloadChanges(t *testing.T) {
 	server := testutils.NewOTLPServer(t)
 	registerForTest(t, server, nil)
 	appURL := startTestApp(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		SetConsumer(r.Context(), root.Consumer{Identifier: "acme", Name: r.URL.Query().Get("name"), Attributes: map[string]string{"plan": "pro", "region": ""}})
+		SetConsumer(r.Context(), root.Consumer{Identifier: "acme", Name: r.URL.Query().Get("name"), Group: "enterprise", Attributes: map[string]string{"plan": "pro", "region": ""}})
 	}))
 
 	for _, name := range []string{"Acme", "Acme", "Acme+Corp"} {
@@ -42,6 +43,7 @@ func TestConsumerUpdateIsEmittedWhenPayloadChanges(t *testing.T) {
 	assert.Equal(t, map[string]any{
 		"identifier": "acme",
 		"name":       "Acme",
+		"group":      "enterprise",
 		"attributes": map[string]any{"plan": "pro", "region": nil},
 	}, testutils.Value(records[0].Body))
 	assert.Equal(t, "Acme Corp", testutils.Value(records[1].Body).(map[string]any)["name"])
