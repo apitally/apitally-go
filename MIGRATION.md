@@ -47,7 +47,7 @@ apitally.Init(r, cfg)
 
 ### Graceful shutdown
 
-Call the new `apitally.Shutdown` function when your application exits, after your HTTP server has stopped, so the SDK can deliver the remaining telemetry. Without it, up to one export interval of telemetry is lost at exit. See the [README](README.md#graceful-shutdown) for the full pattern.
+Call the new `apitally.Shutdown` function when your application exits, after your HTTP server has stopped, so the SDK can deliver the remaining telemetry. See the [README](README.md#graceful-shutdown) for the full pattern.
 
 ```go
 srv.Shutdown(ctx)
