@@ -149,7 +149,7 @@ apitally.CaptureError(ctx, err)
 
 ## Application logs
 
-Log capture now works with `log/slog`. Wrap your handler with `NewSlogHandler` and log with the request context, for example with `slog.InfoContext`:
+The SDK no longer wraps the default `log/slog` handler automatically. To capture logs, wrap your handler with `NewSlogHandler` and log with the request context, for example with `slog.InfoContext`:
 
 ```go
 handler := slog.NewJSONHandler(os.Stdout, nil)
