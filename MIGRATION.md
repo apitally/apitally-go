@@ -225,7 +225,7 @@ See [sampling](https://docs.apitally.io/sdk-reference/go/v1/sampling) for detail
 
 ## Existing OpenTelemetry setups
 
-If your application registers a `go.opentelemetry.io/otel/sdk/trace` tracer provider with `otel.SetTracerProvider` before the first request, the SDK automatically adds its span processor. No manual registration is required.
+If your application registers a `go.opentelemetry.io/otel/sdk/trace` tracer provider with `otel.SetTracerProvider` before starting the server, the SDK automatically adds its span processor. No manual registration is required.
 
 Review these settings when upgrading:
 
