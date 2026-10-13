@@ -24,7 +24,7 @@ The Gin module has been renamed from `github.com/apitally/apitally-go/gin` to `g
 
 The SDK now authenticates with a **write token** instead of a client ID. Your existing app's token (`apt_...`) is available under _Setup instructions_ in the [Apitally dashboard](https://app.apitally.io/apps).
 
-`NewConfig()` no longer takes a client ID. Set the `WriteToken` option, or set the `APITALLY_WRITE_TOKEN` environment variable. A missing or invalid token no longer fails silently in the background. Instead, the SDK logs an error and disables itself.
+`NewConfig()` no longer takes a client ID. Set the `WriteToken` option, or set the `APITALLY_WRITE_TOKEN` environment variable.
 
 ### `Init` replaces the middleware
 
@@ -56,7 +56,7 @@ apitally.Shutdown(ctx)
 
 ## Configuration changes
 
-The `RequestLoggingConfig` type and the `RequestLogging` field have been removed. Their settings are now fields directly on `Config`, with the changes listed below.
+The `RequestLoggingConfig` type and the `RequestLogging` field have been removed. Their settings are now fields directly on `Config`, with the option changes listed below.
 
 ```go
 // Before
@@ -83,7 +83,6 @@ The following options have been changed:
 | Option | Change |
 | --- | --- |
 | `ClientID` | Replaced by `WriteToken`, which requires a new credential. |
-| `Env` | Can now also be set with the `APITALLY_ENV` environment variable. |
 | `RequestLogging.LogRequestHeaders` | Renamed to `CaptureRequestHeaders`. |
 | `RequestLogging.LogRequestBody` | Renamed to `CaptureRequestBody`. |
 | `RequestLogging.LogResponseHeaders` | Renamed to `CaptureResponseHeaders`. |
@@ -107,7 +106,7 @@ These options have been removed:
 | `RequestLogging` | Set its fields directly on `Config`, applying the changes above. Remove its `Enabled` flag. |
 | `RequestLogging.Enabled` and `RequestLogging.CaptureTraces` | Previously defaulted to `false`. Request logging and tracing are now enabled by default. Use `SampleRate = 0` to disable request logs and traces. |
 | `RequestLogging.LogQueryParams` | Query parameters are now always captured. To mask all values, use `MaskQueryParams = []string{".*"}`. |
-| `RequestLogging.CaptureLogs` | Logs are captured when you wrap your `log/slog` handler with `NewSlogHandler` (see below). |
+| `RequestLogging.CaptureLogs` | Logs are captured when you wrap your `log/slog` handler with `NewSlogHandler` (see [below](#application-logs)). |
 | `RequestLogging.LogPanic` | Panics are now always captured in request traces. |
 | `DisableSync` | Use the `Disabled` option or the `APITALLY_DISABLED` environment variable. Apitally is also disabled in `go test` binaries. |
 
@@ -135,9 +134,20 @@ apitally.SetConsumerIdentifier(c, user.ID)
 apitally.SetConsumer(ctx, apitally.Consumer{Identifier: user.ID})
 ```
 
+You can also provide custom attributes for each consumer:
+
+```go
+apitally.SetConsumer(ctx, apitally.Consumer{
+    Identifier: user.ID,
+    Name:       user.Name,                            // optional
+    Group:      user.Group,                           // optional
+    Attributes: map[string]string{"plan": user.Plan}, // optional
+})
+```
+
 ## Validation errors
 
-`CaptureValidationError` has been removed. Pass validation errors to `CaptureError` with the request context instead. See [Consumer identification](#consumer-identification) for the context to pass on each framework.
+`CaptureValidationError` has been removed. Pass validation errors to `CaptureError` with the request context instead. See [request context](https://docs.apitally.io/sdk-reference/go/v1/tracing#request-context) for the context to pass on each framework.
 
 ```go
 // Before
@@ -158,13 +168,11 @@ slog.SetDefault(slog.New(apitally.NewSlogHandler(handler)))
 slog.InfoContext(ctx, "Order created", "order_id", order.ID)
 ```
 
-Records logged without the request context are not linked to requests and are not captured. See [Consumer identification](#consumer-identification) for the context to pass on each framework.
+Records logged without the request context are not linked to requests and are not captured. See [request context](https://docs.apitally.io/sdk-reference/go/v1/tracing#request-context) for the context to pass on each framework.
 
 ## Body masking callbacks
 
-`MaskRequestBodyCallback` and `MaskResponseBodyCallback` are now named `MaskRequestBody` and `MaskResponseBody`. Both receive `(span, body)`, rather than the `Request` and `Response` objects. The body is passed as `[]byte` after decompression.
-
-Callbacks may run later on another goroutine against an ended span. Request metadata is available through [`span.Attributes()`](https://docs.apitally.io/sdk-reference/go/v1/attributes).
+`MaskRequestBodyCallback` and `MaskResponseBodyCallback` are now named `MaskRequestBody` and `MaskResponseBody`. Both receive `(span, body)`, rather than the `Request` and `Response` objects. The body is passed as `[]byte`. Request metadata is available through [`span.Attributes()`](https://docs.apitally.io/sdk-reference/go/v1/attributes).
 
 For example, a callback that masks bodies for admin routes becomes:
 
@@ -179,10 +187,10 @@ config.RequestLogging.MaskRequestBodyCallback = func(request *apitally.Request) 
 
 // After
 cfg.MaskRequestBody = func(span sdktrace.ReadOnlySpan, body []byte) []byte {
-    for _, kv := range span.Attributes() {
-        if kv.Key == "http.route" && strings.HasPrefix(kv.Value.AsString(), "/admin/") {
-            return nil
-        }
+    attrs := attribute.NewSet(span.Attributes()...)
+    route, _ := attrs.Value("http.route")
+    if strings.HasPrefix(route.AsString(), "/admin/") {
+        return nil
     }
     return body
 }
@@ -204,10 +212,10 @@ config.RequestLogging.ExcludeCallback = func(request *apitally.Request, response
 
 // After
 cfg.SampleOnResponse = func(span sdktrace.ReadOnlySpan) (float64, bool) {
-    for _, kv := range span.Attributes() {
-        if kv.Key == "http.response.status_code" && kv.Value.AsInt64() >= 400 {
-            return 1, true
-        }
+    attrs := attribute.NewSet(span.Attributes()...)
+    statusCode, _ := attrs.Value("http.response.status_code")
+    if statusCode.AsInt64() >= 400 {
+        return 1, true
     }
     return 0, true
 }
@@ -225,7 +233,7 @@ See [sampling](https://docs.apitally.io/sdk-reference/go/v1/sampling) for detail
 
 ## Existing OpenTelemetry setups
 
-If your application registers a `go.opentelemetry.io/otel/sdk/trace` tracer provider with `otel.SetTracerProvider` before starting the server, the SDK automatically adds its span processor. No manual registration is required.
+If your application registers a tracer provider from `go.opentelemetry.io/otel/sdk/trace` with `otel.SetTracerProvider` before starting the server, the SDK automatically adds its span processor. No manual registration is required.
 
 Review these settings when upgrading:
 
