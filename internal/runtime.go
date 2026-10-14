@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -14,7 +15,10 @@ import (
 	root "github.com/apitally/apitally-go"
 )
 
-const batchExportTimeout = 30 * time.Second
+const (
+	batchExportTimeout   = 30 * time.Second
+	servingCheckInterval = time.Second
+)
 
 var (
 	// registrationMu guards the creation of the runtime and its route listers.
@@ -33,7 +37,10 @@ type sdkRuntime struct {
 	routeListers []func() []Route
 
 	activateOnce sync.Once
-	isActive     atomic.Bool
+	// isActivationAttempted is set once activateOnce has run, since sync.Once
+	// cannot be queried.
+	isActivationAttempted atomic.Bool
+	isActive              atomic.Bool
 
 	resource          *resource.Resource
 	spool             *spool
@@ -82,6 +89,9 @@ func Register(cfg *root.Config, framework FrameworkInfo, listRoutes func() []Rou
 		}
 		r = &sdkRuntime{settings: s, framework: framework, cycleLock: make(chan struct{}, 1)}
 		currentRuntime.Store(r)
+		if r.isActivationAllowed() {
+			go r.activateWhenServingHTTP()
+		}
 	} else if !r.settings.isEquivalent(s) {
 		logWarn("Apitally was initialized again with a different configuration, which is ignored")
 	}
@@ -118,7 +128,7 @@ func Shutdown(ctx context.Context) error {
 		return nil
 	}
 	// Requests arriving after Shutdown must not activate Apitally again.
-	r.activateOnce.Do(func() {})
+	r.activateOnce.Do(func() { r.isActivationAttempted.Store(true) })
 	if !r.isActive.CompareAndSwap(true, false) {
 		return nil
 	}
@@ -142,7 +152,8 @@ func SetUpTest(t testing.TB) {
 }
 
 func (r *sdkRuntime) activate() {
-	if !r.settings.isEnabled || (testing.Testing() && !isActivationAllowedInTests.Load()) {
+	r.isActivationAttempted.Store(true)
+	if !r.isActivationAllowed() {
 		return
 	}
 	defer recoverAndLogPanic("activation")
@@ -170,6 +181,53 @@ func (r *sdkRuntime) activate() {
 	go r.logs.run()
 	go r.runExportLoop(r.exportContext)
 	r.isActive.Store(true)
+}
+
+func (r *sdkRuntime) isActivationAllowed() bool {
+	return r.settings.isEnabled && (!testing.Testing() || isActivationAllowedInTests.Load())
+}
+
+// activateWhenServingHTTP activates Apitally once the process serves HTTP, so
+// an idle server reports liveness without waiting for its first request. Go
+// has no listen hook, so it checks the goroutine stacks periodically.
+func (r *sdkRuntime) activateWhenServingHTTP() {
+	defer recoverAndLogPanic("serving detection")
+	ticker := time.NewTicker(servingCheckInterval)
+	defer ticker.Stop()
+	for range ticker.C {
+		if r.isActivationAttempted.Load() || currentRuntime.Load() != r {
+			return
+		}
+		if isServingHTTP() {
+			r.activateOnce.Do(r.activate)
+			return
+		}
+	}
+}
+
+// isServingHTTP reports whether any goroutine runs an HTTP server's Serve
+// loop, which lasts for the whole life of the server.
+func isServingHTTP() bool {
+	var records []runtime.StackRecord
+	n, ok := runtime.GoroutineProfile(nil)
+	for !ok {
+		records = make([]runtime.StackRecord, n+10)
+		n, ok = runtime.GoroutineProfile(records)
+	}
+	for _, record := range records[:n] {
+		frames := runtime.CallersFrames(record.Stack())
+		for {
+			frame, more := frames.Next()
+			switch frame.Function {
+			case "net/http.(*Server).Serve", "github.com/valyala/fasthttp.(*Server).Serve":
+				return true
+			}
+			if !more {
+				break
+			}
+		}
+	}
+	return false
 }
 
 func (r *sdkRuntime) shutdown(ctx context.Context) error {
