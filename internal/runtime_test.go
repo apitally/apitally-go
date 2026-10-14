@@ -4,6 +4,9 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"runtime"
 	"strings"
 	"testing"
@@ -92,6 +95,35 @@ func TestActivationIsSuppressedInTestBinaries(t *testing.T) {
 	require.NoError(t, Shutdown(context.Background()))
 
 	assert.Empty(t, server.Requests())
+}
+
+func TestServingHTTPActivatesWithoutRequest(t *testing.T) {
+	server := testutils.NewOTLPServer(t)
+	// A goroutine blocked on network I/O is never durably blocked, so the
+	// app server starts outside the bubble. A response confirms it is serving.
+	app := httptest.NewServer(http.NotFoundHandler())
+	t.Cleanup(app.Close)
+	resp, err := http.Get(app.URL)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	synctest.Test(t, func(t *testing.T) {
+		registerForTest(t, server, nil)
+
+		time.Sleep(servingCheckInterval)
+		synctest.Wait()
+		require.NoError(t, Shutdown(context.Background()))
+
+		assert.Len(t, server.Events(t, startupEventName), 1)
+	})
+}
+
+func TestTCPListenerWithoutHTTPServerIsNotServingHTTP(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = listener.Close() })
+	go func() { _, _ = listener.Accept() }()
+
+	assert.False(t, isServingHTTP())
 }
 
 func TestIdleShutdownDeliversProcessGauges(t *testing.T) {

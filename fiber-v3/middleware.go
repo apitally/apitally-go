@@ -28,7 +28,7 @@ func Init(app *fiber.App, cfg *Config) {
 		app.Use(newMiddleware(app))
 		app.Hooks().OnListen(func(data fiber.ListenData) error {
 			// With prefork, OnListen runs only in the master process, which serves
-			// no requests. Each child process activates on its first request.
+			// no requests. Each child process activates when it starts serving.
 			if !data.Prefork {
 				internal.Activate()
 			}
