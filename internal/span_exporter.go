@@ -70,6 +70,15 @@ func (r *sdkRuntime) newRequestExportSpan(s *RequestState, span sdktrace.ReadOnl
 			c.endTime = s.transportEnd
 		}
 	}
+	// Read at release, so keys set on a reused span after transport
+	// observation are listed.
+	s.mu.Lock()
+	keys := s.customAttributeKeys
+	s.mu.Unlock()
+	if len(keys) > 0 {
+		// The span snapshot's attributes can share the application span's backing array.
+		c.attributes = append(slices.Clip(c.attributes), attribute.StringSlice("apitally.request.custom_attribute_keys", keys))
+	}
 	c.payload = s.payload
 	return c
 }

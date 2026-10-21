@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -85,6 +86,8 @@ type RequestState struct {
 	// framework.
 	returnedError error
 	logs          []*logRecord
+	// customAttributeKeys are the keys passed to SetRequestAttributes.
+	customAttributeKeys []string
 }
 
 type requestStateKey struct{}
@@ -124,6 +127,15 @@ func SetRequestAttributes(ctx context.Context, attrs ...attribute.KeyValue) {
 			}
 		}
 		s.span.SetAttributes(copied...)
+		if s.isMonitored {
+			s.mu.Lock()
+			for _, kv := range attrs {
+				if kv.Valid() && !slices.Contains(s.customAttributeKeys, string(kv.Key)) {
+					s.customAttributeKeys = append(s.customAttributeKeys, string(kv.Key))
+				}
+			}
+			s.mu.Unlock()
+		}
 	}
 }
 
