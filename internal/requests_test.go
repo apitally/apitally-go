@@ -45,6 +45,7 @@ func TestRequestAttributesAreSetOnServerSpan(t *testing.T) {
 	registerForTest(t, server, nil)
 	appURL := startTestApp(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		SetRequestAttributes(r.Context(), attribute.String("tenant", "acme"), attribute.StringSlice("roles", []string{"admin", "billing"}))
+		SetRequestAttributes(r.Context(), attribute.String("tenant", "acme"), attribute.Int("tier", 2))
 		writeOK(w, r)
 	}))
 
@@ -55,6 +56,7 @@ func TestRequestAttributesAreSetOnServerSpan(t *testing.T) {
 	attrs := testutils.Attributes(span.Attributes)
 	assert.Equal(t, "acme", attrs["tenant"])
 	assert.Equal(t, []any{"admin", "billing"}, attrs["roles"])
+	assert.ElementsMatch(t, []any{"tenant", "roles", "tier"}, attrs["apitally.request.custom_attribute_keys"])
 }
 
 func TestNestedRequestIsExportedSeparately(t *testing.T) {
