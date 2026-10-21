@@ -3,7 +3,7 @@ module github.com/apitally/apitally-go/fiber-v2
 go 1.25.0
 
 require (
-	github.com/apitally/apitally-go v0.0.0
+	github.com/apitally/apitally-go v1.0.0
 	github.com/go-playground/validator/v10 v10.30.4
 	github.com/gofiber/fiber/v2 v2.51.0
 	github.com/stretchr/testify v1.12.1

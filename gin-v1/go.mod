@@ -3,7 +3,7 @@ module github.com/apitally/apitally-go/gin-v1
 go 1.25.0
 
 require (
-	github.com/apitally/apitally-go v0.0.0
+	github.com/apitally/apitally-go v1.0.0
 	github.com/gin-gonic/gin v1.9.1
 	github.com/stretchr/testify v1.12.1
 	go.opentelemetry.io/otel v1.46.0
